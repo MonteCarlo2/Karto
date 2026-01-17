@@ -1,36 +1,175 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# KARTO — Генератор карточек товаров для маркетплейсов
 
-## Getting Started
+Профессиональный сервис для создания карточек товаров с использованием AI.
 
-First, run the development server:
+## 🚀 Возможности
+
+- **Удаление фона** — автоматическое вырезание товара с любого фона
+- **Улучшение качества** — повышение разрешения и четкости изображения
+- **Генерация фонов** — профессиональные фоны для маркетплейсов
+- **Композитинг** — наложение товара на фон с тенями и освещением
+- **Генерация текста** — SEO-оптимизированные названия и описания
+
+## 📋 Технологии
+
+- **Next.js 16+** (App Router)
+- **TypeScript**
+- **Tailwind CSS**
+- **Sharp** (обработка изображений)
+- **Replicate API** (AI модели)
+
+## 🛠 Установка и запуск
+
+### 1. Установка зависимостей
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Настройка API ключей
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Создайте файл `.env.local` в корне проекта:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+# Replicate API (обязательно)
+# Получите ключ на https://replicate.com/account/api-tokens
+REPLICATE_API_TOKEN=r8_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
 
-## Learn More
+### 3. Запуск
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# Режим разработки
+npm run dev
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Продакшн сборка
+npm run build
+npm start
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 4. Откройте приложение
 
-## Deploy on Vercel
+- **Главная страница:** http://localhost:3000
+- **Студия генерации:** http://localhost:3000/studio
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 📁 Структура проекта
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+src/
+├── app/
+│   ├── api/
+│   │   ├── segment/        # Удаление фона
+│   │   ├── enhance/        # Улучшение качества
+│   │   ├── generate-background/  # Генерация фона
+│   │   ├── composite/      # Композитинг
+│   │   ├── process/        # Полный пайплайн
+│   │   └── upload/         # Загрузка файлов
+│   ├── studio/             # UI студии
+│   └── ...
+├── components/             # UI компоненты
+└── lib/
+    └── services/
+        ├── replicate.ts    # Интеграция с Replicate API
+        └── image-processing.ts  # Обработка изображений
+```
+
+## 🔄 Пайплайн обработки
+
+```
+Загрузка фото
+     ↓
+Сегментация (rembg) → Товар без фона
+     ↓
+Улучшение (Real-ESRGAN) → Высокое разрешение
+     ↓
+Генерация фона (SDXL) → Профессиональный фон
+     ↓
+Композитинг (Sharp) → Товар + Фон + Тени
+     ↓
+Распознавание (LLaVA) → Описание товара
+     ↓
+Генерация текста (LLaMA) → Название + Описание
+```
+
+## 💰 Стоимость
+
+Примерная стоимость на 1 карточку через Replicate API:
+- Сегментация: ~$0.01-0.02
+- Улучшение: ~$0.02-0.03
+- Генерация фона: ~$0.03-0.05
+- Распознавание: ~$0.01-0.02
+- **Итого: ~$0.07-0.12 (~5-10 ₽)**
+
+## 🇷🇺 Работа в России
+
+Если Replicate недоступен напрямую:
+
+### Вариант 1: Прокси-сервер
+Арендуйте VPS в Европе и настройте прокси для API-запросов.
+
+### Вариант 2: Российские альтернативы
+- **Kandinsky** (Сбер) — генерация изображений
+- **YandexART** — генерация изображений
+- **GigaChat / YandexGPT** — генерация текстов
+
+## 📝 API Endpoints
+
+### POST /api/segment
+Удаление фона с изображения
+```json
+{
+  "imageUrl": "https://example.com/image.jpg"
+}
+```
+
+### POST /api/enhance
+Улучшение качества изображения
+```json
+{
+  "imageUrl": "https://example.com/image.jpg",
+  "scale": 2
+}
+```
+
+### POST /api/generate-background
+Генерация фона
+```json
+{
+  "preset": "studio",
+  "width": 1024,
+  "height": 1024
+}
+```
+
+### POST /api/composite
+Композитинг товара и фона
+```json
+{
+  "productUrl": "/temp/product.png",
+  "backgroundUrl": "/temp/background.png",
+  "productScale": 0.7,
+  "positionX": 0.5,
+  "positionY": 0.55,
+  "addShadow": true
+}
+```
+
+### POST /api/process
+Полный пайплайн (FormData)
+```
+image: File
+backgroundPreset: "studio" | "gradient" | "lifestyle" | "modern" | "premium"
+generateText: "true" | "false"
+```
+
+## 🎯 Ключевое преимущество
+
+**Товар НЕ перерисовывается!**
+
+В отличие от генеративных AI, мы:
+1. Вырезаем оригинальный товар
+2. Улучшаем его качество (без изменения формы)
+3. Генерируем только ФОН
+4. Накладываем товар на фон
+
+Результат: товар выглядит точно так же, как на оригинальном фото, без "галлюцинаций" AI.
