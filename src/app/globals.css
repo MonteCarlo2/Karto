@@ -47,6 +47,26 @@
   --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
 }
 
+/* Стили для поля ввода товара */
+@keyframes pulse-caret {
+  0%, 100% { 
+    opacity: 1; 
+  }
+  50% { 
+    opacity: 0.4; 
+  }
+}
+
+/* Пульс курсора и улучшенный placeholder */
+textarea::placeholder {
+  color: rgba(102, 102, 102, 0.7) !important;
+  font-weight: 400;
+}
+
+textarea:focus::selection {
+  background: rgba(46, 90, 67, 0.2) !important;
+}
+
 /* Предотвращение горизонтального overflow */
 html, body {
   overflow-x: hidden;
