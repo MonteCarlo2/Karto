@@ -338,9 +338,17 @@ export default function DescriptionPage() {
         }),
       });
       
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Неизвестная ошибка" }));
+        console.error("❌ Ошибка API:", errorData);
+        alert(`Ошибка генерации описаний: ${errorData.error || errorData.details || "Попробуйте еще раз"}`);
+        setIsGenerating(false);
+        return;
+      }
+      
       const data = await response.json();
       
-      if (data.success && data.variants) {
+      if (data.success && data.variants && Array.isArray(data.variants) && data.variants.length > 0) {
         setVariants(data.variants);
         setIsStarted(true);
         
@@ -357,14 +365,18 @@ export default function DescriptionPage() {
               selected_blocks: selectedBlocks,
               generated_descriptions: data.variants,
             }),
+          }).catch((err) => {
+            console.warn("Не удалось сохранить описания в Supabase:", err);
           });
         }
       } else {
-        alert("Ошибка генерации описаний. Попробуйте еще раз.");
+        console.error("❌ Неверный формат ответа или пустые варианты:", data);
+        alert("Ошибка: описания не были сгенерированы. Проверьте консоль для деталей и попробуйте еще раз.");
       }
-    } catch (error) {
-      console.error("Ошибка генерации:", error);
-      alert("Ошибка соединения. Попробуйте еще раз.");
+    } catch (error: any) {
+      console.error("❌ Ошибка генерации:", error);
+      console.error("❌ Детали ошибки:", error?.message, error?.stack);
+      alert(`Ошибка соединения: ${error?.message || "Проверьте подключение к интернету и попробуйте еще раз"}`);
     } finally {
       setIsGenerating(false);
     }

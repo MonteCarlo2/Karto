@@ -20,7 +20,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Утилита для retry с exponential backoff
+// Утилита для retry с exponential backoff и обработкой rate limiting
 async function withRetry<T>(
   fn: () => Promise<T>,
   maxRetries: number = 3,
@@ -34,11 +34,37 @@ async function withRetry<T>(
     } catch (error: any) {
       lastError = error;
       
-      // Если это rate limit (429), ждем и пробуем снова
-      if (error.message?.includes("429") || error.message?.includes("throttled")) {
-        const delay = baseDelay * Math.pow(2, attempt); // 5s, 10s, 20s
-        console.log(`⏳ Rate limit, ждем ${delay/1000}s перед повтором (попытка ${attempt + 1}/${maxRetries})...`);
-        await sleep(delay);
+      // Проверяем, является ли это rate limit (429)
+      const isRateLimit = error.status === 429 || 
+                          error.message?.includes("429") || 
+                          error.message?.includes("throttled") ||
+                          error.message?.includes("Too Many Requests");
+      
+      if (isRateLimit) {
+        // Извлекаем retry_after из ответа, если есть
+        let retryAfter = baseDelay;
+        try {
+          if (error.body && typeof error.body === 'string') {
+            const body = JSON.parse(error.body);
+            if (body.retry_after) {
+              retryAfter = body.retry_after * 1000; // конвертируем секунды в миллисекунды
+            }
+          } else if (error.body?.retry_after) {
+            retryAfter = error.body.retry_after * 1000;
+          } else if (error.response?.headers?.['retry-after']) {
+            retryAfter = parseInt(error.response.headers['retry-after']) * 1000;
+          }
+        } catch (e) {
+          // Если не удалось распарсить, используем exponential backoff
+          retryAfter = baseDelay * Math.pow(2, attempt);
+        }
+        
+        // Добавляем небольшую случайную задержку, чтобы избежать одновременных запросов
+        const jitter = Math.random() * 2000; // 0-2 секунды
+        retryAfter += jitter;
+        
+        console.log(`⏳ Rate limit (429), ждем ${(retryAfter/1000).toFixed(1)}s перед повтором (попытка ${attempt + 1}/${maxRetries})...`);
+        await sleep(retryAfter);
         continue;
       }
       
@@ -743,9 +769,12 @@ export async function generateProductDescription(
   wantsStickers: boolean = false,
   baseDescription?: string
 ): Promise<string> {
-  console.log(`🔄 Генерируем описание товара через Claude 4.5 Sonnet (стиль ${style})...`);
+  const styleNames = { 1: "Официальный", 2: "Продающий", 3: "Структурированный", 4: "Сбалансированный" };
+  console.log(`🔄 [СТИЛЬ ${style}] Генерируем описание товара через Claude 4.5 Sonnet (${styleNames[style]})...`);
+  console.log(`🔄 [СТИЛЬ ${style}] Товар: "${productName}"`);
   
   const replicate = getReplicateClient();
+  console.log(`🔄 [СТИЛЬ ${style}] Replicate клиент получен, начинаем streaming...`);
   
   // Определяем стиль описания
   const stylePrompts = {
@@ -822,36 +851,108 @@ ${wantsStickers ? `ВАЖНО: Добавь простые эмодзи (сти�
     const finalPrompt = `${systemPrompt}\n\n${userPrompt}`;
     
     try {
+      console.log(`🔄 [СТИЛЬ ${style}] Запускаем streaming запрос к Replicate...`);
+      console.log(`🔄 [СТИЛЬ ${style}] Длина промпта: ${finalPrompt.length} символов`);
+      
       // Claude 4.5 Sonnet через Replicate использует streaming
-      for await (const event of replicate.stream("anthropic/claude-4.5-sonnet" as any, {
-        input: {
-          prompt: finalPrompt,
-        },
-      })) {
-        // Собираем все части стрима
-        if (typeof event === "string") {
-          fullText += event;
-        } else if (Array.isArray(event)) {
-          fullText += event.join("");
-        } else if (event && typeof event === "object") {
-          if ("text" in event) fullText += String(event.text);
-          else if ("content" in event) fullText += String(event.content);
-          else if ("delta" in event && event.delta && typeof event.delta === "object" && "content" in event.delta) {
-            fullText += String(event.delta.content);
-          } else {
-            fullText += String(event);
+      // Оборачиваем создание стрима в withRetry для обработки rate limiting
+      let stream: any;
+      let streamAttempts = 0;
+      const maxStreamAttempts = 5;
+      
+      while (streamAttempts < maxStreamAttempts) {
+        try {
+          console.log(`🔄 [СТИЛЬ ${style}] Создаем streaming объект (попытка ${streamAttempts + 1}/${maxStreamAttempts})...`);
+          stream = replicate.stream("anthropic/claude-4.5-sonnet" as any, {
+            input: {
+              prompt: finalPrompt,
+            },
+          });
+          console.log(`🔄 [СТИЛЬ ${style}] Streaming объект создан успешно!`);
+          break; // Успешно создан
+        } catch (streamError: any) {
+          streamAttempts++;
+          const isRateLimit = streamError.status === 429 || 
+                              streamError.message?.includes("429") || 
+                              streamError.message?.includes("throttled") ||
+                              streamError.message?.includes("Too Many Requests");
+          
+          if (isRateLimit && streamAttempts < maxStreamAttempts) {
+            // Извлекаем retry_after из ошибки
+            let retryAfter = 10000; // 10 секунд по умолчанию
+            try {
+              if (streamError.body && typeof streamError.body === 'string') {
+                const body = JSON.parse(streamError.body);
+                if (body.retry_after) {
+                  retryAfter = body.retry_after * 1000;
+                }
+              } else if (streamError.body?.retry_after) {
+                retryAfter = streamError.body.retry_after * 1000;
+              }
+            } catch (e) {
+              // Используем значение по умолчанию
+            }
+            
+            // Добавляем jitter для разных стилей
+            const jitter = (style - 1) * 1000 + Math.random() * 2000;
+            retryAfter += jitter;
+            
+            console.log(`⏳ [СТИЛЬ ${style}] Rate limit (429), ждем ${(retryAfter/1000).toFixed(1)}s перед повтором (попытка ${streamAttempts}/${maxStreamAttempts})...`);
+            await sleep(retryAfter);
+            continue;
           }
+          
+          // Если не rate limit или попытки закончились - пробрасываем ошибку
+          throw streamError;
         }
       }
       
+      if (!stream) {
+        throw new Error(`[СТИЛЬ ${style}] Не удалось создать streaming после ${maxStreamAttempts} попыток`);
+      }
+      
+      console.log(`🔄 [СТИЛЬ ${style}] Streaming объект создан, начинаем итерацию...`);
+      
+      let eventCount = 0;
+      try {
+        for await (const event of stream) {
+          eventCount++;
+          if (eventCount === 1) {
+            console.log(`🔄 [СТИЛЬ ${style}] ✅ Получено первое событие стрима!`);
+          }
+          if (eventCount % 10 === 0) {
+            console.log(`🔄 [СТИЛЬ ${style}] Получено ${eventCount} событий, текущая длина текста: ${fullText.length}`);
+          }
+          // Собираем все части стрима
+          if (typeof event === "string") {
+            fullText += event;
+          } else if (Array.isArray(event)) {
+            fullText += event.join("");
+          } else if (event && typeof event === "object") {
+            if ("text" in event) fullText += String(event.text);
+            else if ("content" in event) fullText += String(event.content);
+            else if ("delta" in event && event.delta && typeof event.delta === "object" && "content" in event.delta) {
+              fullText += String(event.delta.content);
+            } else {
+              fullText += String(event);
+            }
+          }
+        }
+      } catch (streamError: any) {
+        console.error(`❌ [СТИЛЬ ${style}] Ошибка при обработке стрима (получено ${eventCount} событий):`, streamError?.message || streamError);
+        console.error(`❌ [СТИЛЬ ${style}] Stack trace:`, streamError?.stack);
+        throw streamError;
+      }
+      
+      console.log(`🔄 [СТИЛЬ ${style}] Стрим завершен. Получено ${eventCount} событий. Обрабатываем результат...`);
       const description = fullText.trim();
       
       if (!description || description.length < 50) {
-        console.warn("⚠️ Описание слишком короткое, возвращаем базовое");
+        console.warn(`⚠️ [СТИЛЬ ${style}] Описание слишком короткое (${description.length} символов), возвращаем базовое`);
         return `Описание товара "${productName}". Качественный товар для ваших нужд.`;
       }
       
-      console.log(`✅ Описание сгенерировано через Claude 4.5 Sonnet (${description.length} символов)`);
+      console.log(`✅ [СТИЛЬ ${style}] Описание сгенерировано через Claude 4.5 Sonnet (${description.length} символов)`);
       return description;
       
     } catch (error: any) {

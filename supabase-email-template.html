@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Подтверждение email - KARTO</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            background-color: #f5f3ef;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
+        
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        .email-header {
+            background: linear-gradient(135deg, #1F4E3D 0%, #2E5A43 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }
+        
+        .logo {
+            width: 120px;
+            height: auto;
+            margin-bottom: 20px;
+        }
+        
+        .email-header h1 {
+            color: #ffffff;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        
+        .email-header p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 16px;
+        }
+        
+        .email-body {
+            padding: 40px 30px;
+        }
+        
+        .welcome-text {
+            font-size: 18px;
+            color: #1a1a1a;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        
+        .instruction-text {
+            font-size: 16px;
+            color: #4a4a4a;
+            margin-bottom: 30px;
+            line-height: 1.8;
+        }
+        
+        .button-container {
+            text-align: center;
+            margin: 40px 0;
+        }
+        
+        .confirm-button {
+            display: inline-block;
+            background: #D1F85A;
+            color: #1a1a1a;
+            padding: 16px 48px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(209, 248, 90, 0.3);
+        }
+        
+        .confirm-button:hover {
+            background: #c5e84f;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(209, 248, 90, 0.4);
+        }
+        
+        .link-text {
+            font-size: 14px;
+            color: #6b6b6b;
+            margin-top: 30px;
+            word-break: break-all;
+        }
+        
+        .link-text a {
+            color: #1F4E3D;
+            text-decoration: none;
+        }
+        
+        .link-text a:hover {
+            text-decoration: underline;
+        }
+        
+        .email-footer {
+            background: #f9f9f9;
+            padding: 30px;
+            text-align: center;
+            border-top: 1px solid #e5e5e5;
+        }
+        
+        .footer-text {
+            font-size: 14px;
+            color: #6b6b6b;
+            margin-bottom: 10px;
+        }
+        
+        .footer-text a {
+            color: #1F4E3D;
+            text-decoration: none;
+        }
+        
+        .divider {
+            height: 1px;
+            background: #e5e5e5;
+            margin: 30px 0;
+        }
+        
+        .security-note {
+            background: #f5f9f0;
+            border-left: 4px solid #D1F85A;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 30px;
+        }
+        
+        .security-note p {
+            font-size: 14px;
+            color: #4a4a4a;
+            margin: 0;
+        }
+        
+        @media only screen and (max-width: 600px) {
+            .email-container {
+                border-radius: 16px;
+            }
+            
+            .email-header {
+                padding: 30px 20px;
+            }
+            
+            .email-header h1 {
+                font-size: 24px;
+            }
+            
+            .email-body {
+                padding: 30px 20px;
+            }
+            
+            .confirm-button {
+                padding: 14px 36px;
+                font-size: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="email-header">
+            <h1>Добро пожаловать в KARTO!</h1>
+            <p>Подтвердите ваш email адрес</p>
+        </div>
+        
+        <!-- Body -->
+        <div class="email-body">
+            <p class="welcome-text">Здравствуйте!</p>
+            
+            <p class="instruction-text">
+                Спасибо за регистрацию в KARTO! Мы рады видеть вас в нашем сервисе для создания продающих карточек товаров.
+            </p>
+            
+            <p class="instruction-text">
+                Для завершения регистрации и активации вашего аккаунта, пожалуйста, подтвердите ваш email адрес, нажав на кнопку ниже:
+            </p>
+            
+            <div class="button-container">
+                <a href="{{ .ConfirmationURL }}" class="confirm-button">
+                    Подтвердить email
+                </a>
+            </div>
+            
+            <div class="link-text">
+                Если кнопка не работает, скопируйте и вставьте эту ссылку в браузер:<br>
+                <a href="{{ .ConfirmationURL }}">{{ .ConfirmationURL }}</a>
+            </div>
+            
+            <div class="security-note">
+                <p>
+                    <strong>Важно:</strong> Если вы не регистрировались в KARTO, просто проигнорируйте это письмо. 
+                    Ссылка действительна в течение 24 часов.
+                </p>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="email-footer">
+            <p class="footer-text">
+                С уважением,<br>
+                <strong>Команда KARTO</strong>
+            </p>
+            <div class="divider"></div>
+            <p class="footer-text" style="font-size: 12px; color: #999;">
+                Это автоматическое письмо. Пожалуйста, не отвечайте на него.<br>
+                Если у вас возникли вопросы, свяжитесь с нами через сайт.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

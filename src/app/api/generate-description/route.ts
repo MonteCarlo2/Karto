@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateProductDescription } from "@/lib/services/replicate";
+import { generateProductDescription } from "@/lib/services/openrouter-description";
 
 /**
  * Генерация 4 вариантов описания товара через GPT-4o-mini
@@ -26,87 +26,126 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("🔄 Генерируем 4 варианта описания для:", product_name);
+    console.log("⚡ Запускаем все 4 запроса ПАРАЛЛЕЛЬНО через OpenRouter (без задержек!)...");
 
-    // Генерируем 4 варианта параллельно
-    const descriptions = await Promise.all([
-      generateProductDescription(
-        product_name,
-        user_preferences,
-        selected_blocks,
-        photo_url,
-        1, // Официальный
-        wants_stickers,
-        undefined
-      ).catch((e) => {
-        console.error("Ошибка генерации варианта 1:", e);
-        return `Описание товара "${product_name}". Официальный стиль с акцентом на характеристики и технические детали.`;
-      }),
-      generateProductDescription(
-        product_name,
-        user_preferences,
-        selected_blocks,
-        photo_url,
-        2, // Продающий
-        wants_stickers,
-        undefined
-      ).catch((e) => {
-        console.error("Ошибка генерации варианта 2:", e);
-        return `Описание товара "${product_name}". Продающий стиль с акцентом на преимущества и выгоды для покупателя.`;
-      }),
-      generateProductDescription(
-        product_name,
-        user_preferences,
-        selected_blocks,
-        photo_url,
-        3, // Структурированный
-        wants_stickers,
-        undefined
-      ).catch((e) => {
-        console.error("Ошибка генерации варианта 3:", e);
-        return `Описание товара "${product_name}". Структурированный стиль с четкой организацией информации.`;
-      }),
-      generateProductDescription(
-        product_name,
-        user_preferences,
-        selected_blocks,
-        photo_url,
-        4, // Сбалансированный
-        wants_stickers,
-        undefined
-      ).catch((e) => {
-        console.error("Ошибка генерации варианта 4:", e);
-        return `Описание товара "${product_name}". Сбалансированный стиль, сочетающий все элементы описания.`;
-      }),
-    ]);
+    // Генерируем 4 варианта ПАРАЛЛЕЛЬНО через OpenRouter
+    // OpenRouter поддерживает параллельные запросы без проблем с rate limiting
+    const generateVariant = async (style: number, styleName: string) => {
+      const startTime = Date.now();
+      console.log(`🔄 [${style}/4] ⚡ ЗАПУСК генерации варианта "${styleName}" (параллельно с другими через OpenRouter)...`);
+      try {
+        const result = await generateProductDescription(
+          product_name,
+          user_preferences,
+          selected_blocks,
+          photo_url,
+          style as 1 | 2 | 3 | 4,
+          wants_stickers,
+          undefined
+        );
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`✅ [${style}/4] Вариант "${styleName}" успешно сгенерирован за ${duration}с (${result.length} символов)`);
+        return result;
+      } catch (error: any) {
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.error(`❌ [${style}/4] Ошибка генерации варианта "${styleName}" после ${duration}с:`, error?.message || error);
+        console.error(`❌ [${style}/4] Stack trace:`, error?.stack);
+        // Пробрасываем ошибку дальше, чтобы Promise.allSettled мог её обработать
+        throw error;
+      }
+    };
+
+    // Запускаем все 4 запроса ПАРАЛЛЕЛЬНО одновременно (OpenRouter поддерживает это!)
+    const startTime = Date.now();
+    console.log(`⚡ Запускаем все 4 запроса ПАРАЛЛЕЛЬНО через OpenRouter...`);
+    
+    // Создаем все промисы одновременно - OpenRouter обработает их параллельно
+    const promise1 = generateVariant(1, "Официальный");
+    const promise2 = generateVariant(2, "Продающий");
+    const promise3 = generateVariant(3, "Структурированный");
+    const promise4 = generateVariant(4, "Сбалансированный");
+    
+    const allPromises = [promise1, promise2, promise3, promise4];
+    
+    console.log(`✅ Все 4 промиса созданы и запущены. Ждем завершения Promise.allSettled...`);
+    console.log(`⏳ Количество промисов в массиве: ${allPromises.length}`);
+    
+    const descriptions = await Promise.allSettled(allPromises);
+    
+    console.log(`📊 Promise.allSettled завершен. Получено результатов: ${descriptions.length}`);
+    descriptions.forEach((result, index) => {
+      if (result.status === "fulfilled") {
+        console.log(`✅ Результат ${index + 1}: fulfilled, длина: ${result.value?.length || 0}`);
+      } else {
+        console.log(`❌ Результат ${index + 1}: rejected, ошибка: ${result.reason?.message || result.reason}`);
+      }
+    });
+    
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`📊 Все 4 запроса завершены за ${totalTime}с. Обрабатываем результаты...`);
+
+    // Обрабатываем результаты
+    const processedDescriptions = descriptions.map((result, index) => {
+      if (result.status === "fulfilled") {
+        return result.value;
+      } else {
+        const error = result.reason;
+        console.error(`❌ Обработка ошибки для варианта ${index + 1}:`, error);
+        console.error(`❌ Детали ошибки:`, error?.message, error?.stack);
+        
+        // Возвращаем fallback описание
+        const fallbacks = [
+          `Описание товара "${product_name}". Официальный стиль с акцентом на характеристики и технические детали.`,
+          `Описание товара "${product_name}". Продающий стиль с акцентом на преимущества и выгоды для покупателя.`,
+          `Описание товара "${product_name}". Структурированный стиль с четкой организацией информации.`,
+          `Описание товара "${product_name}". Сбалансированный стиль, сочетающий все элементы описания.`,
+        ];
+        console.warn(`⚠️ Используем fallback для варианта ${index + 1}`);
+        return fallbacks[index];
+      }
+    });
+
+    // Проверяем, что все описания сгенерированы
+    const validDescriptions = processedDescriptions.filter(d => d && d.trim().length > 0);
+    console.log(`📊 Сгенерировано ${validDescriptions.length} из 4 описаний`);
+    
+    if (validDescriptions.length < 4) {
+      console.warn(`⚠️ Не все описания сгенерированы! Получено: ${validDescriptions.length}, ожидалось: 4`);
+      processedDescriptions.forEach((desc, index) => {
+        if (!desc || desc.trim().length === 0) {
+          console.error(`❌ Описание ${index + 1} пустое или не сгенерировано`);
+        }
+      });
+    }
 
     const variants = [
       {
         id: 1,
         style: "Официальный",
-        description: descriptions[0],
-        preview: descriptions[0].substring(0, 150) + "...",
+        description: processedDescriptions[0] || `Описание товара "${product_name}". Официальный стиль с акцентом на характеристики и технические детали.`,
+        preview: (processedDescriptions[0] || "").substring(0, 150) + (processedDescriptions[0]?.length > 150 ? "..." : ""),
       },
       {
         id: 2,
         style: "Продающий",
-        description: descriptions[1],
-        preview: descriptions[1].substring(0, 150) + "...",
+        description: processedDescriptions[1] || `Описание товара "${product_name}". Продающий стиль с акцентом на преимущества и выгоды для покупателя.`,
+        preview: (processedDescriptions[1] || "").substring(0, 150) + (processedDescriptions[1]?.length > 150 ? "..." : ""),
       },
       {
         id: 3,
         style: "Структурированный",
-        description: descriptions[2],
-        preview: descriptions[2].substring(0, 150) + "...",
+        description: processedDescriptions[2] || `Описание товара "${product_name}". Структурированный стиль с четкой организацией информации.`,
+        preview: (processedDescriptions[2] || "").substring(0, 150) + (processedDescriptions[2]?.length > 150 ? "..." : ""),
       },
       {
         id: 4,
         style: "Сбалансированный",
-        description: descriptions[3],
-        preview: descriptions[3].substring(0, 150) + "...",
+        description: processedDescriptions[3] || `Описание товара "${product_name}". Сбалансированный стиль, сочетающий все элементы описания.`,
+        preview: (processedDescriptions[3] || "").substring(0, 150) + (processedDescriptions[3]?.length > 150 ? "..." : ""),
       },
     ];
 
-    console.log("✅ Все 4 варианта описания сгенерированы");
+    console.log("✅ Все 4 варианта описания готовы (включая fallback при необходимости)");
 
     return NextResponse.json({
       success: true,

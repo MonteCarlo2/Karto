@@ -25,6 +25,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Обновляем user_id для сессии, если он был null
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user?.id) {
+      const { data: sessionData } = await supabase
+        .from("product_sessions")
+        .select("user_id")
+        .eq("id", session_id)
+        .single();
+      
+      if (sessionData && !sessionData.user_id) {
+        await supabase
+          .from("product_sessions")
+          .update({ user_id: user.id })
+          .eq("id", session_id);
+        console.log("✅ Обновлен user_id для сессии при сохранении описания:", session_id);
+      }
+    }
+
     // Сохраняем или обновляем данные этапа "Описание"
     const { data, error } = await supabase
       .from("description_data")

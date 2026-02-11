@@ -27,14 +27,15 @@ function getReplicateClient(): Replicate {
  */
 export async function generateWithNanobanana(
   prompt: string,
-  imageInput?: string, // Референсное изображение (URL или base64)
+  imageInput?: string | string[], // Референсное изображение (URL или base64) или массив изображений
   aspectRatio: string = "1:1",
   outputFormat: string = "png"
 ): Promise<string> {
   console.log("🍌 Nanobanana Pro: Начинаем генерацию...");
   console.log("📝 Промпт:", prompt.substring(0, 150) + "...");
   if (imageInput) {
-    console.log("🖼️ Референсное изображение: добавлено");
+    const count = Array.isArray(imageInput) ? imageInput.length : 1;
+    console.log(`🖼️ Референсное изображение: добавлено (${count} шт.)`);
   }
   
   const replicate = getReplicateClient();
@@ -47,36 +48,80 @@ export async function generateWithNanobanana(
     safety_filter_level: "block_only_high",
   };
   
-  // Добавляем референсное изображение если есть
+  // Добавляем референсное изображение(я) если есть
   if (imageInput) {
-    input.image_input = [imageInput];
+    if (Array.isArray(imageInput)) {
+      input.image_input = imageInput;
+    } else {
+      input.image_input = [imageInput];
+    }
   }
   
   try {
+    console.log("🔧 Параметры запроса:", {
+      aspect_ratio: aspectRatio,
+      output_format: outputFormat,
+      resolution: "2K",
+      has_image: !!imageInput,
+      prompt_length: prompt.length,
+    });
+    
     const output = await replicate.run("google/nano-banana-pro", { input });
     
     console.log("✅ Nanobanana Pro: Генерация завершена");
+    console.log("📦 Тип output:", typeof output);
     
     // output может быть объектом с url() методом или строкой
-    if (output && typeof output === "object" && "url" in output) {
-      return (output as any).url();
+    if (output && typeof output === "object") {
+      if ("url" in output && typeof (output as any).url === "function") {
+        const url = (output as any).url();
+        console.log("🔗 URL результата получен");
+        return url;
+      }
+      if ("url" in output && typeof (output as any).url === "string") {
+        console.log("🔗 URL результата (строка)");
+        return (output as any).url;
+      }
     }
     
-    // Если это FileOutput
-    if (output && typeof (output as any).url === "function") {
-      return (output as any).url();
+    // Если это строка (URL)
+    if (typeof output === "string") {
+      console.log("🔗 URL результата (прямая строка)");
+      return output;
     }
     
+    console.warn("⚠️ Неожиданный формат output:", output);
     return String(output);
     
   } catch (error: any) {
     console.error("❌ Nanobanana Pro ошибка:", error);
+    console.error("📋 Детали ошибки:", {
+      message: error.message,
+      status: error.status,
+      statusText: error.statusText,
+      body: error.body,
+      stack: error.stack?.substring(0, 500),
+    });
     
     // Retry при rate limit
     if (error.message?.includes("429") || error.status === 429) {
       console.log("⏳ Rate limit, ждём 10 секунд...");
       await sleep(10000);
-      return generateWithNanobanana(prompt, aspectRatio, outputFormat);
+      return generateWithNanobanana(prompt, imageInput, aspectRatio, outputFormat);
+    }
+    
+    // Более информативная ошибка
+    const errorMessage = error.message || String(error);
+    if (errorMessage.includes("Failed to generate") || errorMessage.includes("multiple retries")) {
+      const detailedError = `Модель google/nano-banana-pro временно недоступна или имеет проблемы на стороне Replicate. 
+      
+Попробуйте:
+1. Подождать несколько минут и повторить попытку
+2. Проверить статус модели на Replicate
+3. Использовать другую модель для генерации
+
+Ошибка от Replicate: ${errorMessage}`;
+      throw new Error(detailedError);
     }
     
     throw error;

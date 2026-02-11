@@ -2,9 +2,10 @@
 
 interface StageMenuProps {
   currentStage: "understanding" | "description" | "visual" | "price";
+  position?: "left" | "right"; // Позиция: left для visual, right для остальных
 }
 
-export function StageMenu({ currentStage }: StageMenuProps) {
+export function StageMenu({ currentStage, position = "right" }: StageMenuProps) {
   const stages = [
     { id: "understanding", label: "Понимание" },
     { id: "description", label: "Описание" },
@@ -12,9 +13,11 @@ export function StageMenu({ currentStage }: StageMenuProps) {
     { id: "price", label: "Цена" },
   ];
 
+  const positionClass = position === "left" ? "left-8" : "right-8";
+
   return (
-    <div className="fixed top-8 right-8 z-50">
-      <div className="flex items-center gap-4 px-6 py-3 rounded-full" style={{
+    <div className={`fixed top-8 ${positionClass} z-50`} suppressHydrationWarning>
+      <div className="flex items-center gap-4 px-6 py-3 rounded-full" suppressHydrationWarning style={{
         background: "rgba(255, 255, 255, 0.9)",
         backdropFilter: "blur(20px)",
         WebkitBackdropFilter: "blur(20px)",
@@ -22,9 +25,10 @@ export function StageMenu({ currentStage }: StageMenuProps) {
         boxShadow: "0 4px 16px rgba(0, 0, 0, 0.1)",
       }}>
         {stages.map((stage, index) => (
-          <div key={stage.id} className="flex items-center gap-2">
+          <div key={stage.id} className="flex items-center gap-2" suppressHydrationWarning>
             <div
               className="w-2 h-2 rounded-full transition-all"
+              suppressHydrationWarning
               style={{
                 backgroundColor: currentStage === stage.id 
                   ? "#2E5A43" 
@@ -36,6 +40,7 @@ export function StageMenu({ currentStage }: StageMenuProps) {
             />
             <span
               className="text-sm font-medium transition-all"
+              suppressHydrationWarning
               style={{
                 color: currentStage === stage.id 
                   ? "#2E5A43" 
@@ -46,7 +51,7 @@ export function StageMenu({ currentStage }: StageMenuProps) {
               {stage.label}
             </span>
             {index < stages.length - 1 && (
-              <div className="w-8 h-px mx-2" style={{ backgroundColor: "rgba(0, 0, 0, 0.1)" }} />
+              <div className="w-8 h-px mx-2" suppressHydrationWarning style={{ backgroundColor: "rgba(0, 0, 0, 0.1)" }} />
             )}
           </div>
         ))}

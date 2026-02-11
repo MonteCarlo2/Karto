@@ -7,6 +7,7 @@ import { Upload, Type, Check, Circle, Edit, PenTool } from "lucide-react";
 import Image from "next/image";
 import { Logo } from "@/components/ui/logo";
 import { useRouter } from "next/navigation";
+import { useNotification } from "@/components/ui/notification";
 
 // Статичный эффект рельефной бумаги
 function CanvasTexture({ patternAlpha = 12 }: { patternAlpha?: number }) {
@@ -79,6 +80,7 @@ type FlowStartMethod = "photo" | "name" | null;
 
 export default function UnderstandingPage() {
   const router = useRouter();
+  const { showNotification, NotificationComponent } = useNotification();
   const [selectedMethod, setSelectedMethod] = useState<FlowStartMethod>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
@@ -124,48 +126,100 @@ export default function UnderstandingPage() {
     selectedSuggestion,
   ]);
 
-  // Восстановление состояния из localStorage
+  // Восстановление состояния из Supabase или localStorage
   useEffect(() => {
-    const savedState = localStorage.getItem("understandingPageState");
-    if (savedState) {
-      try {
-        const state = JSON.parse(savedState);
-        // КРИТИЧЕСКИ ВАЖНО: Восстанавливаем selectedMethod и isExpanded СИНХРОННО
-        // Если есть selectedMethod, ОБЯЗАТЕЛЬНО устанавливаем isExpanded = true
-        // Это предотвращает возврат на экран выбора метода
-        if (state.selectedMethod) {
-          // Устанавливаем оба состояния одновременно
-          setSelectedMethod(state.selectedMethod);
-          setIsExpanded(true);
-        } else {
-          // Если метода нет, восстанавливаем isExpanded из сохраненного состояния
-          if (state.isExpanded !== undefined) {
-            setIsExpanded(state.isExpanded);
+    const loadState = async () => {
+      const savedSessionId = localStorage.getItem("karto_session_id");
+      
+      // Сначала пытаемся загрузить из Supabase, если есть session_id
+      if (savedSessionId) {
+        try {
+          const response = await fetch("/api/supabase/get-understanding", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: savedSessionId }),
+          });
+          
+          const result = await response.json();
+          
+          if (result.success && result.data) {
+            const data = result.data;
+            
+            // Восстанавливаем состояние из Supabase
+            if (data.product_name) {
+              setProductName(data.product_name);
+            }
+            
+            if (data.photo_url) {
+              setPhotoDataUrl(data.photo_url);
+              // Восстанавливаем File из URL
+              fetch(data.photo_url)
+                .then(res => res.blob())
+                .then(blob => {
+                  const file = new File([blob], "saved-photo.jpg", { type: blob.type });
+                  setPhotoFile(file);
+                })
+                .catch(console.error);
+            }
+            
+            if (data.selected_method) {
+              setSelectedMethod(data.selected_method as FlowStartMethod);
+              setIsExpanded(true);
+            }
+            
+            // Не загружаем из localStorage, если данные есть в Supabase
+            return;
           }
+        } catch (error) {
+          console.error("Ошибка загрузки из Supabase:", error);
+          // Продолжаем с localStorage fallback
         }
-        if (state.photoDataUrl) {
-          setPhotoDataUrl(state.photoDataUrl);
-          // Восстанавливаем File из data URL
-          fetch(state.photoDataUrl)
-            .then(res => res.blob())
-            .then(blob => {
-              const file = new File([blob], "saved-photo.jpg", { type: blob.type });
-              setPhotoFile(file);
-            })
-            .catch(console.error);
-        }
-        if (state.productName) setProductName(state.productName);
-        if (state.analysisResult) setAnalysisResult(state.analysisResult);
-        if (state.selectedNameIndex !== null) setSelectedNameIndex(state.selectedNameIndex);
-        if (state.customName) setCustomName(state.customName);
-        if (state.showCustomInput !== undefined) setShowCustomInput(state.showCustomInput);
-        if (state.showSuggestions !== undefined) setShowSuggestions(state.showSuggestions);
-        if (state.aiSuggestions) setAiSuggestions(state.aiSuggestions);
-        if (state.selectedSuggestion) setSelectedSuggestion(state.selectedSuggestion);
-      } catch (error) {
-        console.error("Ошибка восстановления состояния:", error);
       }
-    }
+      
+      // Fallback: восстановление из localStorage
+      const savedState = localStorage.getItem("understandingPageState");
+      if (savedState) {
+        try {
+          const state = JSON.parse(savedState);
+          // КРИТИЧЕСКИ ВАЖНО: Восстанавливаем selectedMethod и isExpanded СИНХРОННО
+          // Если есть selectedMethod, ОБЯЗАТЕЛЬНО устанавливаем isExpanded = true
+          // Это предотвращает возврат на экран выбора метода
+          if (state.selectedMethod) {
+            // Устанавливаем оба состояния одновременно
+            setSelectedMethod(state.selectedMethod);
+            setIsExpanded(true);
+          } else {
+            // Если метода нет, восстанавливаем isExpanded из сохраненного состояния
+            if (state.isExpanded !== undefined) {
+              setIsExpanded(state.isExpanded);
+            }
+          }
+          if (state.photoDataUrl) {
+            setPhotoDataUrl(state.photoDataUrl);
+            // Восстанавливаем File из data URL
+            fetch(state.photoDataUrl)
+              .then(res => res.blob())
+              .then(blob => {
+                const file = new File([blob], "saved-photo.jpg", { type: blob.type });
+                setPhotoFile(file);
+              })
+              .catch(console.error);
+          }
+          if (state.productName) setProductName(state.productName);
+          if (state.analysisResult) setAnalysisResult(state.analysisResult);
+          if (state.selectedNameIndex !== null) setSelectedNameIndex(state.selectedNameIndex);
+          if (state.customName) setCustomName(state.customName);
+          if (state.showCustomInput !== undefined) setShowCustomInput(state.showCustomInput);
+          if (state.showSuggestions !== undefined) setShowSuggestions(state.showSuggestions);
+          if (state.aiSuggestions) setAiSuggestions(state.aiSuggestions);
+          if (state.selectedSuggestion) setSelectedSuggestion(state.selectedSuggestion);
+        } catch (error) {
+          console.error("Ошибка восстановления состояния:", error);
+        }
+      }
+    };
+    
+    loadState();
   }, []);
   
   // Функция для получения подсказок от ИИ
@@ -351,7 +405,9 @@ export default function UnderstandingPage() {
   }, []);
 
   return (
-    <div className="min-h-screen relative" style={{ backgroundColor: "#f5f3ef" }}>
+    <>
+      {NotificationComponent}
+      <div className="min-h-screen relative" style={{ backgroundColor: "#f5f3ef" }}>
       {/* Эффект холста художника - многослойный */}
       <div className="absolute inset-0" style={{
         boxShadow: `
@@ -398,7 +454,7 @@ export default function UnderstandingPage() {
                 }}
               />
             </button>
-            <div className="flex flex-col" style={{ paddingTop: "0", marginTop: "-2px" }}>
+            <div className="flex flex-col" style={{ paddingTop: "0", marginTop: "-2px" }} suppressHydrationWarning>
               <h1
                 className="text-3xl md:text-4xl font-bold"
                 style={{
@@ -810,6 +866,12 @@ export default function UnderstandingPage() {
                                                 }),
                                               });
 
+                                              // Проверяем статус ответа
+                                              if (!response.ok) {
+                                                const errorData = await response.json().catch(() => ({ error: "Неизвестная ошибка сервера" }));
+                                                throw new Error(errorData.error || `Ошибка сервера: ${response.status}`);
+                                              }
+
                                               const data = await response.json();
                                               if (data.success) {
                                                 console.log("✅ Данные этапа 'Понимание' сохранены:", data);
@@ -820,11 +882,22 @@ export default function UnderstandingPage() {
                                                 router.push("/studio/description");
                                               } else {
                                                 console.error("❌ Ошибка сохранения данных:", data.error);
-                                                alert("Ошибка сохранения данных: " + data.error);
+                                                showNotification(
+                                                  data.error || "Ошибка сохранения данных. Попробуйте еще раз.",
+                                                  "error"
+                                                );
                                               }
-                                            } catch (error) {
-                                              console.error("❌ Ошибка API при сохранении данных:", error);
-                                              alert("Ошибка соединения с сервером при сохранении данных.");
+                                            } catch (error: any) {
+                                              console.error("Ошибка при сохранении:", error);
+                                              let errorMessage = "Ошибка соединения. Проверьте подключение к интернету.";
+                                              
+                                              if (error.message) {
+                                                errorMessage = error.message;
+                                              } else if (error.name === "TypeError" && error.message?.includes("fetch")) {
+                                                errorMessage = "Ошибка соединения с сервером. Проверьте подключение к интернету.";
+                                              }
+                                              
+                                              showNotification(errorMessage, "error");
                                             }
                                           }}
                                           className="w-full py-3 px-5 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all"
@@ -1430,21 +1503,42 @@ export default function UnderstandingPage() {
                                   }),
                                 });
                                 
+                                // Проверяем статус ответа
+                                if (!response.ok) {
+                                  const errorData = await response.json().catch(() => ({ error: "Неизвестная ошибка сервера" }));
+                                  throw new Error(errorData.error || `Ошибка сервера: ${response.status}`);
+                                }
+                                
                                 const data = await response.json();
                                 
                                 if (data.success) {
                                   // Сохраняем session_id в localStorage
                                   localStorage.setItem("karto_session_id", data.session_id);
                                   
+                                  showNotification("Данные успешно сохранены", "success");
+                                  
                                   // Переходим на этап "Описание"
-                                  router.push("/studio/description");
+                                  setTimeout(() => {
+                                    router.push("/studio/description");
+                                  }, 500);
                                 } else {
                                   console.error("Ошибка сохранения:", data.error);
-                                  alert("Ошибка сохранения данных. Попробуйте еще раз.");
+                                  showNotification(
+                                    data.error || "Ошибка сохранения данных. Попробуйте еще раз.",
+                                    "error"
+                                  );
                                 }
-                              } catch (error) {
+                              } catch (error: any) {
                                 console.error("Ошибка при сохранении:", error);
-                                alert("Ошибка соединения. Попробуйте еще раз.");
+                                let errorMessage = "Ошибка соединения. Проверьте подключение к интернету.";
+                                
+                                if (error.message) {
+                                  errorMessage = error.message;
+                                } else if (error.name === "TypeError" && error.message?.includes("fetch")) {
+                                  errorMessage = "Ошибка соединения с сервером. Проверьте подключение к интернету.";
+                                }
+                                
+                                showNotification(errorMessage, "error");
                               }
                             }}
                             className="px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1465,5 +1559,6 @@ export default function UnderstandingPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

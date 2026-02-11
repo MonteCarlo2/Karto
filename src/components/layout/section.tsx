@@ -14,10 +14,11 @@ export function Section({
   return (
     <section
       className={cn("py-16 md:py-24", className)}
+      suppressHydrationWarning
       {...props}
     >
       {container ? (
-        <div className="container">
+        <div className="container" suppressHydrationWarning>
           {children}
         </div>
       ) : (

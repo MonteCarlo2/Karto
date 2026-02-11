@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 
 interface IntroAnimationProps {
   onComplete: () => void;
@@ -86,6 +87,11 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
   const router = useRouter();
   const [showContent, setShowContent] = useState(false);
 
+  const handleOpenFlow = () => {
+    // Переходим на страницу "Понимание"
+    router.push("/studio/understanding");
+  };
+
   useEffect(() => {
     // Небольшая задержка перед появлением контента
     const timer = setTimeout(() => {
@@ -95,10 +101,6 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
     return () => clearTimeout(timer);
   }, []);
 
-  const handleOpenFlow = () => {
-    // Переходим на страницу "Понимание"
-    router.push("/studio/understanding");
-  };
 
   useEffect(() => {
     // Блокируем скролл когда интро показывается
@@ -126,6 +128,31 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
     >
       {/* Статичный эффект рельефной бумаги (без анимации) */}
       <CanvasTexture patternAlpha={12} />
+      
+      {/* Кнопка "Назад" - стеклянная, в левом верхнем углу */}
+      <motion.button
+        initial={{ opacity: 0, x: -20 }}
+        animate={showContent ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }}
+        transition={{ duration: 0.6, delay: 0.2 }}
+        onClick={() => router.push("/")}
+        className="absolute top-8 left-8 lg:top-12 lg:left-12 z-10 p-3 transition-all duration-300 hover:scale-105 active:scale-95"
+        style={{
+          background: "rgba(255, 255, 255, 0.12)",
+          backdropFilter: "blur(30px)",
+          WebkitBackdropFilter: "blur(30px)",
+          border: "1px solid rgba(255, 255, 255, 0.25)",
+          borderRadius: "12px",
+          boxShadow: `
+            0 4px 16px rgba(0, 0, 0, 0.2),
+            0 0 0 1px rgba(255, 255, 255, 0.1) inset,
+            0 1px 0 rgba(255, 255, 255, 0.3) inset
+          `,
+        }}
+        aria-label="Назад"
+      >
+        <ArrowLeft className="w-6 h-6" style={{ color: "rgba(255, 255, 255, 0.95)" }} />
+      </motion.button>
+      
       <div className="w-full h-full flex items-center relative" style={{ zIndex: 1 }}>
         {/* Левая часть - Текст */}
         <div className="flex-1 flex items-center pl-8 lg:pl-16 xl:pl-24">

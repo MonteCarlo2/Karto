@@ -18,7 +18,7 @@ const STOP_WORDS = {
   // Контакты (частичные совпадения)
   contacts: [
     'http://', 'https://', 'www.', '.ru', '.com',
-    'телефон', 'тел:', 'тел.', 'звоните',
+    'тел:', 'тел.', 'звоните',
     'instagram', 'vk.com', 'telegram', 'whatsapp',
   ],
 };
@@ -58,6 +58,45 @@ export function checkStopWords(text: string): Array<{ word: string; category: st
         index = lowerText.indexOf(lowerWord, index + 1);
       }
     });
+  });
+  
+  // Проверяем номера телефонов (не само слово "телефон", а именно номера)
+  // Паттерны: +7XXXXXXXXXX, 8XXXXXXXXXX, (XXX) XXX-XX-XX, и т.д.
+  const phonePatterns = [
+    /\+7[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/g, // +7 (XXX) XXX-XX-XX
+    /8[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/g,  // 8 (XXX) XXX-XX-XX
+    /\d{10,}/g, // 10+ цифр подряд (возможный номер)
+  ];
+  
+  phonePatterns.forEach(pattern => {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      // Проверяем, что это действительно номер телефона (не просто много цифр в другом контексте)
+      const phoneText = match[0];
+      // Если это 10+ цифр и содержит +7 или начинается с 8 или содержит скобки/дефисы - это номер
+      if (phoneText.includes('+7') || phoneText.startsWith('8') || phoneText.includes('(') || phoneText.includes('-')) {
+        issues.push({
+          word: phoneText,
+          category: 'contacts',
+          index: match.index,
+        });
+      } else if (phoneText.length >= 10 && /^\d+$/.test(phoneText.replace(/\s/g, ''))) {
+        // Если это просто 10+ цифр подряд, проверяем контекст
+        const beforePhone = text.substring(Math.max(0, match.index - 20), match.index).toLowerCase();
+        const afterPhone = text.substring(match.index + phoneText.length, Math.min(text.length, match.index + phoneText.length + 20)).toLowerCase();
+        
+        // Если рядом есть слова связанные с телефонами - это номер
+        if (beforePhone.includes('тел') || beforePhone.includes('phone') || 
+            afterPhone.includes('тел') || afterPhone.includes('phone') ||
+            beforePhone.includes('звон') || afterPhone.includes('звон')) {
+          issues.push({
+            word: phoneText,
+            category: 'contacts',
+            index: match.index,
+          });
+        }
+      }
+    }
   });
   
   return issues;

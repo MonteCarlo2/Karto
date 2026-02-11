@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { createServerClientWithAuth } from "@/lib/supabase/server-auth";
 
 /**
  * Сохранение данных этапа "Понимание" в Supabase
@@ -8,7 +9,30 @@ import { createServerClient } from "@/lib/supabase/server";
 export async function POST(request: NextRequest) {
   try {
     console.log("🔄 Сохранение данных этапа 'Понимание'...");
-    const supabase = createServerClient();
+    
+    // Создаем клиент Supabase с обработкой ошибок
+    let supabase;
+    try {
+      supabase = createServerClient();
+    } catch (error: any) {
+      console.error("❌ Ошибка создания Supabase клиента:", error);
+      console.error("💡 Проверьте:");
+      console.error("   1. Файл .env.local существует в корне проекта (рядом с package.json)");
+      console.error("   2. Переменные SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY указаны в .env.local");
+      console.error("   3. Сервер разработки перезапущен после изменения .env.local");
+      console.error("   4. Нет пробелов вокруг знака = в .env.local");
+      console.error("   5. Ключи не обрезаны и находятся на одной строке");
+      
+      return NextResponse.json(
+        { 
+          error: error.message || "Ошибка конфигурации сервера. Проверьте переменные окружения SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY в .env.local и перезапустите сервер.",
+          details: error.message || String(error),
+          hint: "Убедитесь, что сервер перезапущен после изменения .env.local"
+        },
+        { status: 500 }
+      );
+    }
+    
     const body = await request.json();
     console.log("📋 Получены данные:", { 
       session_id: body.session_id ? "есть" : "нет",
@@ -29,19 +53,38 @@ export async function POST(request: NextRequest) {
     // Если session_id передан, проверяем, совпадает ли товар
     let finalSessionId = session_id;
     if (finalSessionId) {
-      const { data: existingData } = await supabase
+      const { data: existingData, error: fetchError } = await supabase
         .from("understanding_data")
         .select("product_name")
         .eq("session_id", finalSessionId)
         .single();
+      
+      // Если ошибка при получении данных (например, запись не найдена), продолжаем
+      if (fetchError && fetchError.code !== "PGRST116") {
+        console.warn("⚠️ Ошибка при получении существующих данных:", fetchError.message || fetchError);
+      }
 
       // Если товар изменился (название отличается), создаем новую сессию
       if (existingData && existingData.product_name !== product_name.trim()) {
         console.log("🔄 Товар изменился, создаем новую сессию...");
+        // Получаем текущего пользователя из cookies
+        let userId = null;
+        try {
+          const supabaseAuth = await createServerClientWithAuth();
+          if (supabaseAuth) {
+            const { data: { user } } = await supabaseAuth.auth.getUser();
+            userId = user?.id || null;
+          }
+        } catch (error) {
+          console.log("⚠️ Не удалось получить пользователя, продолжаем без user_id");
+        }
+        
         // Создаем новую сессию для нового товара
         const { data: newSession, error: sessionError } = await supabase
           .from("product_sessions")
-          .insert({})
+          .insert({
+            user_id: userId, // Связываем с пользователем, если авторизован
+          })
           .select("id")
           .single();
 
@@ -57,12 +100,67 @@ export async function POST(request: NextRequest) {
           console.log("✅ Создана новая сессия:", finalSessionId);
         }
       }
+      // Если товар тот же, обновляем user_id если он был null
+      if (finalSessionId) {
+        try {
+          // Получаем пользователя из cookies
+          const supabaseAuth = await createServerClientWithAuth();
+          if (supabaseAuth) {
+            const { data: { user }, error: userError } = await supabaseAuth.auth.getUser();
+            
+            if (userError) {
+              console.log("⚠️ Пользователь не авторизован, продолжаем без user_id");
+            } else if (user?.id) {
+              // Проверяем, есть ли user_id у сессии
+              const { data: sessionData, error: sessionError } = await supabase
+                .from("product_sessions")
+                .select("user_id")
+                .eq("id", finalSessionId)
+                .single();
+              
+              if (sessionError) {
+                console.error("⚠️ Ошибка проверки сессии:", sessionError);
+              } else if (sessionData && !sessionData.user_id) {
+                const { error: updateError } = await supabase
+                  .from("product_sessions")
+                  .update({ user_id: user.id })
+                  .eq("id", finalSessionId);
+                
+                if (updateError) {
+                  console.error("⚠️ Ошибка обновления user_id:", updateError);
+                } else {
+                  console.log("✅ Обновлен user_id для существующей сессии:", finalSessionId);
+                }
+              }
+            }
+          } else {
+            console.log("⚠️ Не удалось создать клиент с авторизацией, продолжаем без user_id");
+          }
+        } catch (error) {
+          console.error("⚠️ Ошибка при обновлении user_id:", error);
+          // Продолжаем выполнение, это не критично
+        }
+      }
       // Если товар тот же, не трогаем данные описания (они должны сохраниться при обновлении страницы)
     } else {
       // Если session_id не передан, создаем новую сессию
+      // Получаем текущего пользователя из cookies
+      let userId = null;
+      try {
+        const supabaseAuth = await createServerClientWithAuth();
+        if (supabaseAuth) {
+          const { data: { user } } = await supabaseAuth.auth.getUser();
+          userId = user?.id || null;
+        }
+      } catch (error) {
+        console.log("⚠️ Не удалось получить пользователя, продолжаем без user_id");
+      }
+      
       const { data: newSession, error: sessionError } = await supabase
         .from("product_sessions")
-        .insert({})
+        .insert({
+          user_id: userId, // Связываем с пользователем, если авторизован
+        })
         .select("id")
         .single();
 
@@ -97,10 +195,30 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error("❌ Ошибка сохранения данных:", error);
       console.error("Детали ошибки:", JSON.stringify(error, null, 2));
+      console.error("Код ошибки:", error.code);
+      console.error("Сообщение:", error.message);
+      console.error("Детали:", error.details);
+      console.error("Подсказка:", error.hint);
+      
+      // Более понятное сообщение об ошибке
+      let errorMessage = "Ошибка сохранения данных";
+      
+      // Обработка специфических ошибок
+      if (error.message && error.message.includes("Invalid API key")) {
+        errorMessage = "Ошибка конфигурации: неверный API ключ Supabase. Проверьте переменные окружения.";
+      } else if (error.code === "23503") {
+        errorMessage = "Ошибка: сессия не найдена. Попробуйте обновить страницу.";
+      } else if (error.code === "23505") {
+        errorMessage = "Ошибка: дублирование данных. Попробуйте обновить страницу.";
+      } else if (error.message) {
+        errorMessage = `Ошибка: ${error.message}`;
+      }
+      
       return NextResponse.json(
         { 
-          error: "Ошибка сохранения данных",
-          details: error.message || String(error)
+          error: errorMessage,
+          details: error.message || String(error),
+          code: error.code
         },
         { status: 500 }
       );
