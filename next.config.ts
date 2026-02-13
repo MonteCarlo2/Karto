@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Standalone-сборка: один сервер отдаёт и HTML, и /_next/static (JS/CSS).
-  // На хостинге после сборки запускать: npm run start (или node .next/standalone/server.js).
+  // Для Timeweb (Node.js) — только standalone. НЕ использовать output: 'export'
+  // (export = статический /out, тогда статика не отдаётся нашим сервером).
   output: "standalone",
 
   // Разрешаем внешние изображения для отображения результатов
