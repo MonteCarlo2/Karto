@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
-import { getSubscriptionByUserId, subscriptionToState } from "@/lib/subscription";
+import { getSubscriptionByUserId, subscriptionToState, FREE_WELCOME_CREATIVE_LIMIT } from "@/lib/subscription";
+import { sendWelcomeEmail } from "@/lib/send-welcome-email";
 
 /**
  * GET: текущая подписка пользователя (по Authorization: Bearer <token>).
+ * Если у пользователя ещё нет подписки — создаём приветственную: 3 бесплатные генерации «Свободное творчество» и отправляем приветственное письмо.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -28,7 +30,36 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const row = await getSubscriptionByUserId(supabase as any, user.id);
+    let row = await getSubscriptionByUserId(supabase as any, user.id);
+
+    if (!row) {
+      const { error: insertError } = await supabase.from("user_subscriptions").insert({
+        user_id: user.id,
+        plan_type: "creative",
+        plan_volume: FREE_WELCOME_CREATIVE_LIMIT,
+        period_start: new Date().toISOString(),
+        flows_used: 0,
+        creative_used: 0,
+      });
+
+      if (insertError) {
+        if (insertError.code === "23505") {
+          row = await getSubscriptionByUserId(supabase as any, user.id) ?? null;
+        } else {
+          console.error("❌ [SUBSCRIPTION] Ошибка создания приветственной подписки:", insertError);
+          return NextResponse.json({
+            success: true,
+            subscription: null,
+          });
+        }
+      } else {
+        row = await getSubscriptionByUserId(supabase as any, user.id) ?? null;
+        sendWelcomeEmail({
+          to: user.email ?? "",
+          name: (user.user_metadata?.name as string) || undefined,
+        }).catch(() => {});
+      }
+    }
 
     if (!row) {
       return NextResponse.json({

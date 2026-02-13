@@ -7,9 +7,12 @@ import { StageMenu } from "@/components/ui/stage-menu";
 import { useRouter } from "next/navigation";
 import type { PriceAnalysis } from "@/lib/services/price-analyzer";
 import Image from "next/image";
-import YandexLogo from "../../../../яндекс .png";
-import OzonLogo from "../../../../озон.png";
-import WildberriesLogo from "../../../../вайлдберриз.png";
+
+const LOGOS = {
+  WB: "/logos/wildberries.png",
+  Ozon: "/logos/ozon.png",
+  Yandex: "/logos/yandex-market.png",
+} as const;
 
 // Конвертация простого markdown (**жирный**, *курсив*) в HTML-строку
 function convertMarkdownToHtml(text: string): string {
@@ -597,10 +600,10 @@ export default function PriceStrategyPage() {
                                 <Image
                                   src={
                                     competitor.platform === "WB"
-                                      ? WildberriesLogo
+                                      ? LOGOS.WB
                                       : competitor.platform === "Ozon"
-                                      ? OzonLogo
-                                      : YandexLogo
+                                      ? LOGOS.Ozon
+                                      : LOGOS.Yandex
                                   }
                                   alt={
                                     competitor.platform === "WB"
