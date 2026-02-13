@@ -1,21 +1,36 @@
+import sharp from "sharp";
+import https from "https";
+import { createClient } from "@supabase/supabase-js";
+
 /**
  * KIE AI API Service
- * Модель: nano-banana-pro
- * Более дешевая альтернатива Replicate для свободной генерации
+ * image_input — только URL. Референс сначала грузим в Supabase Storage (публичный URL),
+ * затем передаём этот URL в KIE file-url-upload (маленький JSON) — KIE сам скачивает файл.
+ * Так избегаем ECONNRESET при прямой загрузке большого тела на kieai.redpandaai.co.
  */
 
-// Утилита для задержки
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+const KIE_TASK_BASE_URL = "https://api.kie.ai";
+const KIE_UPLOAD_BASE_URLS = [
+  process.env.KIE_UPLOAD_BASE_URL,
+  "https://kieai.redpandaai.co",
+].filter((url): url is string => Boolean(url) && !url.includes("api.kie.ai"));
+const UPLOAD_TIMEOUT_MS = 20000;
+const UPLOAD_RETRIES = 3;
+const UPLOAD_BACKOFF_MS = [1500, 3000, 5000];
+const KIE_REF_BUCKET = "generated-images";
+const KIE_REF_PREFIX = "kie-refs";
 
 /**
  * Получение API ключа KIE AI
  */
 function getKieAiApiKey(): string {
-  const apiKey = process.env.KIE_AI_API_KEY;
+  const apiKey = process.env.KIE_AI_API_KEY || process.env.KIE_API_KEY;
   if (!apiKey) {
-    throw new Error("KIE_AI_API_KEY не установлен в .env.local");
+    throw new Error("KIE_AI_API_KEY (или KIE_API_KEY) не установлен в .env.local");
   }
   return apiKey;
 }
@@ -29,9 +44,8 @@ async function createTask(params: {
   outputFormat?: string;
   resolution?: string;
   imageInput?: string[];
-}): Promise<string> {
+}): Promise<{ taskId: string; referenceCount: number }> {
   const apiKey = getKieAiApiKey();
-  const baseUrl = "https://api.kie.ai";
   
   const requestBody: any = {
     model: "nano-banana-pro",
@@ -53,34 +67,15 @@ async function createTask(params: {
     requestBody.input.resolution = params.resolution;
   }
 
-  // Добавляем референсные изображения (до 8 штук)
+  let referenceCount = 0;
   if (params.imageInput && params.imageInput.length > 0) {
-    // KIE AI принимает только публичные URL (http/https), не base64 и не localhost
-    const imageUrls = params.imageInput
-      .filter(img => {
-        // Принимаем только публичные HTTP/HTTPS URL
-        if (img.startsWith("http://") || img.startsWith("https://")) {
-          // Проверяем, что это не localhost (KIE AI не сможет получить доступ)
-          if (img.includes("localhost") || img.includes("127.0.0.1")) {
-            console.warn("⚠️ [KIE AI] Localhost URL не будет доступен для KIE AI:", img);
-            return false;
-          }
-          return true;
-        }
-        // Отфильтровываем base64 и локальные пути
-        if (img.startsWith("data:")) {
-          console.warn("⚠️ [KIE AI] Base64 изображение отфильтровано (должно быть конвертировано в URL):", img.substring(0, 50) + "...");
-          return false;
-        }
-        return false;
-      })
-      .slice(0, 8);
-    
+    const imageUrls = await uploadReferencesToKie(params.imageInput.slice(0, 8));
     if (imageUrls.length > 0) {
       requestBody.input.image_input = imageUrls;
-      console.log(`✅ [KIE AI] Добавлено ${imageUrls.length} референсных изображений (URL):`, imageUrls);
+      referenceCount = imageUrls.length;
+      console.log(`✅ [KIE AI] Добавлено ${imageUrls.length} референсов в image_input`);
     } else {
-      console.warn("⚠️ [KIE AI] Нет доступных URL изображений для отправки в KIE AI");
+      console.warn("⚠️ [KIE AI] Референсы недоступны, продолжаем генерацию без image_input");
     }
   }
 
@@ -93,7 +88,7 @@ async function createTask(params: {
     has_images: params.imageInput ? params.imageInput.length : 0,
   });
 
-  const response = await fetch(`${baseUrl}/api/v1/jobs/createTask`, {
+  const response = await fetch(`${KIE_TASK_BASE_URL}/api/v1/jobs/createTask`, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
@@ -120,7 +115,7 @@ async function createTask(params: {
   }
 
   console.log("✅ [KIE AI] Задача создана, taskId:", taskId);
-  return taskId;
+  return { taskId, referenceCount };
 }
 
 /**
@@ -128,7 +123,6 @@ async function createTask(params: {
  */
 async function getTaskResult(taskId: string, maxWaitTime: number = 300000): Promise<string> {
   const apiKey = getKieAiApiKey();
-  const baseUrl = "https://api.kie.ai";
   const startTime = Date.now();
   const pollInterval = 2000; // Опрашиваем каждые 2 секунды
 
@@ -136,7 +130,7 @@ async function getTaskResult(taskId: string, maxWaitTime: number = 300000): Prom
 
   while (Date.now() - startTime < maxWaitTime) {
     const response = await fetch(
-      `${baseUrl}/api/v1/jobs/recordInfo?taskId=${taskId}`,
+      `${KIE_TASK_BASE_URL}/api/v1/jobs/recordInfo?taskId=${taskId}`,
       {
         method: "GET",
         headers: {
@@ -191,15 +185,17 @@ async function getTaskResult(taskId: string, maxWaitTime: number = 300000): Prom
   throw new Error("Превышено время ожидания результата генерации");
 }
 
+export type GenerateWithKieAiResult = { imageUrl: string; referenceUsed: boolean };
+
 /**
  * Генерация изображения через KIE AI (nano-banana-pro)
  */
 export async function generateWithKieAi(
   prompt: string,
-  imageInput?: string | string[], // Референсное изображение (URL или base64) или массив изображений
+  imageInput?: string | string[], // URL или data URL; в createTask в image_input уходят только URL
   aspectRatio: string = "3:4",
   outputFormat: string = "png"
-): Promise<string> {
+): Promise<GenerateWithKieAiResult> {
   console.log("🍌 [KIE AI] Начинаем генерацию через KIE AI...");
   console.log("📝 Промпт:", prompt.substring(0, 150) + "...");
   
@@ -209,26 +205,23 @@ export async function generateWithKieAi(
   }
 
   try {
-    // Преобразуем imageInput в массив если нужно
     let imageArray: string[] | undefined;
     if (imageInput) {
       imageArray = Array.isArray(imageInput) ? imageInput : [imageInput];
     }
 
-    // Создаём задачу
-    const taskId = await createTask({
+    const { taskId, referenceCount } = await createTask({
       prompt: prompt.trim(),
       aspectRatio,
       outputFormat,
-      resolution: "2K", // Используем 2K по умолчанию
+      resolution: "2K",
       imageInput: imageArray,
     });
 
-    // Ожидаем результат
     const imageUrl = await getTaskResult(taskId);
 
     console.log("✅ [KIE AI] Генерация завершена успешно");
-    return imageUrl;
+    return { imageUrl, referenceUsed: referenceCount > 0 };
 
   } catch (error: any) {
     console.error("❌ [KIE AI] Ошибка:", error);
@@ -250,3 +243,182 @@ export async function generateWithKieAi(
     throw new Error(`KIE AI ошибка: ${errorMessage}`);
   }
 }
+
+/** Загружает буфер в Supabase Storage и возвращает публичный URL (KIE сможет скачать по нему). */
+async function uploadBufferToSupabase(buffer: Buffer, index: number): Promise<string> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error("Supabase не настроен (NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)");
+  }
+  const supabase = createClient(supabaseUrl, serviceKey);
+  const fileName = `${KIE_REF_PREFIX}/${Date.now()}-${index}.jpg`;
+  const { error: uploadError } = await supabase.storage
+    .from(KIE_REF_BUCKET)
+    .upload(fileName, buffer, { contentType: "image/jpeg", upsert: true });
+  if (uploadError) {
+    throw new Error(`Supabase Storage: ${uploadError.message}`);
+  }
+  const { data } = supabase.storage.from(KIE_REF_BUCKET).getPublicUrl(fileName);
+  return data.publicUrl;
+}
+
+async function uploadReferencesToKie(inputs: string[]): Promise<string[]> {
+  const uploaded: string[] = [];
+  for (let i = 0; i < inputs.length; i++) {
+    const source = inputs[i];
+    try {
+      if (source.startsWith("data:image")) {
+        const buffer = await dataUrlToBuffer(source);
+        const publicUrl = await uploadBufferToSupabase(buffer, i);
+        const kieUrl = await publicUrlToKieUrl(publicUrl, i);
+        if (kieUrl) uploaded.push(kieUrl);
+        else uploaded.push(publicUrl);
+        continue;
+      }
+
+      if (source.startsWith("http://") || source.startsWith("https://")) {
+        const isLocalhost =
+          source.includes("localhost") || source.includes("127.0.0.1");
+        if (isLocalhost) {
+          const buffer = await downloadAsBuffer(source);
+          const publicUrl = await uploadBufferToSupabase(buffer, i);
+          const kieUrl = await publicUrlToKieUrl(publicUrl, i);
+          if (kieUrl) uploaded.push(kieUrl);
+          else uploaded.push(publicUrl);
+        } else {
+          const kieUrl = await publicUrlToKieUrl(source, i);
+          if (kieUrl) uploaded.push(kieUrl);
+          else uploaded.push(source);
+        }
+        continue;
+      }
+    } catch (e) {
+      console.warn("⚠️ [KIE AI] Не удалось подготовить референс:", String(e));
+    }
+  }
+  return uploaded;
+}
+
+/**
+ * Отдаём KIE публичный URL; они возвращают свой URL для image_input.
+ * Если вызов к redpandaai сбрасывается (ECONNRESET), используем переданный publicUrl в image_input.
+ */
+async function publicUrlToKieUrl(publicUrl: string, index: number): Promise<string | null> {
+  const apiKey = getKieAiApiKey();
+  const body = JSON.stringify({
+    fileUrl: publicUrl,
+    uploadPath: "kieai/market",
+    fileName: `ref-${Date.now()}-${index}.jpg`,
+  });
+  for (const baseUrl of KIE_UPLOAD_BASE_URLS) {
+    for (let attempt = 0; attempt <= UPLOAD_RETRIES; attempt++) {
+      try {
+        if (attempt > 0) await sleep(UPLOAD_BACKOFF_MS[attempt - 1] ?? 1500);
+        const { statusCode, body: resBody } = await httpsPost(
+          `${baseUrl}/api/file-url-upload`,
+          Buffer.from(body, "utf8"),
+          {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          UPLOAD_TIMEOUT_MS
+        );
+        if (statusCode !== 200) throw new Error(`HTTP ${statusCode}: ${resBody.slice(0, 200)}`);
+        const data = JSON.parse(resBody) as {
+          success?: boolean;
+          code?: number;
+          data?: { downloadUrl?: string; fileUrl?: string; url?: string };
+        };
+        if (!data?.success || data?.code !== 200) throw new Error(data?.msg || "KIE URL upload error");
+        const url = data?.data?.downloadUrl || data?.data?.fileUrl || data?.data?.url;
+        if (url) return String(url);
+      } catch (e) {
+        console.warn(
+          `⚠️ [KIE AI] file-url-upload attempt ${attempt + 1}/${UPLOAD_RETRIES + 1} via ${baseUrl}:`,
+          e instanceof Error ? e.message : String(e)
+        );
+      }
+    }
+  }
+  return null;
+}
+
+/** data URL → Buffer JPEG (KIE: image/jpeg, image/png, image/webp; всегда отдаём JPEG для единообразия). */
+async function dataUrlToBuffer(dataUrl: string): Promise<Buffer> {
+  if (!dataUrl.startsWith("data:image")) throw new Error("Invalid data URL");
+  const comma = dataUrl.indexOf(",");
+  if (comma === -1) throw new Error("Invalid data URL");
+  const raw = Buffer.from(dataUrl.slice(comma + 1), "base64");
+  const resized = raw.length > 400_000
+    ? await sharp(raw).rotate().resize({ width: 1200, withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer()
+    : await sharp(raw).rotate().jpeg({ quality: 85 }).toBuffer();
+  return resized;
+}
+
+/** Скачать URL в буфер (для localhost и т.п.) */
+async function downloadAsBuffer(url: string): Promise<Buffer> {
+  const response = await fetchWithRetry(url, {});
+  if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+/** POST тела через Node https.request (обходим "fetch failed" к kieai.redpandaai.co). */
+function httpsPost(
+  fullUrl: string,
+  body: Buffer,
+  headers: Record<string, string>,
+  timeoutMs: number
+): Promise<{ statusCode: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const u = new URL(fullUrl);
+    const opts: https.RequestOptions = {
+      hostname: u.hostname,
+      port: u.port || 443,
+      path: u.pathname + u.search,
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Length": String(body.length),
+      },
+    };
+    const req = https.request(opts, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () =>
+        resolve({
+          statusCode: res.statusCode ?? 0,
+          body: Buffer.concat(chunks).toString("utf8"),
+        })
+      );
+      res.on("error", reject);
+    });
+    req.on("error", reject);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      reject(new Error("Upload timeout"));
+    });
+    req.write(body);
+    req.end();
+  });
+}
+
+async function fetchWithRetry(
+  input: string,
+  init: RequestInit,
+  retries = 5
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        await sleep(700 * (attempt + 1));
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+

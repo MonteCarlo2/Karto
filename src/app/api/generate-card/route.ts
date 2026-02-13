@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { 
-  generateWithNanobanana,
-  buildProductCardPrompt,
-  CARD_STYLES,
-} from "@/lib/services/nanobanana";
+import { buildProductCardPrompt, CARD_STYLES } from "@/lib/services/nanobanana";
+import { generateWithKieAi } from "@/lib/services/kie-ai";
 import { 
   downloadImage, 
   getPublicUrl,
@@ -133,11 +130,11 @@ function getVariationConcept(variationIndex: number, productName: string): strin
  */
 export async function POST(request: NextRequest) {
   // Проверяем наличие API ключа
-  if (!process.env.REPLICATE_API_TOKEN) {
+  if (!process.env.KIE_AI_API_KEY && !process.env.KIE_API_KEY) {
     return NextResponse.json({
       success: false,
-      error: "REPLICATE_API_TOKEN не настроен",
-      details: "Добавьте REPLICATE_API_TOKEN в файл .env.local",
+      error: "KIE_AI_API_KEY не настроен",
+      details: "Добавьте KIE_AI_API_KEY (или KIE_API_KEY) в файл .env.local",
     }, { status: 500 });
   }
 
@@ -182,9 +179,37 @@ export async function POST(request: NextRequest) {
           console.log("📷 Используем base64 изображение, размер:", Math.round(base64Size / 1024), "KB");
         }
       } else if (photoUrl.startsWith("http://") || photoUrl.startsWith("https://")) {
-        // Если это публичный URL, используем его
-        imageForApi = photoUrl;
-        console.log("📷 Используем публичный URL");
+        // localhost — читаем с диска и отдаём data URL (KIE не дергает localhost)
+        try {
+          const u = new URL(photoUrl);
+          if (u.hostname === "localhost" || u.hostname === "127.0.0.1") {
+            const localPath = path.join(process.cwd(), "public", u.pathname);
+            await fs.access(localPath);
+            const buffer = await fs.readFile(localPath);
+            if (buffer.length <= 10 * 1024 * 1024) {
+              let mimeType = "image/jpeg";
+              const header = buffer.slice(0, 4);
+              if (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47) mimeType = "image/png";
+              else if (header[0] === 0xFF && header[1] === 0xD8 && header[2] === 0xFF) mimeType = "image/jpeg";
+              else {
+                const ext = path.extname(u.pathname).toLowerCase();
+                if (ext === ".png") mimeType = "image/png";
+                else if (ext === ".webp") mimeType = "image/webp";
+              }
+              imageForApi = `data:${mimeType};base64,${buffer.toString("base64")}`;
+              console.log("📷 Локальный URL преобразован в data URL для KIE");
+            } else {
+              imageForApi = photoUrl;
+              console.log("📷 Используем публичный URL (файл большой)");
+            }
+          } else {
+            imageForApi = photoUrl;
+            console.log("📷 Используем публичный URL");
+          }
+        } catch {
+          imageForApi = photoUrl;
+          console.log("📷 Используем публичный URL");
+        }
       } else {
         // Если это локальный URL, конвертируем в base64
         try {
@@ -199,7 +224,7 @@ export async function POST(request: NextRequest) {
           const buffer = await fs.readFile(localPath);
           const fileSize = buffer.length;
           
-          // Проверяем размер файла (макс 10MB для base64, так как Replicate может принимать большие файлы)
+            // Проверяем размер файла (макс 10MB для base64)
           if (fileSize > 10 * 1024 * 1024) {
             console.warn("⚠️ Изображение слишком большое, продолжаем без него");
             imageForApi = undefined;
@@ -519,7 +544,7 @@ ${finalTextPresentation}
     }
     console.log("═══════════════════════════════════════");
     
-    // Генерируем через Nanobanana Pro
+    // Генерируем через KIE (nano-banana-pro)
     // Убеждаемся, что aspectRatio в правильном формате (3:4 или 1:1)
     const finalAspectRatio = aspectRatio === "1:1" ? "1:1" : "3:4";
     
@@ -527,19 +552,20 @@ ${finalTextPresentation}
     console.log("🖼️ Image Input:", imageForApi ? (imageForApi.startsWith("data:") ? "base64" : "URL") : "нет");
     console.log("📏 Длина промпта:", finalPrompt.length, "символов");
     
-    // Генерируем через Nanobanana Pro с изображением (если есть)
+    // Генерируем через KIE с изображением (если есть)
     let generatedImageUrl: string;
     
     try {
-      generatedImageUrl = await generateWithNanobanana(
+      const result = await generateWithKieAi(
         finalPrompt,
-        imageForApi, // Используем изображение, если оно есть
+        imageForApi,
         finalAspectRatio,
         "png"
       );
+      generatedImageUrl = result.imageUrl;
       console.log("✅ Генерация успешна");
     } catch (error: any) {
-      console.error("❌ Ошибка в generateWithNanobanana:", error);
+      console.error("❌ Ошибка в generateWithKieAi:", error);
       throw new Error(`Модель не смогла сгенерировать изображение. Ошибка: ${error.message || "Неизвестная ошибка"}`);
     }
     
@@ -562,11 +588,11 @@ ${finalTextPresentation}
     const errorString = String(error);
     
     if (errorString.includes("401") || errorString.includes("Unauthorized")) {
-      errorMessage = "Ошибка авторизации. Проверьте REPLICATE_API_TOKEN";
+      errorMessage = "Ошибка авторизации. Проверьте KIE_AI_API_KEY";
     } else if (errorString.includes("429")) {
       errorMessage = "Превышен лимит запросов. Подождите минуту.";
     } else if (errorString.includes("insufficient") || errorString.includes("402")) {
-      errorMessage = "Недостаточно средств на Replicate";
+      errorMessage = "Недостаточно средств на KIE";
     }
     
     return NextResponse.json({

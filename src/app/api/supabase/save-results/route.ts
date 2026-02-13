@@ -79,7 +79,15 @@ export async function POST(request: NextRequest) {
       }
       
       if (visual_state) {
-        updateData.visual_state = visual_state;
+        const { data: existingVisualRow } = await supabase
+          .from("visual_data")
+          .select("visual_state")
+          .eq("session_id", session_id)
+          .maybeSingle();
+        updateData.visual_state = {
+          ...(existingVisualRow?.visual_state || {}),
+          ...visual_state,
+        };
       }
       
       const { error: visualError } = await supabase

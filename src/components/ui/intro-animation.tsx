@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { createBrowserClient } from "@/lib/supabase/client";
 
 interface IntroAnimationProps {
   onComplete: () => void;
@@ -86,10 +87,49 @@ function CanvasTexture({ patternAlpha = 15 }: { patternAlpha?: number }) {
 export function IntroAnimation({ onComplete }: IntroAnimationProps) {
   const router = useRouter();
   const [showContent, setShowContent] = useState(false);
+  const [flowError, setFlowError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
-  const handleOpenFlow = () => {
-    // Переходим на страницу "Понимание"
-    router.push("/studio/understanding");
+  const handleOpenFlow = async () => {
+    setFlowError(null);
+    setChecking(true);
+    try {
+      const supabase = createBrowserClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setFlowError("Войдите в аккаунт, чтобы начать Поток. Перейдите на главную и войдите или зарегистрируйтесь.");
+        return;
+      }
+      const res = await fetch("/api/subscription", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.subscription) {
+        setFlowError("Выберите тариф «Поток» на главной странице, чтобы начать.");
+        return;
+      }
+      const sub = data.subscription;
+      if (sub.planType !== "flow") {
+        setFlowError("У вас подключён тариф «Свободное творчество». Для Потока выберите тариф «Поток» на главной.");
+        return;
+      }
+      const left = Math.max(0, sub.flowsLimit - sub.flowsUsed);
+      if (left <= 0) {
+        setFlowError("Нет доступных потоков. Выберите тариф на главной странице, чтобы получить поток.");
+        return;
+      }
+      // Новый запуск Потока должен начинаться с чистой сессии.
+      // Иначе могут подтягиваться старые этапы/описания и пропускаться экран 1.
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("karto_session_id");
+        localStorage.removeItem("understandingPageState");
+      }
+      router.push("/studio/understanding");
+    } catch {
+      setFlowError("Не удалось проверить подписку. Попробуйте ещё раз.");
+    } finally {
+      setChecking(false);
+    }
   };
 
   useEffect(() => {
@@ -242,11 +282,17 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
           initial={{ y: 50, opacity: 0 }}
           animate={showContent ? { y: 0, opacity: 1 } : { y: 50, opacity: 0 }}
           transition={{ duration: 0.8, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="absolute bottom-8 right-8 lg:bottom-12 lg:right-12"
+          className="absolute bottom-8 right-8 lg:bottom-12 lg:right-12 flex flex-col items-end gap-3"
         >
+          {flowError && (
+            <p className="text-sm text-white/90 bg-black/20 px-4 py-2 rounded-lg max-w-md text-right" role="alert">
+              {flowError}
+            </p>
+          )}
           <button
             onClick={handleOpenFlow}
-            className="px-10 py-5 text-xl md:text-2xl font-semibold transition-all duration-300 hover:scale-105 active:scale-95 flex items-center gap-3 relative overflow-hidden"
+            disabled={checking}
+            className="px-10 py-5 text-xl md:text-2xl font-semibold transition-all duration-300 hover:scale-105 active:scale-95 flex items-center gap-3 relative overflow-hidden disabled:opacity-70 disabled:pointer-events-none"
             style={{
               background: "rgba(255, 255, 255, 0.12)",
               backdropFilter: "blur(30px)",

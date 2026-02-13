@@ -116,6 +116,25 @@ export default function PolicyAndTermsPage() {
               </Link>
             </div>
           </section>
+
+          {/* СОГЛАСИЯ */}
+          <section className="flex items-start gap-12" suppressHydrationWarning>
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider w-48 flex-shrink-0 pt-1" suppressHydrationWarning>
+              СОГЛАСИЯ
+            </h2>
+            <div className="flex-1 space-y-4" suppressHydrationWarning>
+              <Link
+                href="/consent-personal-data"
+                className="group flex items-center justify-between py-4 border-b border-gray-200 hover:border-[#1F4E3D] transition-colors"
+                suppressHydrationWarning
+              >
+                <span className="text-lg text-gray-900 group-hover:text-[#1F4E3D] transition-colors">
+                  Согласие на обработку персональных данных пользователей платформы KARTO
+                </span>
+                <ArrowUpRight className="w-5 h-5 text-gray-400 group-hover:text-[#1F4E3D] transition-colors flex-shrink-0" />
+              </Link>
+            </div>
+          </section>
         </div>
       </div>
     </div>

@@ -15,6 +15,7 @@ export function Navbar() {
   const [showProfileMenu, setShowProfileMenu] = React.useState(false)
   const [showStudioMenu, setShowStudioMenu] = React.useState(false)
   const [mounted, setMounted] = React.useState(false)
+  const [subscriptionLabel, setSubscriptionLabel] = React.useState<string | null>(null)
   const pathname = usePathname()
   const router = useRouter()
   const isHome = pathname === "/"
@@ -52,10 +53,44 @@ export function Navbar() {
 
       return () => subscription.unsubscribe();
     } catch (error) {
-      // Если Supabase не настроен, просто не подписываемся
       return () => {};
     }
   }, []);
+
+  React.useEffect(() => {
+    if (!user) {
+      setSubscriptionLabel(null);
+      return;
+    }
+    let mounted = true;
+    (async () => {
+      try {
+        const supabase = createBrowserClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token || !mounted) return;
+        const res = await fetch("/api/subscription", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!mounted) return;
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!mounted || !data.subscription) return;
+        const s = data.subscription;
+        if (!mounted) return;
+        if (s.planType === "flow") {
+          const left = Math.max(0, s.flowsLimit - s.flowsUsed);
+          setSubscriptionLabel(left === 1 ? "1 поток" : `${left} потоков`);
+        } else {
+          const left = Math.max(0, s.creativeLimit - s.creativeUsed);
+          setSubscriptionLabel(left === 1 ? "1 ген." : `${left} ген.`);
+        }
+      } catch {
+        if (!mounted) return;
+        setSubscriptionLabel(null);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [user]);
 
   // Закрытие меню профиля и мастерской при клике вне их
   React.useEffect(() => {
@@ -175,7 +210,7 @@ export function Navbar() {
               </AnimatePresence>
             </div>
             {mounted && user ? (
-              <div className="relative profile-menu-container" suppressHydrationWarning>
+              <div className="relative profile-menu-container flex items-center gap-2" suppressHydrationWarning>
                 <button
                   onClick={() => setShowProfileMenu(!showProfileMenu)}
                   className="flex items-center justify-center w-10 h-10 rounded-full border-2 border-[#2E5A43] hover:bg-[#2E5A43] hover:text-white transition-colors"
@@ -183,6 +218,11 @@ export function Navbar() {
                 >
                   <User className="w-5 h-5 text-foreground" />
                 </button>
+                {subscriptionLabel && (
+                  <span className="hidden sm:inline text-xs font-medium text-[#2E5A43] bg-[#2E5A43]/10 px-2.5 py-1 rounded-full border border-[#2E5A43]/30">
+                    {subscriptionLabel}
+                  </span>
+                )}
                 <AnimatePresence>
                   {showProfileMenu && (
                     <motion.div

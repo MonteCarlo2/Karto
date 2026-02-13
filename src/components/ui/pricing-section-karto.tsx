@@ -1,11 +1,14 @@
 "use client"
 
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { createBrowserClient } from "@/lib/supabase/client"
 import { RainbowButton } from "@/components/ui/rainbow-button"
 import { TimelineContent } from "@/components/ui/timeline-animation"
 import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal"
 import { cn } from "@/lib/utils"
 import NumberFlow from "@number-flow/react"
-import { CheckCheck } from "lucide-react"
+import { CheckCheck, Loader2 } from "lucide-react"
 import { motion } from "framer-motion"
 import { useId, useRef, useState } from "react"
 
@@ -153,10 +156,43 @@ const CREATIVE_PRICES = [249, 590, 1490]
 const FLOW_BONUS: (string | null)[] = [null, "Выгода 305 ₽", "199 ₽ за товар"]
 const CREATIVE_BONUS: (string | null)[] = [null, null, "14.9 ₽ за кадр"]
 
-export default function PricingSectionKarto() {
+interface PricingSectionKartoProps {
+  user?: { id: string } | null
+}
+
+export default function PricingSectionKarto({ user }: PricingSectionKartoProps) {
+  const router = useRouter()
   const [mode, setMode] = useState<"0" | "1">("0")
   const [tariff, setTariff] = useState("0")
+  const [selecting, setSelecting] = useState(false)
   const pricingRef = useRef<HTMLDivElement>(null)
+
+  const handleSelectTariff = async () => {
+    if (!user) {
+      router.push("/login?returnUrl=/#pricing")
+      return
+    }
+    setSelecting(true)
+    try {
+      const supabase = createBrowserClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`
+      const res = await fetch("/api/subscription/select", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ mode, tariffIndex: Number.parseInt(tariff, 10) || 0 }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Ошибка выбора тарифа")
+      router.push(data.redirectTo || "/profile")
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Ошибка. Попробуйте позже."
+      alert(msg)
+    } finally {
+      setSelecting(false)
+    }
+  }
 
   const isFlow = mode === "0"
   const tariffIndex = Number.parseInt(tariff, 10) || 0
@@ -331,9 +367,30 @@ export default function PricingSectionKarto() {
                 )}
               </div>
               <div className="w-full max-w-xs">
-                <RainbowButton href="/studio" className="w-full min-w-0">
-                  Выбрать тариф
-                </RainbowButton>
+                {user ? (
+                  <RainbowButton
+                    type="button"
+                    onClick={handleSelectTariff}
+                    disabled={selecting}
+                    className="w-full min-w-0 inline-flex items-center justify-center gap-2"
+                  >
+                    {selecting ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Выбор...
+                      </>
+                    ) : (
+                      "Выбрать тариф"
+                    )}
+                  </RainbowButton>
+                ) : (
+                  <RainbowButton
+                    href="/login?returnUrl=/#pricing"
+                    className="w-full min-w-0 inline-flex items-center justify-center"
+                  >
+                    Войти, чтобы выбрать тариф
+                  </RainbowButton>
+                )}
               </div>
               <p className="text-sm text-neutral-500">
                 Без скрытых платежей. По истечении месяца тарифы обнуляются

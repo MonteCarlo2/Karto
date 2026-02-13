@@ -55,22 +55,29 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    // Запускаем все 4 запроса ПАРАЛЛЕЛЬНО одновременно (OpenRouter поддерживает это!)
+    // Надёжный режим: запускаем варианты ПОСЛЕДОВАТЕЛЬНО,
+    // чтобы не упираться в лимиты OpenRouter при 4 одновременных запросах.
     const startTime = Date.now();
-    console.log(`⚡ Запускаем все 4 запроса ПАРАЛЛЕЛЬНО через OpenRouter...`);
-    
-    // Создаем все промисы одновременно - OpenRouter обработает их параллельно
-    const promise1 = generateVariant(1, "Официальный");
-    const promise2 = generateVariant(2, "Продающий");
-    const promise3 = generateVariant(3, "Структурированный");
-    const promise4 = generateVariant(4, "Сбалансированный");
-    
-    const allPromises = [promise1, promise2, promise3, promise4];
-    
-    console.log(`✅ Все 4 промиса созданы и запущены. Ждем завершения Promise.allSettled...`);
-    console.log(`⏳ Количество промисов в массиве: ${allPromises.length}`);
-    
-    const descriptions = await Promise.allSettled(allPromises);
+    console.log(`⚡ Запускаем 4 запроса ПОСЛЕДОВАТЕЛЬНО через OpenRouter...`);
+
+    const descriptionTasks: Array<[1 | 2 | 3 | 4, string]> = [
+      [1, "Официальный"],
+      [2, "Продающий"],
+      [3, "Структурированный"],
+      [4, "Сбалансированный"],
+    ];
+    const descriptions: PromiseSettledResult<string>[] = [];
+
+    for (const [style, styleName] of descriptionTasks) {
+      try {
+        const value = await generateVariant(style, styleName);
+        descriptions.push({ status: "fulfilled", value });
+      } catch (reason) {
+        descriptions.push({ status: "rejected", reason });
+      }
+      // Небольшая пауза между запросами снижает риск rate-limit
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
     
     console.log(`📊 Promise.allSettled завершен. Получено результатов: ${descriptions.length}`);
     descriptions.forEach((result, index) => {
@@ -80,6 +87,18 @@ export async function POST(request: NextRequest) {
         console.log(`❌ Результат ${index + 1}: rejected, ошибка: ${result.reason?.message || result.reason}`);
       }
     });
+
+    const rejectedCount = descriptions.filter((r) => r.status === "rejected").length;
+    if (rejectedCount === descriptions.length) {
+      const firstError = descriptions.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+      return NextResponse.json(
+        {
+          error: "OpenRouter временно недоступен. Описания не сгенерированы.",
+          details: process.env.NODE_ENV === "development" ? String(firstError?.reason?.message || firstError?.reason || "") : undefined,
+        },
+        { status: 502 }
+      );
+    }
     
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`📊 Все 4 запроса завершены за ${totalTime}с. Обрабатываем результаты...`);

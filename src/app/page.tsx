@@ -113,7 +113,7 @@ export default function Home() {
       <TeamResultSection />
 
       {/* Раздел цен — интерактивные тарифы (режим + объём) */}
-      <PricingSectionKarto />
+      <PricingSectionKarto user={user} />
 
       {/* FAQ — сразу после тарифов; после FAQ главная заканчивается */}
       <FAQSectionKarto user={user} />

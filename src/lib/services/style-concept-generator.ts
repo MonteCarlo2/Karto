@@ -3,7 +3,7 @@
  * Использует GPT-5-mini для создания уникальных стилей и композиций
  */
 
-const OPENROUTER_API_KEY = "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";
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 export interface DesignConcept {
@@ -25,6 +25,9 @@ export async function generateDesignConcepts(
   productName: string,
   userPrompt?: string
 ): Promise<DesignConcept[]> {
+  if (!OPENROUTER_API_KEY) {
+    throw new Error("OPENROUTER_API_KEY не настроен в .env.local");
+  }
   console.log("🔵 [OpenRouter] ========== ФУНКЦИЯ ВЫЗВАНА ==========");
   
   // Ограничиваем длину параметров для избежания ошибок
@@ -146,7 +149,7 @@ ${safeUserPrompt ? `Пожелания пользователя: ${safeUserPromp
   console.log("🔵 [OpenRouter] Пожелания:", userPrompt || "нет");
   console.log("🔵 [OpenRouter] System Prompt (первые 300 символов):", systemPrompt.substring(0, 300) + "...");
   console.log("🔵 [OpenRouter] User Message (первые 300 символов):", userMessage.substring(0, 300) + "...");
-  console.log("🔵 [OpenRouter] API Key (первые 20 символов):", OPENROUTER_API_KEY.substring(0, 20) + "...");
+  console.log("🔵 [OpenRouter] API Key (первые 20 символов):", OPENROUTER_API_KEY?.substring(0, 20) + "...");
   console.log("🔵 [OpenRouter] API URL:", OPENROUTER_API_URL);
   
   try {

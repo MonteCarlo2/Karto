@@ -606,6 +606,11 @@ export default function VisualPage() {
     show: boolean;
     message?: string;
   }>({ show: false });
+  const [visualQuota, setVisualQuota] = useState<{ used: number; remaining: number; limit: number }>({
+    used: 0,
+    remaining: 12,
+    limit: 12,
+  });
   const [isHelpOpen, setIsHelpOpen] = useState(false); // Открыта ли подсказка справа
   
   // Настройки панели
@@ -618,6 +623,43 @@ export default function VisualPage() {
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [customPrompt, setCustomPrompt] = useState("");
   
+  // Сжатие референса на клиенте (max 1200px, JPEG) для надёжной доставки в KIE, как в «Свободное творчество»
+  const compressReferenceFile = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = document.createElement("img");
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const maxW = 1200;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxW) {
+          h = Math.round((h * maxW) / w);
+          w = maxW;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas not available"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        try {
+          resolve(canvas.toDataURL("image/jpeg", 0.85));
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Failed to load image"));
+      };
+      img.src = url;
+    });
+  };
+
   // Получение пользователя для баг-репортов
   useEffect(() => {
     const checkUser = async () => {
@@ -718,6 +760,15 @@ export default function VisualPage() {
         // Приоритет 1: Если есть сохраненное состояние
         if (visualStateData.success && visualStateData.visual_state) {
           const state = visualStateData.visual_state;
+          if (typeof state.generation_used === "number" || typeof state.generation_limit === "number") {
+            const limit = Math.max(1, Number(state.generation_limit || 12));
+            const used = Math.max(0, Number(state.generation_used || 0));
+            setVisualQuota({
+              used,
+              limit,
+              remaining: Math.max(0, limit - used),
+            });
+          }
           
           // Восстанавливаем generatedCards
           if (state.generatedCards && Array.isArray(state.generatedCards) && state.generatedCards.length > 0) {
@@ -785,6 +836,8 @@ export default function VisualPage() {
         generatedCards: generatedCards,
         selectedCardIndex: selectedCardIndex,
         isSeriesMode: isSeriesMode,
+        generation_used: visualQuota.used,
+        generation_limit: visualQuota.limit,
       };
       
       // Сохраняем в Supabase
@@ -799,7 +852,7 @@ export default function VisualPage() {
         console.warn("Не удалось сохранить состояние визуала в Supabase:", error);
       });
     }
-  }, [generatedCards, selectedCardIndex, isSeriesMode, sessionId]);
+  }, [generatedCards, selectedCardIndex, isSeriesMode, sessionId, visualQuota.used, visualQuota.limit]);
 
   // Генерация карточки
   const handleGenerate = async () => {
@@ -814,6 +867,13 @@ export default function VisualPage() {
     if (!productName) {
       console.warn("⚠️ [FRONTEND] Нет названия товара!");
       alert("Пожалуйста, укажите название товара");
+      return;
+    }
+    if (!sessionId) {
+      setGenerationError({
+        show: true,
+        message: "Не найдена сессия Потока. Вернитесь на этап «Понимание» и начните заново.",
+      });
       return;
     }
 
@@ -834,6 +894,7 @@ export default function VisualPage() {
         bullets: addText ? bullets.filter((b: string) => b && b.trim()) : [],
         aspectRatio: aspectRatio,
         count: 4, // Генерируем все 4 карточки одновременно
+        sessionId: sessionId,
       };
 
       console.log("🚀 [FRONTEND] Запуск генерации 4 карточек с умными концепциями");
@@ -866,6 +927,15 @@ export default function VisualPage() {
           setIsGenerating(false);
           return;
         }
+        if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
+          const limit = Math.max(1, Number(data.generationLimit || 12));
+          const used = Math.max(0, Number(data.generationUsed || 0));
+          setVisualQuota({
+            used,
+            limit,
+            remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
+          });
+        }
         
         throw new Error(data.error || data.details || "Ошибка генерации");
       }
@@ -873,6 +943,15 @@ export default function VisualPage() {
       // Сохраняем все сгенерированные карточки (до 4)
       if (data.imageUrls && data.imageUrls.length > 0) {
         setGeneratedCards(data.imageUrls);
+        if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
+          const limit = Math.max(1, Number(data.generationLimit || 12));
+          const used = Math.max(0, Number(data.generationUsed || 0));
+          setVisualQuota({
+            used,
+            limit,
+            remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
+          });
+        }
         console.log(`✅ [FRONTEND] Сгенерировано ${data.imageUrls.length} карточек с уникальными концепциями`);
         
         if (data.concepts && data.concepts.length > 0) {
@@ -891,11 +970,12 @@ export default function VisualPage() {
         throw new Error("Не получены URL карточек");
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === "AbortError") return;
       console.error("❌ Ошибка генерации:", error);
       setGenerationError({
         show: true,
-        message: error.message || "Неизвестная ошибка при генерации карточки. Попробуйте еще раз.",
+        message: error instanceof Error ? error.message : "Неизвестная ошибка при генерации карточки. Попробуйте еще раз.",
       });
     } finally {
       setIsGenerating(false);
@@ -961,7 +1041,7 @@ export default function VisualPage() {
         suppressHydrationWarning
       />
       
-      <StageMenu currentStage="visual" position="left" />
+      <StageMenu currentStage="visual" position="left" visualQuota={visualQuota} />
       
       {/* Сообщение о несоответствии товара */}
       <AnimatePresence suppressHydrationWarning>
@@ -1106,64 +1186,44 @@ export default function VisualPage() {
                     input.accept = 'image/*';
                     input.onchange = async (e) => {
                       const file = (e.target as HTMLInputElement).files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onload = async (event) => {
-                          const result = event.target?.result as string;
-                          if (result) {
-                            setPhotoUrl(result);
-                            setProductMismatchError({ show: false }); // Сбрасываем ошибку
-                            
-                            // Проверяем соответствие товара после загрузки
-                            if (productName && productName.trim()) {
-                              setIsCheckingProduct(true);
-                              try {
-                                console.log("🔍 [FRONTEND] Проверяю соответствие товара после загрузки...");
-                                const checkResponse = await fetch("/api/check-product-match", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({
-                                    productName: productName.trim(),
-                                    photoUrl: result,
-                                  }),
-                                });
-                                
-                                const checkData = await checkResponse.json();
-                                console.log("🔍 [FRONTEND] Результат проверки:", checkData);
-                                
-                                if (!checkData.success && checkData.mismatch) {
-                                  console.warn("⚠️ [FRONTEND] Товар не соответствует!");
-                                  setProductMismatchError({
-                                    show: true,
-                                    recognizedProduct: checkData.recognizedProduct,
-                                    currentProduct: productName.trim(),
-                                  });
-                                } else {
-                                  console.log("✅ [FRONTEND] Товар соответствует или проверка пропущена");
-                                  setProductMismatchError({ show: false });
-                                }
-                              } catch (error) {
-                                console.warn("⚠️ [FRONTEND] Не удалось проверить соответствие товара:", error);
-                                // Не блокируем пользователя, если проверка не удалась
-                              } finally {
-                                setIsCheckingProduct(false);
-                              }
+                      if (!file) return;
+                      try {
+                        const result = await compressReferenceFile(file);
+                        setPhotoUrl(result);
+                        setProductMismatchError({ show: false });
+                        if (productName && productName.trim()) {
+                          setIsCheckingProduct(true);
+                          try {
+                            const checkResponse = await fetch("/api/check-product-match", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ productName: productName.trim(), photoUrl: result }),
+                            });
+                            const checkData = await checkResponse.json();
+                            if (!checkData.success && checkData.mismatch) {
+                              setProductMismatchError({
+                                show: true,
+                                recognizedProduct: checkData.recognizedProduct,
+                                currentProduct: productName.trim(),
+                              });
+                            } else {
+                              setProductMismatchError({ show: false });
                             }
-                            
-                            // Сохраняем в Supabase если есть sessionId
-                            if (sessionId) {
-                              fetch("/api/supabase/save-understanding", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  session_id: sessionId,
-                                  photo_url: result,
-                                }),
-                              }).catch(console.error);
-                            }
+                          } catch {
+                            // не блокируем пользователя
+                          } finally {
+                            setIsCheckingProduct(false);
                           }
-                        };
-                        reader.readAsDataURL(file);
+                        }
+                        if (sessionId) {
+                          fetch("/api/supabase/save-understanding", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ session_id: sessionId, photo_url: result }),
+                          }).catch(console.error);
+                        }
+                      } catch (err) {
+                        console.warn("Не удалось обработать изображение:", err);
                       }
                     };
                     input.click();
@@ -1344,7 +1404,7 @@ export default function VisualPage() {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={handleGenerate}
-          disabled={isGenerating}
+          disabled={isGenerating || visualQuota.remaining <= 0}
           className="w-full py-4 px-6 bg-[#4ADE80] text-black rounded-xl font-bold text-base flex items-center justify-center gap-2 shadow-xl shadow-green-400/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all overflow-hidden"
           style={{ willChange: 'transform' }}
         >
@@ -1360,6 +1420,11 @@ export default function VisualPage() {
               </>
             )}
           </motion.button>
+          {visualQuota.remaining <= 0 && (
+            <p className="mt-2 text-xs text-red-500 text-center">
+              Лимит генераций в Потоке исчерпан (0/{visualQuota.limit}).
+            </p>
+          )}
       </motion.div>
       
       {/* Правая часть: Результаты - неподвижная, прозрачная */}
@@ -1678,25 +1743,37 @@ export default function VisualPage() {
                                   editRequest: editRequest.trim(),
                                   productName,
                                   aspectRatio,
+                                  sessionId: sessionId ?? undefined,
                                 }),
                               });
                               
                               const data = await response.json();
                               if (data.success && data.imageUrl) {
-                                // Сохраняем оригинал перед первым редактированием (если еще не сохранен)
+                                if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
+                                  const limit = Math.max(1, Number(data.generationLimit || 12));
+                                  const used = Math.max(0, Number(data.generationUsed || 0));
+                                  setVisualQuota({
+                                    used,
+                                    limit,
+                                    remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
+                                  });
+                                }
                                 if (!originalCardImage && selectedCardIndex !== null) {
                                   setOriginalCardImage(generatedCards[selectedCardIndex]);
                                 }
-                                // Сохраняем текущее изображение как последнее отредактированное
                                 if (selectedCardIndex !== null) {
                                   setLastEditedImage(generatedCards[selectedCardIndex]);
                                 }
-                                // Обновляем карточку в массиве
                                 const newCards = [...generatedCards];
                                 newCards[selectedCardIndex] = data.imageUrl;
                                 setGeneratedCards(newCards);
                                 setEditRequest("");
                               } else {
+                                if (response.status === 403 && (data.generationUsed != null || data.generationRemaining != null)) {
+                                  const limit = Math.max(1, Number(data.generationLimit || 12));
+                                  const used = Math.max(0, Number(data.generationUsed ?? 0));
+                                  setVisualQuota({ used, limit, remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)) });
+                                }
                                 throw new Error(data.error || "Ошибка редактирования");
                               }
                             } catch (error: any) {
@@ -1773,6 +1850,48 @@ export default function VisualPage() {
             className="fixed inset-0 bg-white z-50 flex"
             suppressHydrationWarning
           >
+            {/* Сообщение об ошибке генерации в режиме серии */}
+            <AnimatePresence suppressHydrationWarning>
+              {generationError.show && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="fixed top-24 right-8 z-[120] max-w-md"
+                >
+                  <div className="bg-white rounded-xl shadow-2xl border-2 border-orange-200 p-6">
+                    <div className="flex items-start gap-4">
+                      <div className="flex-shrink-0">
+                        <AlertCircle className="w-6 h-6 text-orange-500" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">
+                          Ошибка генерации
+                        </h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                          {generationError.message || "Не удалось сгенерировать карточку. Попробуйте еще раз."}
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setGenerationError({ show: false })}
+                            className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition-colors"
+                          >
+                            Понятно
+                          </button>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setGenerationError({ show: false })}
+                        className="flex-shrink-0 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Левая колонка: Лента слайдов */}
             <div className="w-[250px] bg-transparent border-r border-gray-200 p-4 overflow-y-auto z-10 ml-4">
               <div className="flex flex-col gap-4">
@@ -2000,8 +2119,8 @@ export default function VisualPage() {
             </div>
             
             {/* Линия этапов справа + инструкция */}
-            <div className="absolute top-24 right-8 flex flex-col items-end gap-4 z-30">
-              <StageMenu currentStage="visual" position="right" />
+            <div className="absolute top-24 right-12 flex flex-col items-end gap-4 z-30">
+              <StageMenu currentStage="visual" position="right" visualQuota={visualQuota} />
               
               {/* Вопрос-виджет с инструкцией */}
               <motion.div
@@ -2220,6 +2339,10 @@ export default function VisualPage() {
                         alert("Первый слайд не найден или не имеет изображения");
                         return;
                       }
+                      if (!sessionId) {
+                        alert("Не найдена сессия Потока. Вернитесь на этап «Понимание» и начните заново.");
+                        return;
+                      }
                       
                       setIsGeneratingSlide(true);
                       try {
@@ -2228,6 +2351,7 @@ export default function VisualPage() {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
+                            sessionId,
                             productName: productName,
                             referenceImageUrl: firstSlide.imageUrl, // Референс товара из первого слайда
                             environmentImageUrl: useEnvironment ? firstSlide.imageUrl : null, // Референс обстановки только если включен чекбокс
@@ -2240,7 +2364,31 @@ export default function VisualPage() {
                         const data = await response.json();
                         
                         if (!data.success) {
-                          throw new Error(data.error || "Ошибка генерации слайда");
+                          if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
+                            const limit = Math.max(1, Number(data.generationLimit || 12));
+                            const used = Math.max(0, Number(data.generationUsed || 0));
+                            setVisualQuota({
+                              used,
+                              limit,
+                              remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
+                            });
+                          }
+                          setGenerationError({
+                            show: true,
+                            message:
+                              data.error ||
+                              "Ошибка произошла на нашей стороне. Извиняемся, пожалуйста, попробуйте еще раз чуть позже.",
+                          });
+                          return;
+                        }
+                        if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
+                          const limit = Math.max(1, Number(data.generationLimit || 12));
+                          const used = Math.max(0, Number(data.generationUsed || 0));
+                          setVisualQuota({
+                            used,
+                            limit,
+                            remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
+                          });
                         }
                         
                         // Добавляем новый вариант в массив variants (проверяем на дубликаты)
@@ -2270,14 +2418,17 @@ export default function VisualPage() {
                         
                         setSlidePrompt("");
                         setSelectedScenario(null);
-                      } catch (error: any) {
-                        console.error("Ошибка генерации слайда:", error);
-                        alert(`Ошибка генерации: ${error.message}`);
+                      } catch (_error: unknown) {
+                        setGenerationError({
+                          show: true,
+                          message:
+                            "Ошибка произошла на нашей стороне. Извиняемся, пожалуйста, попробуйте еще раз чуть позже.",
+                        });
                       } finally {
                         setIsGeneratingSlide(false);
                       }
                     }}
-                    disabled={isGeneratingSlide || activeSlideId === null}
+                    disabled={isGeneratingSlide || activeSlideId === null || visualQuota.remaining <= 0}
                     className="aspect-square h-full rounded-xl bg-[#4ADE80] flex items-center justify-center shadow-lg hover:shadow-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                     style={{ minHeight: "48px", minWidth: "48px" }}
                   >

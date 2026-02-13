@@ -1,20 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { 
-  generateWithNanobanana,
-} from "@/lib/services/nanobanana";
-import { 
-  downloadImage, 
-  getPublicUrl,
-} from "@/lib/services/image-processing";
+import { generateWithKieAi } from "@/lib/services/kie-ai";
+import { downloadImage, getPublicUrl } from "@/lib/services/image-processing";
+import { createServerClient } from "@/lib/supabase/server";
+import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
 
 /**
  * API endpoint для редактирования карточки товара
- * Принимает изображение и запрос на изменение, возвращает отредактированное изображение
+ * При вызове из Потока (sessionId передан) — списывает 1 генерацию из квоты.
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { imageUrl, editRequest, productName, aspectRatio } = body;
+    const { imageUrl, editRequest, productName, aspectRatio, sessionId } = body;
 
     if (!imageUrl || !editRequest) {
       return NextResponse.json({
@@ -27,6 +24,24 @@ export async function POST(request: NextRequest) {
     console.log("🔄 [EDIT] Запрос пользователя:", editRequest);
     console.log("🔄 [EDIT] Товар:", productName);
     console.log("🔄 [EDIT] Исходный imageUrl:", imageUrl);
+
+    if (sessionId) {
+      const supabase = createServerClient();
+      const quota = await getVisualQuota(supabase as any, sessionId);
+      if (quota.remaining <= 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Лимит генераций в Потоке исчерпан (0 из 12).",
+            code: "VISUAL_LIMIT_REACHED",
+            generationUsed: quota.used,
+            generationRemaining: quota.remaining,
+            generationLimit: quota.limit,
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     // Строим промпт для редактирования с строгими правилами
     const editPrompt = `Отредактируй эту карточку товара согласно запросу пользователя.
@@ -83,17 +98,36 @@ ${editRequest}
     // Определяем aspect ratio
     const finalAspectRatio = aspectRatio === "1:1" ? "1:1" : "3:4";
 
-    // Преобразуем изображение в base64 для Replicate (так как localhost недоступен)
-    let imageForReplicate: string;
+    // Подготавливаем изображение для KIE
+    let imageForKie: string;
     
     if (imageUrl.startsWith("data:image")) {
       // Уже base64
-      imageForReplicate = imageUrl;
+      imageForKie = imageUrl;
       console.log("🔄 [EDIT] Используется base64 изображение");
     } else if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
-      // Полный URL - используем как есть
-      imageForReplicate = imageUrl;
-      console.log("🔄 [EDIT] Используется публичный URL:", imageUrl);
+      // localhost — читаем с диска и отдаём data URL (KIE не дергает localhost)
+      try {
+        const u = new URL(imageUrl);
+        if (u.hostname === "localhost" || u.hostname === "127.0.0.1") {
+          const path = await import("path");
+          const fs = await import("fs/promises");
+          const localPath = path.join(process.cwd(), "public", u.pathname);
+          await fs.access(localPath);
+          const fileBuffer = await fs.readFile(localPath);
+          const ext = path.extname(u.pathname).toLowerCase();
+          const mimeTypes: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
+          const mimeType = mimeTypes[ext] || 'image/jpeg';
+          imageForKie = `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
+          console.log("🔄 [EDIT] Локальный URL преобразован в data URL для KIE");
+        } else {
+          imageForKie = imageUrl;
+          console.log("🔄 [EDIT] Используется публичный URL:", imageUrl);
+        }
+      } catch {
+        imageForKie = imageUrl;
+        console.log("🔄 [EDIT] Используется публичный URL:", imageUrl);
+      }
     } else {
       // Локальный путь - загружаем и преобразуем в base64
       try {
@@ -129,15 +163,15 @@ ${editRequest}
         
         // Преобразуем в base64
         const base64 = fileBuffer.toString('base64');
-        imageForReplicate = `data:${mimeType};base64,${base64}`;
+        imageForKie = `data:${mimeType};base64,${base64}`;
         
         console.log("🔄 [EDIT] Изображение преобразовано в base64");
       } catch (fileError: any) {
         console.error("❌ [EDIT] Ошибка загрузки локального файла:", fileError);
         // Пробуем использовать как URL
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-        imageForReplicate = imageUrl.startsWith("/") ? `${baseUrl}${imageUrl}` : imageUrl;
-        console.log("🔄 [EDIT] Используем fallback URL:", imageForReplicate);
+        imageForKie = imageUrl.startsWith("/") ? `${baseUrl}${imageUrl}` : imageUrl;
+        console.log("🔄 [EDIT] Используем fallback URL:", imageForKie);
       }
     }
 
@@ -145,20 +179,21 @@ ${editRequest}
     let editedImageUrl: string;
     
     try {
-      editedImageUrl = await generateWithNanobanana(
+      const result = await generateWithKieAi(
         editPrompt,
-        imageForReplicate, // Используем исходное изображение как референс (base64 или URL)
+        imageForKie,
         finalAspectRatio,
         "png"
       );
+      editedImageUrl = result.imageUrl;
       console.log("✅ [EDIT] Редактирование успешно");
     } catch (error: any) {
-      console.error("❌ [EDIT] Ошибка в generateWithNanobanana:", error);
+      console.error("❌ [EDIT] Ошибка в generateWithKieAi:", error);
       console.error("❌ [EDIT] Детали ошибки:", {
         message: error.message,
         status: error.status,
         body: error.body,
-        imageUrlType: imageForReplicate.startsWith("data:") ? "base64" : "url",
+        imageUrlType: imageForKie.startsWith("data:") ? "base64" : "url",
       });
       throw new Error(`Модель не смогла отредактировать изображение. Ошибка: ${error.message || "Неизвестная ошибка"}`);
     }
@@ -169,10 +204,22 @@ ${editRequest}
 
     console.log(`✅ [EDIT] Карточка отредактирована: ${editedLocalUrl}`);
 
+    let quotaPayload: { generationUsed?: number; generationRemaining?: number; generationLimit?: number } = {};
+    if (sessionId) {
+      const supabase = createServerClient();
+      const quotaAfter = await incrementVisualQuota(supabase as any, sessionId, 1);
+      quotaPayload = {
+        generationUsed: quotaAfter.used,
+        generationRemaining: quotaAfter.remaining,
+        generationLimit: quotaAfter.limit,
+      };
+    }
+
     return NextResponse.json({
       success: true,
       imageUrl: editedLocalUrl,
       message: "Карточка успешно отредактирована!",
+      ...quotaPayload,
     });
 
   } catch (error: any) {

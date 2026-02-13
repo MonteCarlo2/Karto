@@ -24,7 +24,8 @@ import {
   Upload,
   ChevronDown,
   Plus,
-  Wrench
+  Wrench,
+  Copy
 } from "lucide-react";
 import { BugReportModal } from "@/components/ui/bug-report-modal";
 
@@ -136,6 +137,11 @@ export default function FreeGeneration() {
   // Состояние для профиля
   const [user, setUser] = useState<any>(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [creativeQuota, setCreativeQuota] = useState<{
+    used: number;
+    remaining: number;
+    limit: number;
+  } | null>(null);
   const [hasLoadedFeed, setHasLoadedFeed] = useState(false);
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const feedStorageKey = user?.id ? `karto-feed-${user.id}` : "karto-feed-anon";
@@ -215,6 +221,89 @@ export default function FreeGeneration() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showProfileMenu]);
 
+  // Загружаем остаток генераций для "Свободного творчества"
+  useEffect(() => {
+    if (!user?.id) {
+      setCreativeQuota(null);
+      return;
+    }
+
+    let mounted = true;
+    (async () => {
+      try {
+        const supabase = createBrowserClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token || !mounted) return;
+
+        const response = await fetch("/api/subscription", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!response.ok || !mounted) return;
+
+        const payload = await response.json();
+        if (!mounted) return;
+        const subscription = payload?.subscription;
+
+        if (!subscription || subscription.planType !== "creative") {
+          setCreativeQuota({
+            used: 0,
+            remaining: 0,
+            limit: Number(subscription?.creativeLimit || 0),
+          });
+          return;
+        }
+
+        const limit = Math.max(0, Number(subscription.creativeLimit || 0));
+        const used = Math.max(0, Math.min(limit, Number(subscription.creativeUsed || 0)));
+        setCreativeQuota({
+          used,
+          remaining: Math.max(0, limit - used),
+          limit,
+        });
+      } catch {
+        // Тихая обработка: при ошибке просто не обновляем квоту
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
+
+  const consumeCreativeGeneration = () => {
+    setCreativeQuota((prev) => {
+      if (!prev || prev.remaining <= 0) return prev;
+      const nextRemaining = Math.max(0, prev.remaining - 1);
+      const nextUsed = Math.min(prev.limit, prev.used + 1);
+      if (prev.remaining > 0 && nextRemaining === 0) {
+        setTimeout(() => {
+          showToast({
+            type: "error",
+            title: "Генерации закончились",
+            message:
+              "Вы израсходовали все доступные генерации в тарифе «Свободное творчество».",
+          });
+        }, 0);
+      }
+      return {
+        ...prev,
+        used: nextUsed,
+        remaining: nextRemaining,
+      };
+    });
+  };
+
+  const markCreativeQuotaExhausted = () => {
+    setCreativeQuota((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        used: prev.limit,
+        remaining: 0,
+      };
+    });
+  };
+
   // Выход из аккаунта
   const handleLogout = async () => {
     try {
@@ -240,6 +329,44 @@ export default function FreeGeneration() {
     }
   };
 
+  // Сжимаем референс на клиенте (max 1200px, JPEG), чтобы KIE upload не падал по таймауту
+  const compressReferenceFile = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = document.createElement("img");
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const maxW = 1200;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxW) {
+          h = Math.round((h * maxW) / w);
+          w = maxW;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas not available"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        try {
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+          resolve(dataUrl);
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Failed to load image"));
+      };
+      img.src = url;
+    });
+  };
+
   // Обработчик загрузки референсных изображений (для режима "Свободная")
   const handleReferenceImagesUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -256,19 +383,20 @@ export default function FreeGeneration() {
 
     const filesToProcess = files.slice(0, remainingSlots);
 
-    filesToProcess.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
+    filesToProcess.forEach(async (file) => {
+      try {
+        const dataUrl = await compressReferenceFile(file);
         setReferenceImages((prev) => {
           if (prev.length >= 4) return prev;
-          return [...prev, result];
+          return [...prev, dataUrl];
         });
-      };
-      reader.readAsDataURL(file);
+        showToast({ type: "success", message: "Изображение добавлено в запрос" });
+      } catch (err) {
+        console.error("Ошибка сжатия референса:", err);
+        showToast({ type: "error", message: "Не удалось обработать изображение" });
+      }
     });
 
-    // сбрасываем value, чтобы можно было загрузить те же файлы ещё раз при желании
     e.target.value = "";
   };
 
@@ -625,7 +753,7 @@ export default function FreeGeneration() {
       </div>
 
       {user ? (
-        <div className="fixed top-6 right-6 z-50 profile-menu-container">
+        <div className="fixed top-6 right-6 z-50 profile-menu-container flex flex-col items-center gap-3">
           <button
             onClick={() => setShowProfileMenu(!showProfileMenu)}
             className="flex items-center justify-center w-10 h-10 rounded-full border-2 border-[#2E5A43] hover:bg-gray-100 transition-colors"
@@ -660,6 +788,50 @@ export default function FreeGeneration() {
               </motion.div>
             )}
           </AnimatePresence>
+          {creativeQuota && (
+            <div
+              className="w-fit px-1 py-1"
+              style={{
+                background: "transparent",
+                border: "none",
+                boxShadow: "none",
+              }}
+            >
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-[10px] font-semibold tracking-wide uppercase" style={{ color: "rgba(0, 0, 0, 0.55)" }}>
+                  Генерации
+                </span>
+                <div
+                  className="relative w-7 h-24 rounded-full overflow-hidden"
+                  style={{
+                    background: "linear-gradient(180deg, rgba(226,232,240,0.9) 0%, rgba(203,213,225,0.65) 100%)",
+                    border: "1px solid rgba(15, 23, 42, 0.15)",
+                    boxShadow: "inset 0 2px 6px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(15,23,42,0.12)",
+                  }}
+                >
+                  <div
+                    className="absolute inset-x-0 bottom-0 transition-all duration-500"
+                    style={{
+                      height: `${Math.max(0, Math.min(100, (creativeQuota.remaining / Math.max(1, creativeQuota.limit || 1)) * 100))}%`,
+                      background:
+                        creativeQuota.remaining > 0
+                          ? "linear-gradient(180deg, rgba(74,222,128,0.95) 0%, rgba(46,90,67,0.95) 100%)"
+                          : "linear-gradient(180deg, rgba(248,113,113,0.9) 0%, rgba(239,68,68,0.95) 100%)",
+                      boxShadow: "inset 0 1px 6px rgba(255,255,255,0.35), 0 0 8px rgba(46,90,67,0.25)",
+                    }}
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-[11px] font-bold leading-none" style={{ color: creativeQuota.remaining > 0 ? "#0f172a" : "#7f1d1d" }}>
+                      {creativeQuota.remaining}
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-semibold leading-none" style={{ color: "#2E5A43", opacity: 0.9 }}>
+                  из {creativeQuota.limit}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <Link
@@ -828,22 +1000,15 @@ export default function FreeGeneration() {
                               }
                               
                               try {
-                                // Конвертируем URL в base64 для совместимости с существующей логикой
-                                const response = await fetch(variant.url);
-                                const blob = await response.blob();
-                                const reader = new FileReader();
-                                reader.onloadend = () => {
-                                  const base64 = reader.result as string;
-                                  setReferenceImages(prev => {
-                                    if (prev.length >= 4) return prev;
-                                    return [...prev, base64];
-                                  });
-                                  showToast({
-                                    type: "success",
-                                    message: "Изображение добавлено в запрос",
-                                  });
-                                };
-                                reader.readAsDataURL(blob);
+                                // Для KIE передаем прямой URL референса (без лишней конвертации в base64)
+                                setReferenceImages(prev => {
+                                  if (prev.length >= 4) return prev;
+                                  return [...prev, variant.url];
+                                });
+                                showToast({
+                                  type: "success",
+                                  message: "Изображение добавлено в запрос",
+                                });
                               } catch (error) {
                                 console.error("Ошибка добавления изображения:", error);
                                 showToast({
@@ -925,9 +1090,9 @@ export default function FreeGeneration() {
                       </div>
                     </div>
                     {variant.prompt && variant.prompt.length > 0 && (
-                      <div className="mt-3 px-2">
+                      <div className="mt-3 px-2 group/prompt relative">
                         <p
-                          className="text-sm font-semibold text-gray-800 leading-tight line-clamp-2"
+                          className="text-sm font-semibold text-gray-800 leading-tight line-clamp-2 pr-8"
                           style={{
                             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
                             letterSpacing: '-0.01em',
@@ -936,6 +1101,22 @@ export default function FreeGeneration() {
                         >
                           {variant.prompt}
                         </p>
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              await navigator.clipboard.writeText(variant.prompt ?? "");
+                              showToast({ type: "success", message: "Промпт скопирован" });
+                            } catch {
+                              showToast({ type: "error", message: "Не удалось скопировать" });
+                            }
+                          }}
+                          className="absolute right-0 top-0 w-7 h-7 rounded-md bg-gray-200/80 hover:bg-gray-300 text-gray-600 flex items-center justify-center opacity-0 group-hover/prompt:opacity-100 transition-opacity"
+                          title="Копировать промпт"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     )}
                     </motion.div>
@@ -1244,6 +1425,15 @@ export default function FreeGeneration() {
                   });
                   return;
                 }
+                if (creativeQuota && creativeQuota.remaining <= 0) {
+                  showToast({
+                    type: "error",
+                    title: "Нет доступных генераций",
+                    message:
+                      "У вас закончились генерации в «Свободном творчестве». Выберите тариф на главной странице.",
+                  });
+                  return;
+                }
 
                 // Валидация: промпт обязателен только если не выбран сценарий (для режима "Для товара")
                 if (generationMode === "for-product") {
@@ -1267,13 +1457,15 @@ export default function FreeGeneration() {
                 
                 setIsGeneratingSlide(true);
                 try {
+                  const { data: { session } } = await createBrowserClient().auth.getSession();
+                  const authHeaders: Record<string, string> = { "Content-Type": "application/json" };
+                  if (session?.access_token) authHeaders["Authorization"] = `Bearer ${session.access_token}`;
+
                   if (generationMode === "free") {
                     // Свободная генерация - просто промпт без системных промптов
                     const response = await fetch("/api/generate-free", {
                       method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                      },
+                      headers: authHeaders,
                       body: JSON.stringify({
                         prompt: slidePrompt.trim(),
                         aspectRatio: slideAspectRatio,
@@ -1281,20 +1473,44 @@ export default function FreeGeneration() {
                       }),
                     });
 
+                    const errorData = await response.json().catch(() => ({}));
                     if (!response.ok) {
-                      const errorData = await response.json().catch(() => ({}));
+                      if (response.status === 403) {
+                        markCreativeQuotaExhausted();
+                        showToast({
+                          type: "error",
+                          title: "Нет доступных генераций",
+                          message: errorData.error || "У вас не куплены генерации или число доступных генераций равно 0. Выберите тариф «Свободное творчество» на главной странице.",
+                        });
+                        return;
+                      }
                       throw new Error(errorData.error || "Ошибка при запросе к серверу");
                     }
 
-                    const data = await response.json();
-
+                    const data = errorData;
                     if (!data.success) {
+                      if (data.code === "NO_GENERATIONS_LEFT" || data.code === "NO_CREATIVE_PLAN") {
+                        markCreativeQuotaExhausted();
+                        showToast({
+                          type: "error",
+                          title: "Нет доступных генераций",
+                          message: data.error || "У вас не куплены генерации. Выберите тариф на главной странице.",
+                        });
+                        return;
+                      }
                       throw new Error(data.error || "Ошибка генерации");
                     }
 
                     const generatedImageUrl = data.imageUrl;
+                    consumeCreativeGeneration();
+                    if (data.referenceUsed === false && referenceImages.length > 0) {
+                      showToast({
+                        type: "info",
+                        title: "Референс не загрузился",
+                        message: "Изображение сгенерировано только по описанию. Попробуйте фото меньшего размера или повторите позже.",
+                      });
+                    }
 
-                    // Сохраняем в Supabase напрямую с клиента (если пользователь авторизован)
                     await saveImageToSupabase({
                       imageUrl: generatedImageUrl,
                       prompt: slidePrompt.trim() || null,
@@ -1362,9 +1578,7 @@ export default function FreeGeneration() {
 
                     const response = await fetch("/api/generate-for-product", {
                       method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                      },
+                      headers: authHeaders,
                       body: JSON.stringify({
                         prompt: slidePrompt.trim() || null, // Если промпт пустой, отправляем null
                         aspectRatio: slideAspectRatio,
@@ -1373,18 +1587,36 @@ export default function FreeGeneration() {
                       }),
                     });
 
+                    const errorDataForProduct = await response.json().catch(() => ({}));
                     if (!response.ok) {
-                      const errorData = await response.json().catch(() => ({}));
-                      throw new Error(errorData.error || "Ошибка при запросе к серверу");
+                      if (response.status === 403) {
+                        markCreativeQuotaExhausted();
+                        showToast({
+                          type: "error",
+                          title: "Нет доступных генераций",
+                          message: errorDataForProduct.error || "У вас не куплены генерации или число доступных генераций равно 0. Выберите тариф «Свободное творчество» на главной странице.",
+                        });
+                        return;
+                      }
+                      throw new Error(errorDataForProduct.error || "Ошибка при запросе к серверу");
                     }
 
-                    const data = await response.json();
-
+                    const data = errorDataForProduct;
                     if (!data.success) {
+                      if (data.code === "NO_GENERATIONS_LEFT" || data.code === "NO_CREATIVE_PLAN") {
+                        markCreativeQuotaExhausted();
+                        showToast({
+                          type: "error",
+                          title: "Нет доступных генераций",
+                          message: data.error || "У вас не куплены генерации. Выберите тариф на главной странице.",
+                        });
+                        return;
+                      }
                       throw new Error(data.error || "Ошибка генерации");
                     }
 
                     const generatedImageUrl = data.imageUrl;
+                    consumeCreativeGeneration();
 
                     // Сохраняем в Supabase напрямую с клиента (если пользователь авторизован)
                     await saveImageToSupabase({
@@ -1444,16 +1676,14 @@ export default function FreeGeneration() {
                       }
                     }, 100);
                   }
-                } catch (error: any) {
-                  // Не логируем ошибку в консоль, чтобы не показывать технические детали пользователю
-                  // Для пользователя показываем понятное сообщение, без технических деталей
+                } catch (error: unknown) {
+                  if (error instanceof Error && error.name === "AbortError") return;
                   showToast({
                     type: "error",
-                    title: "Не удалось сгенерировать изображение",
+                    title: "Ошибка генерации",
                     message:
-                      "Ошибка на нашей стороне при генерации изображения. Пожалуйста, попробуйте ещё раз чуть позже.",
+                      "Не удалось сгенерировать изображение. Пожалуйста, попробуйте ещё раз чуть позже.",
                   });
-                  // Очищаем промпт даже при ошибке
                   setSlidePrompt("");
                   setTimeout(() => {
                     const textarea = document.querySelector('textarea[placeholder*="Опишите"]') as HTMLTextAreaElement;
@@ -1511,9 +1741,11 @@ export default function FreeGeneration() {
                   />
                 </div>
                 {viewingPrompt && (
-                  <div className="mt-4 px-4 pb-2 max-w-2xl mx-auto">
+                  <div 
+                    className="mt-4 px-4 pb-2 max-w-2xl mx-auto group/prompt relative"
+                  >
                     <p 
-                      className="text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wide"
+                      className="text-xs font-semibold text-white/90 mb-1.5 uppercase tracking-wide"
                       style={{
                         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
                         letterSpacing: '0.1em',
@@ -1522,15 +1754,44 @@ export default function FreeGeneration() {
                       Промпт
                     </p>
                     <p 
-                      className="text-sm font-medium text-gray-300 leading-relaxed whitespace-pre-wrap break-words line-clamp-3"
+                      className="text-sm text-white leading-relaxed whitespace-pre-wrap break-words line-clamp-3"
                       style={{
                         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
                         letterSpacing: '-0.01em',
                       }}
-                      title={viewingPrompt}
                     >
                       {viewingPrompt}
                     </p>
+                    {/* Микро-окно при наведении: открывается ВВЕРХ над промптом, чтобы было видно */}
+                    <div className="absolute left-0 right-0 bottom-full mb-1 opacity-0 pointer-events-none group-hover/prompt:opacity-100 group-hover/prompt:pointer-events-auto transition-opacity duration-150 z-10">
+                      <div className="rounded-xl shadow-2xl bg-white/95 backdrop-blur-sm py-3 px-4 max-h-72 overflow-y-auto">
+                        <p 
+                          className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap break-words pr-10"
+                          style={{
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                            letterSpacing: '-0.01em',
+                          }}
+                        >
+                          {viewingPrompt}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              await navigator.clipboard.writeText(viewingPrompt ?? "");
+                              showToast({ type: "success", message: "Промпт скопирован" });
+                            } catch {
+                              showToast({ type: "error", message: "Не удалось скопировать" });
+                            }
+                          }}
+                          className="absolute top-3 right-3 w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center"
+                          title="Копировать промпт"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
                 <button

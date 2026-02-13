@@ -32,37 +32,20 @@ export default function PaymentsPolicyPage() {
 
         {/* Main title */}
         <h1 className="text-4xl font-bold text-gray-900 mb-6 text-center" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-          Политика платежей и подписок KARTO
+          Политика платежей и подписок платформы KARTO
         </h1>
 
         {/* Sub-information */}
-        <div className="flex items-center justify-between mb-16 text-sm text-gray-600 max-w-3xl mx-auto" suppressHydrationWarning>
-          <p suppressHydrationWarning>
-            Предварительная версия для периода тестирования платформы
-          </p>
-          <span className="text-gray-400 mx-2">•</span>
-          <p suppressHydrationWarning>
-            Дата обновления: 2026
-          </p>
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mb-16 text-sm text-gray-600 max-w-3xl mx-auto" suppressHydrationWarning>
+          <p suppressHydrationWarning>Версия 1.1</p>
+          <span className="text-gray-400">•</span>
+          <p suppressHydrationWarning>Дата вступления в силу: 13 февраля 2026 года</p>
+          <span className="text-gray-400">•</span>
+          <p suppressHydrationWarning>Оператор: Самозанятый Симонян Эрик Каренович (ИНН 231142064831)</p>
         </div>
 
         {/* Content */}
         <div className="max-w-3xl mx-auto space-y-8 text-gray-800" style={{ fontFamily: 'var(--font-geist-sans), system-ui, sans-serif' }} suppressHydrationWarning>
-          {/* Введение */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              Введение
-            </h2>
-            <div className="space-y-4 text-[15px] leading-6" suppressHydrationWarning>
-              <p suppressHydrationWarning>
-                Настоящая Политика платежей и подписок (далее — «Политика») регулирует порядок оплаты услуг, использования подписок, списания кредитов (лимитов) и проведения финансовых операций на SaaS-платформе KARTO (далее — «Сервис»).
-              </p>
-              <p suppressHydrationWarning>
-                Данная Политика действует в дополнение к Условиям использования. Используя платные функции Сервиса (генерацию карточек, скачивание архивов, покупку дополнительных пакетов), Пользователь принимает условия, изложенные ниже.
-              </p>
-            </div>
-          </section>
-
           {/* Section 1 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
@@ -72,19 +55,19 @@ export default function PaymentsPolicyPage() {
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.1</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Платформа предлагает ограниченный бесплатный функционал и расширенные платные возможности, предоставляемые по системе подписки или разовой покупки пакетов генераций.
+                  Настоящая Политика регулирует порядок оплаты, использования лимитов и возврата средств на платформе KARTO (далее — «Сервис»).
                 </p>
               </div>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.2</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Стоимость подписок, объемы пакетов и условия тарификации могут обновляться администрацией.
+                  Оплата услуг Сервиса является подтверждением того, что Пользователь ознакомлен и согласен с настоящей Политикой и Условиями использования.
                 </p>
               </div>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.3</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Оплата осуществляется через защищенные шлюзы сторонних платёжных операторов. Сервис не обрабатывает ваши платежные данные напрямую.
+                  Все расчеты на территории РФ производятся в российских рублях.
                 </p>
               </div>
             </div>
@@ -93,35 +76,24 @@ export default function PaymentsPolicyPage() {
           {/* Section 2 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              2. Типы платных услуг и валюта Сервиса
+              2. Формат предоставления услуг
             </h2>
             <div className="space-y-5" suppressHydrationWarning>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>2.1. Подписки (Recurrent)</p>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>2.1</p>
                 <p className="mb-2 text-[15px] leading-6" suppressHydrationWarning>
-                  Платформа предоставляет доступ к тарифам с автоматическим продлением:
+                  Сервис предоставляет услуги по двум моделям:
                 </p>
                 <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning>Start/Pro: Ежемесячная подписка с фиксированным лимитом генераций (карточек/видео) и приоритетной скоростью обработки.</li>
-                  <li suppressHydrationWarning>Годовая подписка: Предоставляется со скидкой, оплачивается единовременным платежом.</li>
+                  <li suppressHydrationWarning><strong>Пакетная покупка (Top-ups):</strong> Разовое приобретение определенного количества «Потоков» или генераций в Мастерской.</li>
+                  <li suppressHydrationWarning><strong>Подписка (Recurrent):</strong> Периодический доступ к расширенному функционалу с ежемесячным списанием средств.</li>
                 </ul>
               </div>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>2.2. Кредиты и Пакеты (Top-ups)</p>
-                <p className="mb-2 text-[15px] leading-6" suppressHydrationWarning>
-                  Учитывая ресурсоемкость генерации видео и фото, Сервис может использовать систему внутренних единиц («Кредиты» / «Генерации»):
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>2.2. Срок действия лимитов</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Все приобретенные пакеты генераций и «Потоков» активны в течение 30 (тридцати) календарных дней с момента оплаты. По истечении этого срока неиспользованные лимиты аннулируются без возврата средств и возможности переноса на следующий период.
                 </p>
-                <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning>Кредиты расходуются на создание контента (например, 1 фото = 1 кредит, 1 видео = 10 кредитов).</li>
-                  <li suppressHydrationWarning>Пользователь может докупить пакеты кредитов сверх лимита подписки разовым платежом.</li>
-                </ul>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>2.3. Дополнительные опции</p>
-                <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning>Покупка места в облачном хранилище для исходников.</li>
-                  <li suppressHydrationWarning>Выкуп прав на эксклюзивные шаблоны или индивидуальное обучение модели (Enterprise).</li>
-                </ul>
               </div>
             </div>
           </section>
@@ -129,25 +101,25 @@ export default function PaymentsPolicyPage() {
           {/* Section 3 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              3. Платёжные операторы
+              3. Порядок оплаты и безопасность
             </h2>
             <div className="space-y-5" suppressHydrationWarning>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>3.1</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Прием платежей осуществляется через сертифицированных провайдеров (например: CloudPayments, ЮKassa, Tinkoff Kassa, Stripe или аналогов).
+                  Прием платежей осуществляется через лицензированный российский платежный агрегатор ЮKassa (ООО НКО «Яндекс.Деньги»).
                 </p>
               </div>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>3.2</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Оператор несет ответственность за безопасность транзакции по стандарту PCI DSS.
+                  Оператор не хранит и не обрабатывает данные банковских карт пользователей. Безопасность транзакций обеспечивается платежным оператором по стандарту PCI DSS.
                 </p>
               </div>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>3.3</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  KARTO не хранит полные номера банковских карт и CVC/CVV-коды. Мы храним только зашифрованные токены (идентификаторы) для обеспечения рекуррентных списаний.
+                  В соответствии с законом №54-ФЗ, после совершения оплаты на электронную почту Пользователя отправляется кассовый чек, сформированный через сервис Мой Налог.
                 </p>
               </div>
             </div>
@@ -156,25 +128,25 @@ export default function PaymentsPolicyPage() {
           {/* Section 4 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              4. Автоматическое продление (Автоплатеж)
+              4. Автоматическое продление (Для тарифов с подпиской)
             </h2>
             <div className="space-y-5" suppressHydrationWarning>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>4.1</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Оформляя подписку, Пользователь соглашается на безакцептное списание средств (рекуррентный платеж) за следующий период обслуживания.
+                  При оформлении подписки Пользователь соглашается на автоматическое списание средств за следующий период (рекуррентный платеж).
                 </p>
               </div>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>4.2</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Списание происходит за 24 часа до или в день окончания текущего оплаченного периода.
+                  Отключить автопродление можно в любой момент в Личном кабинете Сервиса не позднее чем за 24 часа до даты следующего списания.
                 </p>
               </div>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>4.3</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Если на карте недостаточно средств, система может предпринимать повторные попытки списания в течение нескольких дней. Доступ к платным функциям (генерации без водяных знаков) приостанавливается до успешной оплаты.
+                  При отмене подписки оплаченный лимит остается доступным до конца 30-дневного периода, после чего сгорает.
                 </p>
               </div>
             </div>
@@ -183,26 +155,34 @@ export default function PaymentsPolicyPage() {
           {/* Section 5 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              5. Отмена подписки
+              5. Условия возврата денежных средств
             </h2>
             <div className="space-y-5" suppressHydrationWarning>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.1</p>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.1. Специфика цифрового контента</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Пользователь может отключить автопродление в любой момент в разделе «Настройки» → «Биллинг» (Billing).
+                  В соответствии со ст. 26.1 Закона «О защите прав потребителей» и учитывая специфику ИИ-технологий, услуга считается оказанной в полном объеме в момент успешного завершения генерации (создания изображения или текста) нейросетью по запросу Пользователя.
                 </p>
               </div>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.2</p>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.2. Затраты на вычисления</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  При отмене подписки доступ к платным функциям сохраняется до конца уже оплаченного срока.
+                  Денежные средства за успешно сгенерированные единицы контента возврату не подлежат, так как на их создание были затрачены невозвратные вычислительные мощности (GPU).
                 </p>
               </div>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.3</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Неиспользованные генерации (кредиты), входящие в ежемесячный пакет, могут сгорать в конце расчетного периода, если условия тарифа не предусматривают их перенос (Rollover).
+                  Возврат возможен только в случае технического сбоя на стороне Сервиса (например, двойное списание), подтвержденного логами системы.
                 </p>
+              </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.4. Отказ в возврате производится, если:</p>
+                <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
+                  <li suppressHydrationWarning>Результат генерации не соответствует эстетическим ожиданиям Пользователя («некрасиво», «не тот стиль»).</li>
+                  <li suppressHydrationWarning>Пользователь не использовал оплаченные лимиты в течение установленного срока (30 дней).</li>
+                  <li suppressHydrationWarning>Аккаунт Пользователя заблокирован за нарушение правил (генерация запрещенного контента, мультиаккаунтинг).</li>
+                </ul>
               </div>
             </div>
           </section>
@@ -210,36 +190,20 @@ export default function PaymentsPolicyPage() {
           {/* Section 6 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              6. Возвраты и качество генерации (Важно)
+              6. Ограничение ответственности
             </h2>
             <div className="space-y-5" suppressHydrationWarning>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.1. Специфика ИИ-услуг</p>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.1</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Пользователь понимает, что услуга считается оказанной в момент завершения генерации изображения или видео нейросетью, независимо от того, понравился ли пользователю результат эстетически.
-                  Затраты вычислительных мощностей (GPU) невозвратны.
+                  Оператор не несет ответственности за невозможность использования Сервиса по причинам, не зависящим от Оператора (отсутствие интернета у пользователя, блокировка банковской карты).
                 </p>
               </div>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.2. Условия возврата</p>
-                <p className="mb-2 text-[15px] leading-6" suppressHydrationWarning>
-                  Возврат средств возможен только в случаях:
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.2</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Оператор вправе изменять стоимость услуг, уведомляя об этом пользователей через интерфейс сайта или email.
                 </p>
-                <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning>Технического сбоя биллинга (двойное списание).</li>
-                  <li suppressHydrationWarning>Полной неработоспособности Сервиса более 24 часов.</li>
-                </ul>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.3. Отказ в возврате</p>
-                <p className="mb-2 text-[15px] leading-6" suppressHydrationWarning>
-                  Возврат не производится, если:
-                </p>
-                <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning>Пользователя не устроило качество креатива («Нейросеть нарисовала некрасиво»).</li>
-                  <li suppressHydrationWarning>Пользователь забыл отменить подписку до даты списания.</li>
-                  <li suppressHydrationWarning>Аккаунт был заблокирован за нарушение правил (генерация запрещенного контента).</li>
-                </ul>
               </div>
             </div>
           </section>
@@ -247,127 +211,25 @@ export default function PaymentsPolicyPage() {
           {/* Section 7 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              7. Пробные периоды
+              7. Контакты по финансовым вопросам
             </h2>
-            <div className="space-y-5" suppressHydrationWarning>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>7.1</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Для новых пользователей может быть доступен Trial-период (например, 3 дня или 10 бесплатных генераций).
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>7.2</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  При активации триала может потребоваться привязка карты. Если подписка не отменена до конца триала, произойдет списание за полный месяц.
-                </p>
-              </div>
-            </div>
+            <p className="text-[15px] leading-6" suppressHydrationWarning>
+              Все обращения по вопросам платежей и возвратов принимаются на электронную почту: aiora.help@mail.ru.
+            </p>
+            <p className="text-[15px] leading-6 mt-2" suppressHydrationWarning>
+              Срок рассмотрения заявки — до 10 рабочих дней.
+            </p>
           </section>
 
           {/* Section 8 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              8. Налогообложение
-            </h2>
-            <div className="space-y-5" suppressHydrationWarning>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>8.1</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Для резидентов РФ стоимость услуг не облагается НДС (в связи с применением УСН или иного спецрежима), если не указано иное в чеке.
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>8.2</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Сервис формирует электронный чек в соответствии с законодательством РФ (54-ФЗ) и отправляет его на email.
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 9 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              9. Ограничения использования
-            </h2>
-            <div className="space-y-5" suppressHydrationWarning>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>9.1</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Покупка подписки не дает права нарушать Политику использования ИИ (генерировать дипфейки, контрафакт и т.д.).
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>9.2</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  В случае блокировки аккаунта за нарушение правил (например, за абьюз системы через мультиаккаунты), остаток средств и кредитов аннулируется без возмещения.
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 10 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              10. Изменения цен
-            </h2>
-            <div className="space-y-5" suppressHydrationWarning>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>10.1</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  KARTO вправе изменять тарифную сетку по мере добавления новых функций.
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>10.2</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Для действующих подписчиков цена не меняется до конца оплаченного периода. О повышении цен на следующий период Пользователь уведомляется по email или в интерфейсе.
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 11 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              11. Безопасность
-            </h2>
-            <div className="space-y-5" suppressHydrationWarning>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>11.1</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Все платежные страницы защищены протоколом SSL/TLS.
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>11.2</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Сервис применяет автоматические системы анти-фрода для предотвращения использования краденых карт.
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 12 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              12. Контакты по вопросам платежей
-            </h2>
-            <p className="text-[15px] leading-6" suppressHydrationWarning>
-              По вопросам списаний, закрывающих документов (для юрлиц) и возвратов пишите на: support@karto.ru (или актуальный email).
-            </p>
-          </section>
-
-          {/* Section 13 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              13. Реквизиты
+              8. Реквизиты
             </h2>
             <div className="space-y-2 text-[15px] leading-6" suppressHydrationWarning>
-              <p suppressHydrationWarning>Индивидуальный предприниматель: Симонян Эрик Каренович</p>
+              <p suppressHydrationWarning>Исполнитель: Самозанятый Симонян Эрик Каренович</p>
               <p suppressHydrationWarning>ИНН: 231142064831</p>
-              <p suppressHydrationWarning>Юридический статус: Действующий</p>
+              <p suppressHydrationWarning>Юридический статус: Плательщик налога на профессиональный доход</p>
             </div>
           </section>
         </div>

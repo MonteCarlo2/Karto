@@ -8,6 +8,7 @@ import Image from "next/image";
 import { Logo } from "@/components/ui/logo";
 import { useRouter } from "next/navigation";
 import { useNotification } from "@/components/ui/notification";
+import { createBrowserClient } from "@/lib/supabase/client";
 
 // Статичный эффект рельефной бумаги
 function CanvasTexture({ patternAlpha = 12 }: { patternAlpha?: number }) {
@@ -848,16 +849,18 @@ export default function UnderstandingPage() {
                                             const finalProductName = analysisResult.names[selectedNameIndex];
                                             if (!finalProductName) return;
 
-                                            let currentSessionId = localStorage.getItem("karto_session_id");
-                                            if (!currentSessionId) {
-                                              currentSessionId = crypto.randomUUID();
-                                              localStorage.setItem("karto_session_id", currentSessionId);
-                                            }
+                                            // Важно: session_id должен создаваться сервером.
+                                            // Если локально его нет, отправляем null, чтобы сервер
+                                            // корректно создал новую сессию и списал 1 поток.
+                                            const currentSessionId = localStorage.getItem("karto_session_id");
 
                                             try {
+                                              const { data: { session } } = await createBrowserClient().auth.getSession();
+                                              const headers: Record<string, string> = { "Content-Type": "application/json" };
+                                              if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
                                               const response = await fetch("/api/supabase/save-understanding", {
                                                 method: "POST",
-                                                headers: { "Content-Type": "application/json" },
+                                                headers,
                                                 body: JSON.stringify({
                                                   session_id: currentSessionId,
                                                   product_name: finalProductName,
@@ -866,10 +869,15 @@ export default function UnderstandingPage() {
                                                 }),
                                               });
 
-                                              // Проверяем статус ответа
+                                              // Для ожидаемых бизнес-ошибок не бросаем exception,
+                                              // чтобы не провоцировать dev-overlay в браузере.
                                               if (!response.ok) {
                                                 const errorData = await response.json().catch(() => ({ error: "Неизвестная ошибка сервера" }));
-                                                throw new Error(errorData.error || `Ошибка сервера: ${response.status}`);
+                                                showNotification(
+                                                  errorData.error || `Ошибка сервера: ${response.status}`,
+                                                  "error"
+                                                );
+                                                return;
                                               }
 
                                               const data = await response.json();
@@ -881,14 +889,12 @@ export default function UnderstandingPage() {
                                                 }
                                                 router.push("/studio/description");
                                               } else {
-                                                console.error("❌ Ошибка сохранения данных:", data.error);
                                                 showNotification(
                                                   data.error || "Ошибка сохранения данных. Попробуйте еще раз.",
                                                   "error"
                                                 );
                                               }
                                             } catch (error: any) {
-                                              console.error("Ошибка при сохранении:", error);
                                               let errorMessage = "Ошибка соединения. Проверьте подключение к интернету.";
                                               
                                               if (error.message) {
@@ -1486,15 +1492,13 @@ export default function UnderstandingPage() {
                               if (!productName.trim()) return;
                               
                               try {
-                                // Получаем session_id из localStorage или создаем новый
                                 let sessionId = localStorage.getItem("karto_session_id");
-                                
-                                // Сохраняем данные в Supabase
+                                const { data: { session } } = await createBrowserClient().auth.getSession();
+                                const headers: Record<string, string> = { "Content-Type": "application/json" };
+                                if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
                                 const response = await fetch("/api/supabase/save-understanding", {
                                   method: "POST",
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
+                                  headers,
                                   body: JSON.stringify({
                                     session_id: sessionId || null,
                                     product_name: productName.trim(),
@@ -1503,10 +1507,15 @@ export default function UnderstandingPage() {
                                   }),
                                 });
                                 
-                                // Проверяем статус ответа
+                                // Для ожидаемых бизнес-ошибок не бросаем exception,
+                                // чтобы не провоцировать dev-overlay в браузере.
                                 if (!response.ok) {
                                   const errorData = await response.json().catch(() => ({ error: "Неизвестная ошибка сервера" }));
-                                  throw new Error(errorData.error || `Ошибка сервера: ${response.status}`);
+                                  showNotification(
+                                    errorData.error || `Ошибка сервера: ${response.status}`,
+                                    "error"
+                                  );
+                                  return;
                                 }
                                 
                                 const data = await response.json();
@@ -1522,14 +1531,12 @@ export default function UnderstandingPage() {
                                     router.push("/studio/description");
                                   }, 500);
                                 } else {
-                                  console.error("Ошибка сохранения:", data.error);
                                   showNotification(
                                     data.error || "Ошибка сохранения данных. Попробуйте еще раз.",
                                     "error"
                                   );
                                 }
                               } catch (error: any) {
-                                console.error("Ошибка при сохранении:", error);
                                 let errorMessage = "Ошибка соединения. Проверьте подключение к интернету.";
                                 
                                 if (error.message) {

@@ -1,22 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateDesignConcepts } from "@/lib/services/style-concept-generator";
 import { getProductNamesFromReplicateGPT4oMini } from "@/lib/services/replicate";
+import { createServerClient } from "@/lib/supabase/server";
+import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
 
 /**
  * Генерация 4 карточек одновременно с уникальными концепциями
  */
 export async function POST(request: NextRequest) {
   console.log("🚀 [BATCH] ========== НАЧАЛО BATCH ГЕНЕРАЦИИ ==========");
-  
-  // Проверяем наличие API ключа
-  if (!process.env.REPLICATE_API_TOKEN) {
-    console.error("❌ [BATCH] REPLICATE_API_TOKEN не настроен!");
-    return NextResponse.json({
-      success: false,
-      error: "REPLICATE_API_TOKEN не настроен",
-      details: "Добавьте REPLICATE_API_TOKEN в файл .env.local",
-    }, { status: 500 });
-  }
 
   try {
     console.log("📥 [BATCH] Получаю body запроса...");
@@ -24,6 +16,7 @@ export async function POST(request: NextRequest) {
     console.log("📥 [BATCH] Body получен, ключи:", Object.keys(body));
     
     const {
+      sessionId,
       productName,
       photoUrl,
       customPrompt, // Пожелания к стилю
@@ -41,10 +34,32 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (!sessionId) {
+      return NextResponse.json(
+        { success: false, error: "sessionId обязателен для генерации визуала" },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createServerClient();
+    const quotaBefore = await getVisualQuota(supabase as any, sessionId);
+    if (quotaBefore.remaining <= 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Лимит генераций в Потоке исчерпан (0 из 12).",
+          code: "VISUAL_LIMIT_REACHED",
+          generationUsed: quotaBefore.used,
+          generationRemaining: quotaBefore.remaining,
+          generationLimit: quotaBefore.limit,
+        },
+        { status: 403 }
+      );
+    }
 
     // Проверка соответствия товара на фото и названия (защита от злоупотребления)
-    // Используем Replicate для распознавания, так как у нас есть REPLICATE_API_TOKEN
-    if (photoUrl) {
+    // Если ключ Replicate отсутствует — просто пропускаем этот защитный шаг.
+    if (photoUrl && process.env.REPLICATE_API_TOKEN) {
       try {
         console.log("🔍 [BATCH] Проверяю соответствие товара на фото и названия через Replicate...");
         
@@ -96,6 +111,8 @@ export async function POST(request: NextRequest) {
         console.warn("⚠️ [BATCH] Не удалось проверить соответствие товара:", error.message);
         console.warn("⚠️ [BATCH] Продолжаем генерацию без проверки...");
       }
+    } else if (photoUrl) {
+      console.log("ℹ️ [BATCH] Проверка соответствия через Replicate пропущена: REPLICATE_API_TOKEN не настроен");
     }
 
     console.log("🎨 [BATCH] Генерация 4 дизайн-концепций через OpenRouter...");
@@ -129,17 +146,28 @@ export async function POST(request: NextRequest) {
     }
 
     // Генерируем карточки (максимум 4, используем все доступные концепции)
-    const cardsToGenerate = Math.min(count, 4, concepts.length);
+    const cardsToGenerate = Math.min(count, 4, concepts.length, quotaBefore.remaining);
+    if (cardsToGenerate <= 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Нет доступных генераций в Потоке.",
+          code: "VISUAL_LIMIT_REACHED",
+          generationUsed: quotaBefore.used,
+          generationRemaining: quotaBefore.remaining,
+          generationLimit: quotaBefore.limit,
+        },
+        { status: 403 }
+      );
+    }
     console.log(`🎯 [BATCH] Генерируем ${cardsToGenerate} карточек с уникальными концепциями`);
-    const cardPromises = concepts.slice(0, cardsToGenerate).map(async (concept, index) => {
+
+    const generateOne = async (index: number): Promise<string | null> => {
+      const concept = concepts[index];
       try {
-        console.log(`🖼️ [BATCH] Генерация карточки ${index + 1}/${cardsToGenerate}...`);
-        
         const response = await fetch(`${request.nextUrl.origin}/api/generate-card`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             productName,
             photoUrl,
@@ -149,28 +177,34 @@ export async function POST(request: NextRequest) {
             bullets,
             aspectRatio,
             variation: index,
-            designConcept: concept, // Передаем готовую концепцию
+            designConcept: concept,
           }),
         });
-
         const data = await response.json();
-
-        if (!response.ok || !data.success) {
-          throw new Error(data.error || `Ошибка генерации карточки ${index + 1}`);
-        }
-
-        console.log(`✅ [BATCH] Карточка ${index + 1}/${cardsToGenerate} сгенерирована`);
+        if (!response.ok || !data.success) throw new Error(data.error || `Ошибка карточки ${index + 1}`);
         return data.imageUrl;
       } catch (error: any) {
-        console.error(`❌ Ошибка генерации карточки ${index + 1}:`, error);
-        return null; // Возвращаем null для неудачных генераций
+        console.error(`❌ Ошибка генерации карточки ${index + 1}:`, error?.message || error);
+        return null;
       }
-    });
+    };
 
-    // Ждем все карточки
-    const cardUrls = await Promise.all(cardPromises);
-    
-    // Фильтруем null (неудачные генерации)
+    let cardUrls: (string | null)[] = await Promise.all(
+      concepts.slice(0, cardsToGenerate).map((_, index) => generateOne(index))
+    );
+
+    // Повторная попытка для упавших (один раз)
+    const failedIndices = cardUrls
+      .map((url, i) => (url === null ? i : -1))
+      .filter((i) => i >= 0);
+    if (failedIndices.length > 0) {
+      console.log(`🔄 [BATCH] Повторная попытка для ${failedIndices.length} карточек:`, failedIndices.map((i) => i + 1));
+      const retries = await Promise.all(failedIndices.map((index) => generateOne(index)));
+      failedIndices.forEach((origIndex, i) => {
+        if (retries[i] !== null) cardUrls[origIndex] = retries[i];
+      });
+    }
+
     const successfulCards = cardUrls.filter((url): url is string => url !== null);
 
     if (successfulCards.length === 0) {
@@ -181,6 +215,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ Успешно сгенерировано ${successfulCards.length}/${cardsToGenerate} карточек`);
+    const quotaAfter = await incrementVisualQuota(supabase as any, sessionId, successfulCards.length);
 
     return NextResponse.json({
       success: true,
@@ -192,6 +227,9 @@ export async function POST(request: NextRequest) {
         mood: c.mood,
       })),
       message: `Сгенерировано ${successfulCards.length} карточек`,
+      generationUsed: quotaAfter.used,
+      generationRemaining: quotaAfter.remaining,
+      generationLimit: quotaAfter.limit,
     });
 
   } catch (error: any) {

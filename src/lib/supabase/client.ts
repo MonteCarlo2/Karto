@@ -1,10 +1,14 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
+
+let _browserClient: SupabaseClient | null = null;
 
 /**
- * Создает клиентский клиент Supabase для использования в браузере
+ * Создает клиентский клиент Supabase для использования в браузере.
+ * Использует синглтон, чтобы избежать множественных экземпляров GoTrueClient.
  * Настроен для сохранения сессии в cookies (для синхронизации с сервером)
  */
 export function createBrowserClient() {
+  if (_browserClient) return _browserClient;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -20,7 +24,7 @@ export function createBrowserClient() {
   // Извлекаем project ref из URL для правильного имени cookie
   const projectRef = supabaseUrl.match(/https?:\/\/([^.]+)\.supabase\.co/)?.[1] || 'default';
   
-  return createClient(supabaseUrl, supabaseAnonKey, {
+  _browserClient = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       storage: typeof window !== 'undefined' ? {
         getItem: (key: string) => {
@@ -72,4 +76,5 @@ export function createBrowserClient() {
       detectSessionInUrl: true,
     },
   });
+  return _browserClient;
 }

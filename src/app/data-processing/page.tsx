@@ -32,108 +32,88 @@ export default function DataProcessingPage() {
 
         {/* Main title */}
         <h1 className="text-4xl font-bold text-gray-900 mb-6 text-center" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-          Политика по обработке данных пользователей KARTO
+          Политика по обработке данных пользователей платформы KARTO
         </h1>
 
         {/* Sub-information */}
-        <div className="flex items-center justify-between mb-16 text-sm text-gray-600 max-w-3xl mx-auto" suppressHydrationWarning>
-          <p suppressHydrationWarning>
-            Предварительная версия для периода тестирования платформы
-          </p>
-          <span className="text-gray-400 mx-2">•</span>
-          <p suppressHydrationWarning>
-            Дата обновления: 2026
-          </p>
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mb-16 text-sm text-gray-600 max-w-3xl mx-auto" suppressHydrationWarning>
+          <p suppressHydrationWarning>Версия 1.1 (Расширенная)</p>
+          <span className="text-gray-400">•</span>
+          <p suppressHydrationWarning>Дата вступления в силу: 13 февраля 2026 года</p>
+          <span className="text-gray-400">•</span>
+          <p suppressHydrationWarning>Оператор: Самозанятый Симонян Эрик Каренович, ИНН 231142064831</p>
         </div>
 
         {/* Content */}
         <div className="max-w-3xl mx-auto space-y-8 text-gray-800" style={{ fontFamily: 'var(--font-geist-sans), system-ui, sans-serif' }} suppressHydrationWarning>
-          {/* Введение */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              Введение
-            </h2>
-            <div className="space-y-4 text-[15px] leading-6" suppressHydrationWarning>
-              <p suppressHydrationWarning>
-                Настоящая Политика по обработке данных пользователей (далее — «Политика») устанавливает порядок, цели, методы и условия обработки данных Пользователей и их товарного контента (далее — «Данные»), поступающих в адрес платформы KARTO (далее — «Компания», «Сервис»).
-              </p>
-              <p suppressHydrationWarning>
-                Политика действует в дополнение к Политике конфиденциальности, Условиям использования и Политике использования ИИ.
-              </p>
-            </div>
-          </section>
-
           {/* Section 1 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              1. Термины и определения
+              1. Общие положения
             </h2>
-            <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-              <li suppressHydrationWarning>Обработка данных — любое действие с данными Пользователя: сбор, запись, хранение, структурирование, передача на сервера генерации, удаление, обезличивание.</li>
-              <li suppressHydrationWarning>Товарные данные — информация о товарах Пользователя (фотографии, видео, описания, характеристики, артикулы, цены), загружаемая для создания карточек.</li>
-              <li suppressHydrationWarning>Исходные материалы — «сырые» медиафайлы (RAW-фото, видеофрагменты), загружаемые Пользователем для обработки.</li>
-              <li suppressHydrationWarning>ИИ-обработка — автоматизированный анализ изображений (Computer Vision), генерация текста (LLM) и синтез медиа (Diffusion models).</li>
-              <li suppressHydrationWarning>Рендеринг — процесс создания финального изображения или видео из исходных материалов с применением вычислительных мощностей.</li>
-            </ul>
+            <div className="space-y-5" suppressHydrationWarning>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.1</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Настоящая Политика (далее — «Политика») определяет порядок и условия обработки данных, включая персональные данные и пользовательский контент, на платформе KARTO (далее — «Сервис»).
+                </p>
+              </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.2</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Оператор ставит своей важнейшей целью соблюдение прав и свобод человека при обработке его персональных данных, в том числе защиты прав на неприкосновенность частной жизни и личную тайну.
+                </p>
+              </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.3</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Настоящая Политика применяется ко всей информации, которую Оператор может получить о посетителях веб-сайта karto.pro.
+                </p>
+              </div>
+            </div>
           </section>
 
           {/* Section 2 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              2. Цели обработки данных
+              2. Термины и определения
             </h2>
-            <p className="mb-2 text-[15px] leading-6" suppressHydrationWarning>
-              Компания обрабатывает данные Пользователя для следующих целей:
-            </p>
             <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-              <li suppressHydrationWarning>обеспечение работы редактора карточек и инструментов генерации;</li>
-              <li suppressHydrationWarning>визуальный анализ товаров: автоматическое определение цвета, формы и категории товара по фото;</li>
-              <li suppressHydrationWarning>предоставление доступа к генеративным ИИ-функциям (удаление фона, создание инфографики);</li>
-              <li suppressHydrationWarning>оптимизация алгоритмов генерации (улучшение качества масок обтравки, цветокоррекции);</li>
-              <li suppressHydrationWarning>техническое хранение проектов Пользователя (хостинг изображений и видео);</li>
-              <li suppressHydrationWarning>выполнение обязательств перед Пользователем (экспорт готовых материалов);</li>
-              <li suppressHydrationWarning>поддержка безопасности и предотвращение загрузки запрещенного контента.</li>
+              <li suppressHydrationWarning><strong>ИИ-алгоритмы:</strong> системы машинного обучения, используемые для сегментации изображений, генерации визуальных эффектов и синтеза текстов.</li>
+              <li suppressHydrationWarning><strong>Товарная матрица:</strong> совокупность загруженных Пользователем данных о товарах (фото, описания, цены).</li>
+              <li suppressHydrationWarning><strong>Метаданные:</strong> служебная информация, скрытая в файлах (EXIF-данные фото, геометрия объектов).</li>
+              <li suppressHydrationWarning><strong>Обезличивание:</strong> действия, в результате которых невозможно без использования дополнительной информации определить принадлежность данных конкретному Пользователю.</li>
             </ul>
           </section>
 
           {/* Section 3 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              3. Категории обрабатываемых данных
+              3. Категории и объем обрабатываемых данных
             </h2>
             <div className="space-y-5" suppressHydrationWarning>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>3.1. Персональные данные</p>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>3.1. Персональные данные:</p>
                 <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning>электронная почта (логин);</li>
-                  <li suppressHydrationWarning>данные аккаунта (роль: селлер, дизайнер, менеджер);</li>
-                  <li suppressHydrationWarning>история оплат и статус подписки;</li>
-                  <li suppressHydrationWarning>настройки интерфейса (выбранные маркетплейсы, язык).</li>
+                  <li suppressHydrationWarning>Адрес электронной почты (используется как уникальный идентификатор аккаунта);</li>
+                  <li suppressHydrationWarning>Имя или никнейм пользователя;</li>
+                  <li suppressHydrationWarning>Данные о платежных транзакциях (номер транзакции, дата, сумма), поступающие от агрегатора ЮKassa.</li>
                 </ul>
               </div>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>3.2. Товарный контент (Специфика KARTO)</p>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>3.2. Технические данные:</p>
                 <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning>загруженные фотографии товаров (включая метаданные файлов EXIF);</li>
-                  <li suppressHydrationWarning>видеофайлы и аудиодорожки;</li>
-                  <li suppressHydrationWarning>текстовые характеристики (состав, габариты, бренд);</li>
-                  <li suppressHydrationWarning>логотипы и элементы фирменного стиля (брендбуки).</li>
+                  <li suppressHydrationWarning>IP-адрес, тип браузера, операционная система;</li>
+                  <li suppressHydrationWarning>Файлы cookies;</li>
+                  <li suppressHydrationWarning>История логов взаимодействия с редактором (время сессии, количество нажатий на функции генерации).</li>
                 </ul>
               </div>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>3.3. Технические данные</p>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>3.3. Пользовательский контент:</p>
                 <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning>данные браузера, IP-адрес, тип устройства;</li>
-                  <li suppressHydrationWarning>телеметрия редактора (время, затраченное на создание карточки, используемые инструменты);</li>
-                  <li suppressHydrationWarning>логи ошибок генерации (сбои GPU, ошибки API).</li>
-                </ul>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>3.4. Системные данные ИИ</p>
-                <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning>текстовые промпты (запросы на генерацию);</li>
-                  <li suppressHydrationWarning>маски изображений (какую область фото изменить);</li>
-                  <li suppressHydrationWarning>сгенерированные черновики и финальные варианты.</li>
+                  <li suppressHydrationWarning>Исходные фотографии товаров в форматах JPEG, PNG, WEBP и др.;</li>
+                  <li suppressHydrationWarning>Текстовые промпты (запросы на генерацию);</li>
+                  <li suppressHydrationWarning>Результаты работы ИИ (готовые карточки товаров, SEO-тексты).</li>
                 </ul>
               </div>
             </div>
@@ -142,40 +122,59 @@ export default function DataProcessingPage() {
           {/* Section 4 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              4. Правовые основания обработки данных
+              4. Цели обработки данных
             </h2>
-            <p className="mb-2 text-[15px] leading-6" suppressHydrationWarning>
-              Данные обрабатываются на основании:
-            </p>
-            <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-              <li suppressHydrationWarning>согласия Пользователя (регистрация, загрузка файлов);</li>
-              <li suppressHydrationWarning>исполнения договора (предоставление услуги генерации контента);</li>
-              <li suppressHydrationWarning>законных интересов Компании (защита от парсинга, улучшение продукта);</li>
-              <li suppressHydrationWarning>выполнения требований закона (хранение финансовых документов).</li>
-            </ul>
+            <div className="space-y-5" suppressHydrationWarning>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>4.1</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Предоставление доступа к функционалу генеративного дизайна и автоматизации карточек товаров.
+                </p>
+              </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>4.2</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Техническая реализация процесса удаления и замены фона на изображениях с использованием GPU-мощностей.
+                </p>
+              </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>4.3</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Улучшение точности работы нейросетей Оператора через анализ ошибок генерации (на основе обезличенных выборок).
+                </p>
+              </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>4.4</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Информирование пользователя о статусе готовности генерации или изменениях в тарифах через электронную почту.
+                </p>
+              </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>4.5</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Обеспечение безопасности Сервиса и предотвращение несанкционированного доступа к аккаунтам.
+                </p>
+              </div>
+            </div>
           </section>
 
           {/* Section 5 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              5. Способы обработки данных
+              5. Правовые основания обработки
             </h2>
             <div className="space-y-5" suppressHydrationWarning>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.1. Автоматизированная обработка (основной метод)</p>
-                <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning>Анализ изображений нейросетями (детектирование объектов, сегментация);</li>
-                  <li suppressHydrationWarning>Векторизация текста для поиска релевантных описаний;</li>
-                  <li suppressHydrationWarning>Автоматическая фильтрация запрещенного контента (NSFW-фильтры);</li>
-                  <li suppressHydrationWarning>Распределенный рендеринг на GPU-кластерах.</li>
-                </ul>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.1</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Основанием для обработки является согласие Пользователя, выраженное путем регистрации на сайте и принятия условий данной Политики.
+                </p>
               </div>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.2. Неавтоматизированная обработка</p>
-                <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning>Выборочная проверка качества генерации специалистами QA (на обезличенных данных) для настройки моделей;</li>
-                  <li suppressHydrationWarning>Обработка обращений в поддержку (доступ к конкретному проекту по запросу Пользователя).</li>
-                </ul>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.2</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Оператор обрабатывает данные только в случае их заполнения и/или отправки Пользователем самостоятельно через формы на сайте.
+                </p>
               </div>
             </div>
           </section>
@@ -183,48 +182,59 @@ export default function DataProcessingPage() {
           {/* Section 6 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              6. Передача данных третьим лицам
+              6. Порядок сбора, хранения и передачи данных
             </h2>
-            <p className="mb-2 text-[15px] leading-6" suppressHydrationWarning>
-              Для обеспечения работы "тяжелых" генеративных функций Компания может передавать данные:
-            </p>
-            <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-              <li suppressHydrationWarning>Облачным провайдерам хранилищ (S3): для хранения больших массивов фото и видео.</li>
-              <li suppressHydrationWarning>Провайдерам GPU-мощностей: зашифрованные исходные файлы передаются на сервера рендеринга для выполнения генерации.</li>
-              <li suppressHydrationWarning>Партнерам по ИИ (API): обезличенные запросы передаются провайдерам LLM для генерации текстов.</li>
-            </ul>
-            <p className="mt-4 text-[15px] leading-6" suppressHydrationWarning>
-              Мы гарантируем, что передаются только данные, технически необходимые для выполнения конкретной операции (например, генерации картинки).
-            </p>
+            <div className="space-y-5" suppressHydrationWarning>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.1. Локализация</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  В соответствии с законом №152-ФЗ, сбор и хранение данных граждан РФ осуществляются на территории России (центр обработки данных Timeweb Cloud).
+                </p>
+              </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.2. Безопасность</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Доступ к данным ограничен. Оператор использует шифрование TLS для передачи данных и AES для хранения критически важной информации.
+                </p>
+              </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.3. Передача ИИ-партнерам</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Для генерации контента Оператор может передавать обезличенные данные (текстовые запросы или зашифрованные изображения) провайдерам вычислительных мощностей. При этом персональные данные (email) таким партнерам не передаются.
+                </p>
+              </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.4. Сроки</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Данные хранятся в течение срока активности аккаунта. В случае отсутствия активности более 6 месяцев, тяжелые медиафайлы могут быть архивированы.
+                </p>
+              </div>
+            </div>
           </section>
 
           {/* Section 7 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              7. Условия хранения данных
+              7. Права пользователя
             </h2>
             <div className="space-y-5" suppressHydrationWarning>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>7.1</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Товарный контент (фото/видео) хранится в течение всего срока действия активной подписки Пользователя.
+                  Пользователь имеет право в любой момент изменить или удалить свои данные через настройки профиля.
                 </p>
               </div>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>7.2</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Политика "Холодного хранения": Если аккаунт неактивен более 6 месяцев (нет входов и оплат), Компания вправе архивировать или удалить тяжелые медиафайлы (исходники видео) для оптимизации ресурсов, предварительно уведомив Пользователя.
+                  Пользователь имеет право запросить у Оператора информацию о том, какие его данные хранятся в системе, направив запрос на aiora.help@mail.ru.
                 </p>
               </div>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>7.3</p>
-                <p className="mb-2 text-[15px] leading-6" suppressHydrationWarning>
-                  При удалении аккаунта:
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Срок исполнения запроса на удаление данных — не более 10 рабочих дней.
                 </p>
-                <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning>Персональные данные удаляются немедленно.</li>
-                  <li suppressHydrationWarning>Медиафайлы удаляются с серверов хранения в течение 30 дней (техническая задержка на удаление из бэкапов).</li>
-                </ul>
               </div>
             </div>
           </section>
@@ -232,122 +242,61 @@ export default function DataProcessingPage() {
           {/* Section 8 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              8. Меры защиты данных
+              8. Удаление данных и отзыв согласия
             </h2>
-            <p className="mb-2 text-[15px] leading-6" suppressHydrationWarning>
-              Компания применяет:
-            </p>
-            <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-              <li suppressHydrationWarning>Изоляцию проектов: файлы одного Пользователя технически недоступны другим Пользователям;</li>
-              <li suppressHydrationWarning>Шифрование данных при передаче (TLS 1.3) и хранении (AES-256);</li>
-              <li suppressHydrationWarning>Защиту от Hotlinking (прямых ссылок на ваши изображения с чужих ресурсов);</li>
-              <li suppressHydrationWarning>Регулярные бэкапы баз данных товарных матриц.</li>
-            </ul>
+            <div className="space-y-5" suppressHydrationWarning>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>8.1</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Пользователь может отозвать согласие на обработку данных, направив письмо на электронную почту Оператора.
+                </p>
+              </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>8.2</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  При удалении аккаунта Оператор гарантирует полную очистку серверов от медиафайлов пользователя в течение 30 календарных дней (с учетом времени на очистку резервных копий).
+                </p>
+              </div>
+            </div>
           </section>
 
           {/* Section 9 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              9. Обработка чувствительных и запрещённых данных
-            </h2>
-            <p className="mb-3 text-[15px] leading-6" suppressHydrationWarning>
-              Сервис предназначен исключительно для товарного контента.
-            </p>
-            <p className="mb-2 text-[15px] leading-6" suppressHydrationWarning>
-              Запрещено загружать и обрабатывать:
-            </p>
-            <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-              <li suppressHydrationWarning>фотографии документов (паспорта, права, банковские карты);</li>
-              <li suppressHydrationWarning>медицинские снимки или биометрию;</li>
-              <li suppressHydrationWarning>личные фото третьих лиц без их согласия (кроме профессиональных моделей);</li>
-              <li suppressHydrationWarning>коммерческую тайну, не предназначенную для публичного размещения на маркетплейсах.</li>
-            </ul>
-            <p className="mt-4 text-[15px] leading-6" suppressHydrationWarning>
-              Если Пользователь загружает такие данные, он делает это на свой страх и риск. Алгоритмы ИИ могут непреднамеренно обработать их как обычное изображение.
-            </p>
-          </section>
-
-          {/* Section 10 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              10. Взаимодействие с ИИ-моделями
+              9. Заключительные положения
             </h2>
             <div className="space-y-5" suppressHydrationWarning>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>10.1</p>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>9.1</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Загруженные фото преобразуются в математические векторы (эмбеддинги) для обработки.
+                  Настоящая Политика действует бессрочно до замены её новой версией.
                 </p>
               </div>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>10.2</p>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>9.2</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Мы не используем ваши товарные фото для обучения открытых публичных моделей (Foundation Models), которые могут воспроизвести ваш товар для конкурентов.
+                  Оператор имеет право вносить изменения в Политику без предварительного уведомления. Новая редакция вступает в силу с момента публикации на сайте.
                 </p>
               </div>
               <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>10.3</p>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>9.3</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Данные могут использоваться для дообучения (Fine-tuning) внутренних узкоспециализированных инструментов (например, "инструмент удаления вешалки с одежды"), но только в агрегированном виде.
+                  По всем вопросам, не урегулированным в настоящей Политике, стороны руководствуются действующим законодательством РФ.
                 </p>
               </div>
             </div>
           </section>
 
-          {/* Section 11 */}
+          {/* Контакты */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              11. Права Пользователя
+              Контакты Оператора
             </h2>
-            <p className="mb-2 text-[15px] leading-6" suppressHydrationWarning>
-              Пользователь имеет право:
-            </p>
-            <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-              <li suppressHydrationWarning>Экспортировать все свои проекты (карточки, тексты) в универсальных форматах (JPG, PNG, CSV);</li>
-              <li suppressHydrationWarning>Требовать полного удаления своих исходных материалов с серверов обучения;</li>
-              <li suppressHydrationWarning>Запросить лог действий с аккаунтом.</li>
-            </ul>
-          </section>
-
-          {/* Section 12 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              12. Удаление и архивирование
-            </h2>
-            <div className="space-y-5" suppressHydrationWarning>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>12.1</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Пользователь может удалить отдельные проекты или весь аккаунт через настройки.
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>12.2</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  После удаления аккаунта ссылка на сгенерированные изображения перестанет работать. Пользователь обязан скачать контент до удаления.
-                </p>
-              </div>
+            <div className="text-[15px] leading-6 space-y-1" suppressHydrationWarning>
+              <p suppressHydrationWarning>Симонян Эрик Каренович</p>
+              <p suppressHydrationWarning>ИНН: 231142064831</p>
+              <p suppressHydrationWarning>Email: aiora.help@mail.ru</p>
             </div>
-          </section>
-
-          {/* Section 13 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              13. Изменения Политики
-            </h2>
-            <p className="text-[15px] leading-6" suppressHydrationWarning>
-              Компания может обновлять Политику, особенно при внедрении новых типов генерации (например, 3D-моделей или AR). Актуальная версия всегда доступна на сайте.
-            </p>
-          </section>
-
-          {/* Section 14 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              14. Контактная информация
-            </h2>
-            <p className="text-[15px] leading-6" suppressHydrationWarning>
-              По вопросам безопасности данных и управления контентом пишите на email службы поддержки или через чат на платформе.
-            </p>
           </section>
         </div>
       </div>

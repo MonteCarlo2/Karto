@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { ToastProvider } from "@/components/ui/toast";
+import { AbortErrorSuppressor } from "@/components/ui/abort-error-suppressor";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -39,6 +40,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <ToastProvider>
+          <AbortErrorSuppressor />
           <Navbar />
           <main
             className="flex-grow flex flex-col w-full overflow-x-hidden"

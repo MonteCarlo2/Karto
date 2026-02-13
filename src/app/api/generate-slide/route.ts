@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateWithNanobanana } from "@/lib/services/nanobanana";
+import { generateWithKieAi } from "@/lib/services/kie-ai";
 import { 
   downloadImage, 
   getPublicUrl,
 } from "@/lib/services/image-processing";
 import path from "path";
 import fs from "fs/promises";
+import { createServerClient } from "@/lib/supabase/server";
+import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
 
 /**
  * Генерация слайда для серии карточек
@@ -13,11 +15,11 @@ import fs from "fs/promises";
  */
 export async function POST(request: NextRequest) {
   // Проверяем наличие API ключа
-  if (!process.env.REPLICATE_API_TOKEN) {
+  if (!process.env.KIE_AI_API_KEY && !process.env.KIE_API_KEY) {
     return NextResponse.json({
       success: false,
-      error: "REPLICATE_API_TOKEN не настроен",
-      details: "Добавьте REPLICATE_API_TOKEN в файл .env.local",
+      error: "KIE_AI_API_KEY не настроен",
+      details: "Добавьте KIE_AI_API_KEY (или KIE_API_KEY) в файл .env.local",
     }, { status: 500 });
   }
 
@@ -25,6 +27,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     
     const {
+      sessionId,
       productName,
       referenceImageUrl, // Референсное изображение товара из первого слайда
       environmentImageUrl, // Референсное изображение обстановки из первого слайда (опционально)
@@ -47,11 +50,34 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (!sessionId) {
+      return NextResponse.json(
+        { success: false, error: "sessionId обязателен для генерации визуала" },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createServerClient();
+    const quotaBefore = await getVisualQuota(supabase as any, sessionId);
+    if (quotaBefore.remaining <= 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Лимит генераций в Потоке исчерпан (0 из 12).",
+          code: "VISUAL_LIMIT_REACHED",
+          generationUsed: quotaBefore.used,
+          generationRemaining: quotaBefore.remaining,
+          generationLimit: quotaBefore.limit,
+        },
+        { status: 403 }
+      );
+    }
 
     // Подготовка изображений для API (товар + обстановка)
+    // Для KIE можно передавать base64 или URL, сервис сам загрузит их в file upload endpoint.
     let imagesForApi: string[] = [];
     
-    // Функция для конвертации изображения в base64
+    // Функция для конвертации изображения в data URL (KIE получает только data URL или публичный https — без localhost)
     const convertImageToBase64 = async (imageUrl: string): Promise<string | null> => {
       try {
         // Если это base64, используем как есть
@@ -65,12 +91,31 @@ export async function POST(request: NextRequest) {
           return imageUrl;
         }
         
-        // Если это публичный URL, используем его
+        // Если это http(s) localhost — читаем с диска и отдаём data URL (KIE не дергает localhost)
         if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+          try {
+            const u = new URL(imageUrl);
+            if (u.hostname === "localhost" || u.hostname === "127.0.0.1") {
+              const localPath = path.join(process.cwd(), "public", u.pathname);
+              await fs.access(localPath);
+              const buffer = await fs.readFile(localPath);
+              if (buffer.length > 10 * 1024 * 1024) return null;
+              let mimeType = "image/jpeg";
+              const header = buffer.slice(0, 4);
+              if (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47) mimeType = "image/png";
+              else if (header[0] === 0xFF && header[1] === 0xD8 && header[2] === 0xFF) mimeType = "image/jpeg";
+              else {
+                const ext = path.extname(u.pathname).toLowerCase();
+                if (ext === ".png") mimeType = "image/png";
+                else if (ext === ".webp") mimeType = "image/webp";
+              }
+              return `data:${mimeType};base64,${buffer.toString("base64")}`;
+            }
+          } catch (_) { /* fallback: use URL as is */ }
           return imageUrl;
         }
         
-        // Если это локальный URL, конвертируем в base64
+        // Если это локальный путь, конвертируем в base64
         const localPath = imageUrl.startsWith("/") 
           ? path.join(process.cwd(), "public", imageUrl)
           : imageUrl;
@@ -125,7 +170,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Обновляем промпт для использования обстановки из первого слайда
+    // Обстановка: либо референс второго изображения, либо явный запрет копировать фон с первого
     let environmentReference = "";
     if (environmentImageUrl) {
       environmentReference = `\n\n=== РЕФЕРЕНС ОБСТАНОВКИ ===
@@ -134,9 +179,12 @@ export async function POST(request: NextRequest) {
 - Товар должен быть размещен в ТОЙ ЖЕ обстановке, что на референсном изображении
 - Используй те же предметы интерьера, декор, фон, если это уместно
 - Сохрани общий стиль и атмосферу референсного изображения обстановки`;
+    } else {
+      environmentReference = `\n\n=== НЕ ИСПОЛЬЗОВАТЬ ОБСТАНОВКУ С РЕФЕРЕНСА ===
+КРИТИЧЕСКИ ВАЖНО: На референсе передан только ОДИН снимок (товар на фоне). НЕ копируй с него обстановку, фон, декор или окружение. Игнорируй фон на референсе полностью. Создай НОВУЮ обстановку СТРОГО по сценарию съемки ниже.`;
     }
 
-    // Формируем промпт на основе сценария
+    // Формируем промпт на основе сценария (обязательное применение выбранного сценария)
     let scenarioPrompt = "";
     
     switch (scenario) {
@@ -207,8 +255,10 @@ export async function POST(request: NextRequest) {
 - НЕ наклоняй товар, НЕ поворачивай его - сохрани ТОЧНО ту же ориентацию, что на исходном изображении!
 - Товар должен быть узнаваемым и соответствовать исходному изображению и названию "${productName}"
 
-=== СЦЕНАРИЙ СЪЕМКИ ===
+=== СЦЕНАРИЙ СЪЕМКИ (ОБЯЗАТЕЛЬНО ПРИМЕНИ) ===
+КРИТИЧЕСКИ ВАЖНО: Сценарий ниже ОБЯЗАТЕЛЕН к применению. Не игнорируй его. Результат должен строго соответствовать сценарию.
 ${scenarioPrompt}${environmentReference}${userDescription}
+ФИНАЛЬНОЕ НАПОМИНАНИЕ: Итоговая фотография должна строго соответствовать выбранному сценарию съемки выше.
 
 === КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА ===
 1. ТОВАР:
@@ -258,26 +308,27 @@ ${scenarioPrompt}${environmentReference}${userDescription}
     console.log("  - Референс обстановки:", environmentImageUrl ? "да" : "нет");
     console.log("═══════════════════════════════════════");
     
-    // Генерируем через Nanobanana Pro
+    // Генерируем через KIE (nano-banana-pro)
     const finalAspectRatio = aspectRatio || "3:4";
     
     console.log("📐 Final Aspect Ratio:", finalAspectRatio);
     console.log("🖼️ Image Inputs:", imagesForApi.length);
     console.log("📏 Длина промпта:", finalPrompt.length, "символов");
     
-    // Генерируем через Nanobanana Pro с изображением(ями)
+    // Генерируем через KIE с изображением(ями)
     let generatedImageUrl: string;
     
     try {
-      generatedImageUrl = await generateWithNanobanana(
+      const result = await generateWithKieAi(
         finalPrompt,
-        imagesForApi.length > 0 ? (imagesForApi.length === 1 ? imagesForApi[0] : imagesForApi) : undefined, // Референсные изображения
+        imagesForApi.length > 0 ? (imagesForApi.length === 1 ? imagesForApi[0] : imagesForApi) : undefined,
         finalAspectRatio,
         "png"
       );
+      generatedImageUrl = result.imageUrl;
       console.log("✅ Генерация успешна");
     } catch (error: any) {
-      console.error("❌ Ошибка в generateWithNanobanana:", error);
+      console.error("❌ Ошибка в generateWithKieAi:", error);
       throw new Error(`Модель не смогла сгенерировать изображение. Ошибка: ${error.message || "Неизвестная ошибка"}`);
     }
     
@@ -287,10 +338,15 @@ ${scenarioPrompt}${environmentReference}${userDescription}
 
     console.log(`✅ Слайд сгенерирован: ${generatedLocalUrl}`);
 
+    const quotaAfter = await incrementVisualQuota(supabase as any, sessionId, 1);
+
     return NextResponse.json({
       success: true,
       imageUrl: generatedLocalUrl,
       message: "Слайд создан!",
+      generationUsed: quotaAfter.used,
+      generationRemaining: quotaAfter.remaining,
+      generationLimit: quotaAfter.limit,
     });
 
   } catch (error: any) {
@@ -300,11 +356,11 @@ ${scenarioPrompt}${environmentReference}${userDescription}
     const errorString = String(error);
     
     if (errorString.includes("401") || errorString.includes("Unauthorized")) {
-      errorMessage = "Ошибка авторизации. Проверьте REPLICATE_API_TOKEN";
+      errorMessage = "Ошибка авторизации. Проверьте KIE_AI_API_KEY";
     } else if (errorString.includes("429")) {
       errorMessage = "Превышен лимит запросов. Подождите минуту.";
     } else if (errorString.includes("insufficient") || errorString.includes("402")) {
-      errorMessage = "Недостаточно средств на Replicate";
+      errorMessage = "Недостаточно средств на KIE";
     }
     
     return NextResponse.json({

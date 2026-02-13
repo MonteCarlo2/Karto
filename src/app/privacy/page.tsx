@@ -72,19 +72,13 @@ export default function PrivacyPage() {
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.1</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Компания предоставляет доступ к Сервису, специализирующемуся на автоматизации создания контента для электронной коммерции (маркетплейсов), включая ИИ-функции генерации инфографики и текстов.
+                  Оператором персональных данных является Симонян Эрик Каренович (ИНН 231142064831).
                 </p>
               </div>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.2</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Настоящая Политика создана в соответствии с общими требованиями к защите данных и направлена на прозрачное объяснение того, как мы работаем с вашими товарными матрицами и медиафайлами.
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.3</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Компания обязуется обеспечивать конфиденциальность информации Пользователя и принимать разумные технические меры защиты, особенно в отношении исходных материалов (фотографий товаров).
+                  Оператор обязуется обеспечивать конфиденциальность информации Пользователя и принимать необходимые технические меры защиты в соответствии с законодательством РФ.
                 </p>
               </div>
             </div>
@@ -182,12 +176,17 @@ export default function PrivacyPage() {
             <p className="mb-2 text-[15px] leading-6" suppressHydrationWarning>
               Мы не продаем ваши данные. Передача возможна только техническим партнерам, обеспечивающим работу сервиса:
             </p>
-            <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
+            <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6 mb-5" suppressHydrationWarning>
               <li suppressHydrationWarning>Провайдеры ИИ-моделей: Обезличенные текстовые запросы и изображения могут передаваться через API партнерам (например, провайдерам LLM или генеративных сетей) исключительно для выполнения задачи генерации.</li>
               <li suppressHydrationWarning>Облачные хранилища: Загруженные вами тяжелые медиафайлы (видео, фото в высоком разрешении) хранятся на защищенных серверах облачных провайдеров.</li>
-              <li suppressHydrationWarning>Платежные шлюзы: Для обработки оплаты подписки (мы не храним полные данные ваших карт).</li>
               <li suppressHydrationWarning>Правовые требования: В случаях, предусмотренных законодательством.</li>
             </ul>
+            <div suppressHydrationWarning>
+              <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.3</p>
+              <p className="text-[15px] leading-6" suppressHydrationWarning>
+                Платежные шлюзы: Для обработки оплаты используется сервис ЮKassa (ООО НКО «Яндекс.Деньги»). Оператор не собирает и не хранит данные банковских карт пользователей.
+              </p>
+            </div>
           </section>
 
           {/* Section 6 */}
@@ -199,7 +198,7 @@ export default function PrivacyPage() {
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.1</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Мы храним ваши сгенерированные карточки и историю проектов до тех пор, пока активен ваш аккаунт, чтобы вы могли вернуться к ним в любой момент.
+                  Первоначальный сбор, систематизация и хранение персональных данных пользователей (Email, IP-адрес) осуществляются на серверах, расположенных на территории Российской Федерации (провайдер Timeweb Cloud).
                 </p>
               </div>
               <div suppressHydrationWarning>
@@ -219,6 +218,12 @@ export default function PrivacyPage() {
                   При удалении аккаунта Пользователем, все загруженные медиафайлы и сгенерированные проекты удаляются безвозвратно в течение 30 дней.
                 </p>
               </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.4</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Оператор обязуется рассмотреть любой запрос об удалении данных в течение 10 рабочих дней с момента получения обращения на почту aiora.help@mail.ru.
+                </p>
+              </div>
             </div>
           </section>
 
@@ -232,7 +237,7 @@ export default function PrivacyPage() {
             </p>
             <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
               <li suppressHydrationWarning>выгрузить все сгенерированные материалы (экспорт проектов);</li>
-              <li suppressHydrationWarning>удалить свои исходные фотографии с серверов компании;</li>
+              <li suppressHydrationWarning>удалить свои исходные фотографии с серверов Оператора;</li>
               <li suppressHydrationWarning>запросить полное удаление аккаунта и персональных данных;</li>
               <li suppressHydrationWarning>отозвать согласие на получение маркетинговых рассылок.</li>
             </ul>
@@ -243,13 +248,21 @@ export default function PrivacyPage() {
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
               8. Использование файлов Cookies
             </h2>
-            <p className="text-base leading-7" suppressHydrationWarning>
-              Сервис применяет cookies для:
-            </p>
-            <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6 mt-3" suppressHydrationWarning>
-              <li suppressHydrationWarning>поддержания авторизации во время работы над проектом;</li>
-              <li suppressHydrationWarning>сохранения настроек редактора карточек.</li>
-            </ul>
+            <div className="space-y-5" suppressHydrationWarning>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>8.1</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Использование Сервиса подразумевает согласие Пользователя на сбор куки-файлов. Пользователь уведомлен об этом через всплывающий баннер при первом посещении сайта.
+                </p>
+              </div>
+              <p className="text-base leading-7 mt-4" suppressHydrationWarning>
+                Сервис применяет cookies для:
+              </p>
+              <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
+                <li suppressHydrationWarning>поддержания авторизации во время работы над проектом;</li>
+                <li suppressHydrationWarning>сохранения настроек редактора карточек.</li>
+              </ul>
+            </div>
           </section>
 
           {/* Section 9 */}
@@ -268,7 +281,7 @@ export default function PrivacyPage() {
               10. Изменения Политики
             </h2>
             <p className="text-base leading-7" suppressHydrationWarning>
-              Компания может обновлять Политику по мере добавления новых функций (например, интеграции по API с кабинетом селлера Wildberries). Продолжение использования Сервиса означает согласие с изменениями.
+              Оператор может обновлять Политику по мере добавления новых функций (например, интеграции по API с кабинетом селлера Wildberries). Продолжение использования Сервиса означает согласие с изменениями.
             </p>
           </section>
 

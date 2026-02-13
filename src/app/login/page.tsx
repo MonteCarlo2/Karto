@@ -26,6 +26,7 @@ export default function LoginPage() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
   const [isSendingReset, setIsSendingReset] = useState(false);
+  const [consentPersonalData, setConsentPersonalData] = useState(false);
 
   // Функции валидации пароля
   const checkPasswordRequirements = (pwd: string) => {
@@ -258,6 +259,8 @@ export default function LoginPage() {
           options: {
             data: {
               name: name,
+              consent_personal_data: true,
+              consent_personal_data_at: new Date().toISOString(),
             },
             emailRedirectTo: `${window.location.origin}/`,
           },
@@ -276,15 +279,7 @@ export default function LoginPage() {
           setEmail("");
           setPassword("");
           setConfirmPassword("");
-          // Переключаемся на вкладку входа
-          setIsLogin(true);
-          
-          // Очищаем форму
-          setName("");
-          setEmail("");
-          setPassword("");
-          setConfirmPassword("");
-          // Переключаемся на вкладку входа
+          setConsentPersonalData(false);
           setIsLogin(true);
         } else if (error) {
           throw error;
@@ -536,6 +531,7 @@ export default function LoginPage() {
                 setError(null);
                 setName("");
                 setConfirmPassword("");
+                setConsentPersonalData(false);
               }}
               className={`relative z-10 flex-1 py-2 px-3 rounded-md font-bold text-base transition-colors duration-300 ${
                 !isLogin
@@ -761,6 +757,32 @@ export default function LoginPage() {
               </div>
             )}
 
+            {/* Согласие на обработку персональных данных — только для регистрации */}
+            {!isLogin && (
+              <label className="flex items-start gap-3 cursor-pointer group" suppressHydrationWarning>
+                <input
+                  type="checkbox"
+                  checked={consentPersonalData}
+                  onChange={(e) => setConsentPersonalData(e.target.checked)}
+                  className="mt-1 w-5 h-5 rounded border-gray-300 text-[#1F4E3D] focus:ring-[#1F4E3D] focus:ring-offset-0 cursor-pointer flex-shrink-0"
+                  suppressHydrationWarning
+                />
+                <span className="text-sm text-gray-700 leading-snug" suppressHydrationWarning>
+                  Даю согласие на обработку моих персональных данных в соответствии с{" "}
+                  <Link
+                    href="/consent-personal-data"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#1F4E3D] font-medium underline underline-offset-2 hover:text-[#2E5A43] transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    соглашением
+                  </Link>
+                  .
+                </span>
+              </label>
+            )}
+
             {/* Ошибка */}
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
@@ -778,6 +800,7 @@ export default function LoginPage() {
                 (!isLogin && (
                   !name ||
                   !confirmPassword ||
+                  !consentPersonalData ||
                   !isValidEmail(email) ||
                   !passwordRequirements?.minLength ||
                   !passwordRequirements?.hasUpperCase ||

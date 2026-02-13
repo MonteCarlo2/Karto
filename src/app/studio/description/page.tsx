@@ -373,10 +373,10 @@ export default function DescriptionPage() {
         console.error("❌ Неверный формат ответа или пустые варианты:", data);
         alert("Ошибка: описания не были сгенерированы. Проверьте консоль для деталей и попробуйте еще раз.");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === "AbortError") return;
       console.error("❌ Ошибка генерации:", error);
-      console.error("❌ Детали ошибки:", error?.message, error?.stack);
-      alert(`Ошибка соединения: ${error?.message || "Проверьте подключение к интернету и попробуйте еще раз"}`);
+      alert(`Ошибка соединения: ${error instanceof Error ? error.message : "Проверьте подключение к интернету и попробуйте еще раз"}`);
     } finally {
       setIsGenerating(false);
     }

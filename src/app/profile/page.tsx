@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
@@ -26,6 +27,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useNotification } from "@/components/ui/notification";
+import type { SubscriptionState } from "@/lib/subscription";
 
 type Project = {
   id: string;
@@ -69,7 +71,35 @@ export default function ProfilePage() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [updating, setUpdating] = useState(false);
-  
+  const [subscription, setSubscription] = useState<SubscriptionState | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      setSubscription(null);
+      return;
+    }
+    let mounted = true;
+    (async () => {
+      try {
+        const supabase = createBrowserClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token || !mounted) return;
+        const res = await fetch("/api/subscription", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!mounted) return;
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!mounted) return;
+        setSubscription(data.subscription || null);
+      } catch {
+        if (!mounted) return;
+        setSubscription(null);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [user]);
+
   // Функции для проверки пароля (как в login/page.tsx)
   const checkPasswordRequirements = (pwd: string) => {
     return {
@@ -657,6 +687,26 @@ export default function ProfilePage() {
             >
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Мой аккаунт</h2>
               <p className="text-gray-600 mb-6 -mt-4">Управляйте информацией вашего аккаунта.</p>
+
+              {/* Ваши услуги */}
+              {subscription && (
+                <div className="mb-6 p-4 rounded-xl bg-[#F5F5F0] border border-[#2E5A43]/20">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-[#2E5A43]" />
+                    Ваши услуги
+                  </h3>
+                  {subscription.planType === "flow" ? (
+                    <p className="text-sm text-gray-800">
+                      Поток: осталось <strong>{Math.max(0, subscription.flowsLimit - subscription.flowsUsed)}</strong> из {subscription.flowsLimit}.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-gray-800">
+                      Свободное творчество: осталось <strong>{Math.max(0, subscription.creativeLimit - subscription.creativeUsed)}</strong> из {subscription.creativeLimit} генераций.
+                    </p>
+                  )}
+                  <Link href="/#pricing" className="text-xs text-[#2E5A43] hover:underline mt-1 inline-block">Сменить тариф</Link>
+                </div>
+              )}
 
               {/* Основная информация */}
               <div className="space-y-5">

@@ -78,6 +78,12 @@ export default function TermsPage() {
                   Условия действуют независимо от того, используете ли вы Сервис в рамках бесплатного пробного периода или платной подписки.
                 </p>
               </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.5</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Оплата пакетов генераций является акцептом (принятием) настоящего договора.
+                </p>
+              </div>
             </div>
           </section>
 
@@ -241,6 +247,12 @@ export default function TermsPage() {
                   Личные данные обрабатываются согласно Политике конфиденциальности. Мы не передаем ваши исходные фото товаров третьим лицам для использования в их карточках.
                 </p>
               </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.4</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Обработка и хранение персональных данных пользователей (Email, IP-адрес) осуществляется на серверах, расположенных на территории Российской Федерации. Персональные данные не передаются за пределы РФ (отсутствие трансграничной передачи).
+                </p>
+              </div>
             </div>
           </section>
 
@@ -274,6 +286,12 @@ export default function TermsPage() {
                   Пользователь самостоятельно несет ответственность за проверку фактической информации (размеры, состав, комплектация) в сгенерированном тексте перед публикацией.
                 </p>
               </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>7.4</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Услуга считается оказанной в полном объеме в момент завершения технического процесса генерации контента (текста или изображения) в интерфейсе Сервиса. Возврат денежных средств за уже сгенерированные единицы контента не производится.
+                </p>
+              </div>
             </div>
           </section>
 
@@ -293,6 +311,12 @@ export default function TermsPage() {
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>8.2</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
                   KARTO оставляет за собой право удалить аккаунт без возврата средств (при наличии подписки) в случае грубого нарушения правил (например, генерация запрещенного законодательством контента).
+                </p>
+              </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>8.3</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Приобретенные пакеты «Потоков» и генераций в Мастерской имеют ограниченный срок действия — 30 (тридцать) календарных дней с момента оплаты. По истечении этого срока неиспользованные остатки аннулируются без возврата средств.
                 </p>
               </div>
             </div>
@@ -324,15 +348,19 @@ export default function TermsPage() {
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
               10. Юридический статус и контакты
             </h2>
-            <div className="space-y-4" suppressHydrationWarning>
-              <p className="text-[15px] leading-6" suppressHydrationWarning>
-                Проект KARTO находится в стадии активной разработки и предварительного запуска (Beta).
-                До момента официальной регистрации юридического лица или оформления статуса ИП, сервис предоставляется в режиме тестирования технологии.
-              </p>
-              <p className="text-[15px] leading-6" suppressHydrationWarning>
-                Вопросы и обращения принимаются через службу поддержки, указанную на сайте платформы.
-                После официального запуска в данный раздел будут добавлены полные реквизиты.
-              </p>
+            <div className="space-y-5" suppressHydrationWarning>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>10.1</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Исполнителем является самозанятый Симонян Эрик Каренович, ИНН 231142064831.
+                </p>
+              </div>
+              <div suppressHydrationWarning>
+                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>10.2</p>
+                <p className="text-[15px] leading-6" suppressHydrationWarning>
+                  Все претензии и обращения направляются на электронную почту: aiora.help@mail.ru. Срок ответа на запросы пользователей составляет 10 рабочих дней.
+                </p>
+              </div>
             </div>
           </section>
         </div>

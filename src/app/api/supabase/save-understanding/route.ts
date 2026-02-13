@@ -1,6 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { createServerClientWithAuth } from "@/lib/supabase/server-auth";
+import { getSubscriptionByUserId } from "@/lib/subscription";
+
+/** Получить user id: сначала из Authorization, затем из cookies */
+async function getUserIdFromRequest(request: NextRequest, supabase: ReturnType<typeof createServerClient>): Promise<string | null> {
+  const authHeader = request.headers.get("authorization");
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+  if (token) {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (!error && user?.id) return user.id;
+  }
+  try {
+    const supabaseAuth = await createServerClientWithAuth();
+    if (supabaseAuth) {
+      const { data: { user } } = await supabaseAuth.auth.getUser();
+      if (user?.id) return user.id;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
 
 /**
  * Сохранение данных этапа "Понимание" в Supabase
@@ -50,8 +71,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Если session_id передан, проверяем, совпадает ли товар
+    // Если session_id передан, сначала валидируем, что такая сессия реально существует.
+    // Иначе считаем это новым запуском Потока.
     let finalSessionId = session_id;
+    if (finalSessionId) {
+      const { data: existingSession, error: sessionCheckError } = await supabase
+        .from("product_sessions")
+        .select("id")
+        .eq("id", finalSessionId)
+        .maybeSingle();
+
+      if (sessionCheckError || !existingSession) {
+        finalSessionId = null;
+      }
+    }
+
+    // Если session_id валиден и передан, проверяем, совпадает ли товар
     if (finalSessionId) {
       const { data: existingData, error: fetchError } = await supabase
         .from("understanding_data")
@@ -67,18 +102,44 @@ export async function POST(request: NextRequest) {
       // Если товар изменился (название отличается), создаем новую сессию
       if (existingData && existingData.product_name !== product_name.trim()) {
         console.log("🔄 Товар изменился, создаем новую сессию...");
-        // Получаем текущего пользователя из cookies
-        let userId = null;
-        try {
-          const supabaseAuth = await createServerClientWithAuth();
-          if (supabaseAuth) {
-            const { data: { user } } = await supabaseAuth.auth.getUser();
-            userId = user?.id || null;
-          }
-        } catch (error) {
-          console.log("⚠️ Не удалось получить пользователя, продолжаем без user_id");
+        const userId = await getUserIdFromRequest(request, supabase);
+        if (!userId) {
+          return NextResponse.json(
+            { error: "Войдите в аккаунт, чтобы начать Поток" },
+            { status: 403 }
+          );
         }
-        
+        const sub = await getSubscriptionByUserId(supabase as any, userId);
+        if (!sub) {
+          return NextResponse.json(
+            { error: "Выберите тариф (Поток или Свободное творчество) на главной" },
+            { status: 403 }
+          );
+        }
+        if (sub.plan_type === "creative") {
+          return NextResponse.json(
+            { error: "Поток не куплен. У вас подключено Свободное творчество." },
+            { status: 403 }
+          );
+        }
+        if (sub.flows_used >= sub.plan_volume) {
+          const flowsLeft = Math.max(0, sub.plan_volume - sub.flows_used);
+          return NextResponse.json(
+            { error: "Лимит потоков исчерпан. Доступно потоков: " + flowsLeft + "." },
+            { status: 403 }
+          );
+        }
+        const { error: updErr } = await supabase
+          .from("user_subscriptions")
+          .update({ flows_used: sub.flows_used + 1 })
+          .eq("user_id", userId);
+        if (updErr) {
+          console.error("Ошибка списания потока:", updErr);
+          return NextResponse.json(
+            { error: "Ошибка списания потока" },
+            { status: 500 }
+          );
+        }
         // Создаем новую сессию для нового товара
         const { data: newSession, error: sessionError } = await supabase
           .from("product_sessions")
@@ -143,23 +204,49 @@ export async function POST(request: NextRequest) {
       }
       // Если товар тот же, не трогаем данные описания (они должны сохраниться при обновлении страницы)
     } else {
-      // Если session_id не передан, создаем новую сессию
-      // Получаем текущего пользователя из cookies
-      let userId = null;
-      try {
-        const supabaseAuth = await createServerClientWithAuth();
-        if (supabaseAuth) {
-          const { data: { user } } = await supabaseAuth.auth.getUser();
-          userId = user?.id || null;
-        }
-      } catch (error) {
-        console.log("⚠️ Не удалось получить пользователя, продолжаем без user_id");
+      // Если session_id не передан, создаем новую сессию (новый поток)
+      const userId = await getUserIdFromRequest(request, supabase);
+      if (!userId) {
+        return NextResponse.json(
+          { error: "Войдите в аккаунт, чтобы начать Поток" },
+          { status: 403 }
+        );
       }
-      
+      const sub = await getSubscriptionByUserId(supabase as any, userId);
+      if (!sub) {
+        return NextResponse.json(
+          { error: "Выберите тариф (Поток или Свободное творчество) на главной" },
+          { status: 403 }
+        );
+      }
+      if (sub.plan_type === "creative") {
+        return NextResponse.json(
+          { error: "Поток не куплен. У вас подключено Свободное творчество." },
+          { status: 403 }
+        );
+      }
+      if (sub.flows_used >= sub.plan_volume) {
+        const flowsLeft = Math.max(0, sub.plan_volume - sub.flows_used);
+        return NextResponse.json(
+          { error: "Лимит потоков исчерпан. Доступно потоков: " + flowsLeft + "." },
+          { status: 403 }
+        );
+      }
+      const { error: updErr } = await supabase
+        .from("user_subscriptions")
+        .update({ flows_used: sub.flows_used + 1 })
+        .eq("user_id", userId);
+      if (updErr) {
+        console.error("Ошибка списания потока:", updErr);
+        return NextResponse.json(
+          { error: "Ошибка списания потока" },
+          { status: 500 }
+        );
+      }
       const { data: newSession, error: sessionError } = await supabase
         .from("product_sessions")
         .insert({
-          user_id: userId, // Связываем с пользователем, если авторизован
+          user_id: userId,
         })
         .select("id")
         .single();

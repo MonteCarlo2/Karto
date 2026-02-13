@@ -3,13 +3,11 @@
  * Использует Claude 4.5 Sonnet через OpenRouter для генерации качественных описаний
  */
 
-// Получаем API ключ из переменных окружения или используем дефолтный (если есть)
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "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";
+// Используем только ключ из окружения (без fallback), чтобы не маскировать проблемы конфигурации
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-// Модель Claude 4.5 Sonnet на OpenRouter (как в инструкции на скриншоте)
-// В OpenRouter она называется именно так:
-//   model: "anthropic/claude-sonnet-4.5"
+// Возвращаем исходную рабочую модель
 const MODEL = "anthropic/claude-sonnet-4.5";
 
 function sleep(ms: number): Promise<void> {
@@ -99,7 +97,10 @@ ${wantsStickers ? `ВАЖНО: Добавь простые эмодзи (сти�
 Напиши описание:`;
 
   try {
-    console.log(`🔄 [СТИЛЬ ${style}] Запускаем streaming запрос к OpenRouter...`);
+    if (!OPENROUTER_API_KEY) {
+      throw new Error("OPENROUTER_API_KEY не настроен в .env.local");
+    }
+    console.log(`🔄 [СТИЛЬ ${style}] Запускаем запрос к OpenRouter...`);
     console.log(`🔄 [СТИЛЬ ${style}] Длина промпта: ${userPrompt.length} символов`);
     
     // Формируем запрос для OpenRouter (совместимый с OpenAI API)
@@ -115,19 +116,17 @@ ${wantsStickers ? `ВАЖНО: Добавь простые эмодзи (сти�
           content: userPrompt,
         },
       ],
-      stream: true,
+      stream: false,
       temperature: 0.7,
       max_tokens: 2000,
     };
 
     // Делаем запрос с retry логикой
-    let stream: ReadableStream<Uint8Array> | null = null;
-    let streamAttempts = 0;
-    const maxStreamAttempts = 3;
-
-    while (streamAttempts < maxStreamAttempts) {
+    let attempts = 0;
+    const maxAttempts = 3;
+    while (attempts < maxAttempts) {
       try {
-        console.log(`🔄 [СТИЛЬ ${style}] Создаем streaming запрос (попытка ${streamAttempts + 1}/${maxStreamAttempts})...`);
+        console.log(`🔄 [СТИЛЬ ${style}] Запрос к OpenRouter (попытка ${attempts + 1}/${maxAttempts})...`);
         
         const response = await fetch(OPENROUTER_API_URL, {
           method: "POST",
@@ -146,7 +145,7 @@ ${wantsStickers ? `ВАЖНО: Добавь простые эмодзи (сти�
           
           // Если это rate limit, пробуем снова
           if (response.status === 429) {
-            streamAttempts++;
+            attempts++;
             const retryAfter = response.headers.get("retry-after");
             const delay = retryAfter ? parseInt(retryAfter) * 1000 : 10000;
             console.log(`⏳ [СТИЛЬ ${style}] Rate limit (429), ждем ${delay/1000}s перед повтором...`);
@@ -157,99 +156,43 @@ ${wantsStickers ? `ВАЖНО: Добавь простые эмодзи (сти�
           throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
         }
 
-        if (!response.body) {
-          throw new Error("Response body is null");
+        const data = await response.json();
+        let content = data?.choices?.[0]?.message?.content;
+
+        // Некоторые модели могут вернуть content массивом частей
+        if (Array.isArray(content)) {
+          content = content
+            .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+            .join("");
         }
 
-        stream = response.body;
-        console.log(`🔄 [СТИЛЬ ${style}] Streaming объект создан успешно!`);
-        break;
-      } catch (streamError: any) {
-        streamAttempts++;
-        const isRateLimit = streamError.message?.includes("429") || 
-                            streamError.message?.includes("rate limit");
-        
-        if (isRateLimit && streamAttempts < maxStreamAttempts) {
-          const delay = 10000 * streamAttempts; // 10s, 20s, 30s
-          console.log(`⏳ [СТИЛЬ ${style}] Rate limit, ждем ${delay/1000}s перед повтором...`);
+        const description = typeof content === "string" ? content.trim() : "";
+        if (!description || description.length < 80) {
+          throw new Error("OpenRouter вернул пустой/слишком короткий ответ");
+        }
+        console.log(`✅ [СТИЛЬ ${style}] Описание сгенерировано через Claude 4.5 Sonnet на OpenRouter (${description.length} символов)`);
+        return description;
+      } catch (requestError: any) {
+        attempts++;
+        const isRateLimit = String(requestError?.message || "").includes("429");
+        const isLastAttempt = attempts >= maxAttempts;
+        if (!isLastAttempt && isRateLimit) {
+          const delay = 5000 * attempts;
+          console.log(`⏳ [СТИЛЬ ${style}] Повтор после rate limit через ${delay/1000}с...`);
           await sleep(delay);
           continue;
         }
-        
-        throw streamError;
+        if (!isLastAttempt) {
+          const delay = 1500 * attempts;
+          console.log(`⏳ [СТИЛЬ ${style}] Повтор через ${delay/1000}с из-за ошибки...`);
+          await sleep(delay);
+          continue;
+        }
+        throw requestError;
       }
     }
 
-    if (!stream) {
-      throw new Error(`[СТИЛЬ ${style}] Не удалось создать streaming после ${maxStreamAttempts} попыток`);
-    }
-
-    console.log(`🔄 [СТИЛЬ ${style}] Streaming объект создан, начинаем обработку...`);
-
-    // Обрабатываем streaming ответ
-    let fullText = "";
-    let eventCount = 0;
-    const reader = stream.getReader();
-    const decoder = new TextDecoder();
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        
-        if (done) {
-          console.log(`🔄 [СТИЛЬ ${style}] Стрим завершен. Получено ${eventCount} чанков.`);
-          break;
-        }
-
-        eventCount++;
-        if (eventCount === 1) {
-          console.log(`🔄 [СТИЛЬ ${style}] ✅ Получено первое событие стрима!`);
-        }
-        if (eventCount % 10 === 0) {
-          console.log(`🔄 [СТИЛЬ ${style}] Получено ${eventCount} чанков, текущая длина текста: ${fullText.length}`);
-        }
-
-        // Декодируем чанк
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") {
-              continue;
-            }
-
-            try {
-              const parsed = JSON.parse(data);
-              const content = parsed.choices?.[0]?.delta?.content;
-              if (content) {
-                fullText += content;
-              }
-            } catch (e) {
-              // Игнорируем ошибки парсинга отдельных строк
-            }
-          }
-        }
-      }
-    } catch (streamError: any) {
-      console.error(`❌ [СТИЛЬ ${style}] Ошибка при обработке стрима (получено ${eventCount} чанков):`, streamError?.message || streamError);
-      console.error(`❌ [СТИЛЬ ${style}] Stack trace:`, streamError?.stack);
-      throw streamError;
-    } finally {
-      reader.releaseLock();
-    }
-
-    console.log(`🔄 [СТИЛЬ ${style}] Стрим завершен. Обрабатываем результат...`);
-    const description = fullText.trim();
-
-    if (!description || description.length < 50) {
-      console.warn(`⚠️ [СТИЛЬ ${style}] Описание слишком короткое (${description.length} символов), возвращаем базовое`);
-      return `Описание товара "${productName}". Качественный товар для ваших нужд.`;
-    }
-
-    console.log(`✅ [СТИЛЬ ${style}] Описание сгенерировано через Claude 4.5 Sonnet на OpenRouter (${description.length} символов)`);
-    return description;
+    throw new Error(`[СТИЛЬ ${style}] Не удалось получить ответ от OpenRouter после ${maxAttempts} попыток`);
 
   } catch (error: any) {
     const errorMessage = String(error?.message || error || "");
