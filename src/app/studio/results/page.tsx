@@ -393,7 +393,7 @@ export default function ResultsPage() {
                     {/* Слой 1: Фоновое Размытие (Ambient Layer) - плавное затухание до карточек справа */}
                     <div className="absolute inset-0 overflow-visible">
                       <img
-                        src={activeImage}
+                        src={activeImage ?? ""}
                         alt=""
                         className="absolute inset-0 w-full h-full object-cover blur-3xl"
                         style={{
@@ -416,7 +416,7 @@ export default function ResultsPage() {
                     {/* Слой 2: Четкое Изображение (Foreground Layer) */}
                     <div className="relative z-10 h-full w-full flex items-center justify-center p-4">
                       <img
-                        src={activeImage}
+                        src={activeImage ?? ""}
                         alt={productName}
                         className="max-h-[90%] max-w-[90%] w-auto h-auto object-contain drop-shadow-2xl"
                         suppressHydrationWarning
@@ -425,7 +425,7 @@ export default function ResultsPage() {
 
                     {/* Кнопка скачать в углу */}
                     <div
-                      onClick={(e) => handleDownloadImage(activeImage, activeImageIndex, e)}
+                      onClick={(e) => { if (activeImage != null) handleDownloadImage(activeImage, activeImageIndex, e); }}
                       className="absolute top-3 right-3 w-10 h-10 bg-white/95 hover:bg-white rounded-full flex items-center justify-center shadow-lg transition-all opacity-0 group-hover:opacity-100 z-20 cursor-pointer"
                     >
                       <Download className="w-5 h-5 text-gray-900" />

@@ -993,9 +993,9 @@ export default function VisualPage() {
   const handleAutoFill = () => {
     if (productDescription) {
       setTitle(productName || "Товар");
-      const lines = productDescription.split('\n').filter(l => l.trim());
-      const advantagesText = lines.slice(0, 3).map(l => l.substring(0, 60)).join(", ");
-      setAdvantages(advantagesText);
+      const lines = productDescription.split("\n").filter((l) => l.trim());
+      const newBullets = lines.slice(0, 3).map((l) => l.substring(0, 60));
+      setBullets(newBullets.length > 0 ? newBullets : [""]);
     }
   };
 
@@ -1044,7 +1044,7 @@ export default function VisualPage() {
       <StageMenu currentStage="visual" position="left" visualQuota={visualQuota} />
       
       {/* Сообщение о несоответствии товара */}
-      <AnimatePresence suppressHydrationWarning>
+      <AnimatePresence>
         {productMismatchError.show && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -1100,7 +1100,7 @@ export default function VisualPage() {
       </AnimatePresence>
       
       {/* Сообщение об ошибке генерации */}
-      <AnimatePresence suppressHydrationWarning>
+      <AnimatePresence>
         {generationError.show && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -1430,7 +1430,7 @@ export default function VisualPage() {
       {/* Правая часть: Результаты - неподвижная, прозрачная */}
       <div className="fixed top-0 right-0 bottom-0 left-[420px] flex flex-col bg-transparent z-0 overflow-y-auto" suppressHydrationWarning>
         <div className="flex-1 flex items-start justify-center p-6 min-h-full" suppressHydrationWarning>
-          <AnimatePresence mode="wait" suppressHydrationWarning>
+          <AnimatePresence mode="wait">
             {!isGenerating && generatedCards.length === 0 ? (
               // Состояние 1: Пустое
               <motion.div
@@ -1808,6 +1808,7 @@ export default function VisualPage() {
                       const firstSlide = {
                         id: 1,
                         imageUrl: generatedCards[selectedCardIndex],
+                        variants: [] as string[],
                         prompt: "",
                         scenario: null,
                         aspectRatio: aspectRatio === "3:4" ? "3:4" : "1:1" as "3:4" | "1:1",
@@ -1851,7 +1852,7 @@ export default function VisualPage() {
             suppressHydrationWarning
           >
             {/* Сообщение об ошибке генерации в режиме серии */}
-            <AnimatePresence suppressHydrationWarning>
+            <AnimatePresence>
               {generationError.show && (
                 <motion.div
                   initial={{ opacity: 0, y: -20 }}

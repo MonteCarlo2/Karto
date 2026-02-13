@@ -240,7 +240,7 @@ export async function analyzePriceWithPerplexity(params: {
     "megamarket.ru",
     "sbermegamarket.ru",
   ];
-  const sources = sourcesRaw.filter((s) =>
+  const sources = (sourcesRaw ?? []).filter((s) =>
     allowedDomains.some((domain) => String(s.url).toLowerCase().includes(domain))
   );
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -9,7 +9,7 @@ import { createBrowserClient } from "@/lib/supabase/client";
 import Image from "next/image";
 import { useNotification } from "@/components/ui/notification";
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { showNotification, NotificationComponent } = useNotification();
@@ -423,5 +423,13 @@ export default function ResetPasswordPage() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#f5f3ef]"><div className="animate-pulse text-gray-500">Загрузка...</div></div>}>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }

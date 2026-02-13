@@ -40,15 +40,10 @@ export async function createServerClientWithAuth() {
     const client = createClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
         get(name: string) {
-          // Пытаемся найти cookie по точному имени
           let value = cookieStore.get(name)?.value;
-          
-          // Если не найдено и это auth-token, пробуем стандартное имя
           if (!value && name.includes('auth-token')) {
             value = cookieStore.get(authTokenCookieName)?.value;
           }
-          
-          // Если все еще не найдено, пробуем найти любой cookie с 'auth' в имени
           if (!value && name.includes('auth')) {
             for (const cookie of allCookies) {
               if (cookie.name.includes('auth') || cookie.name.includes('supabase')) {
@@ -57,17 +52,12 @@ export async function createServerClientWithAuth() {
               }
             }
           }
-          
           return value || undefined;
         },
-        set(name: string, value: string, options: any) {
-          // Не устанавливаем cookies на сервере
-        },
-        remove(name: string, options: any) {
-          // Не удаляем cookies на сервере
-        },
+        set(_name: string, _value: string, _options?: unknown) {},
+        remove(_name: string, _options?: unknown) {},
       },
-    });
+    } as Parameters<typeof createClient>[2]);
     
     return client;
   } catch (error: any) {

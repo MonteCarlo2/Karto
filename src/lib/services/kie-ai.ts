@@ -17,7 +17,7 @@ const KIE_TASK_BASE_URL = "https://api.kie.ai";
 const KIE_UPLOAD_BASE_URLS = [
   process.env.KIE_UPLOAD_BASE_URL,
   "https://kieai.redpandaai.co",
-].filter((url): url is string => Boolean(url) && !url.includes("api.kie.ai"));
+].filter((u): u is string => typeof u === "string" && !u.includes("api.kie.ai"));
 const UPLOAD_TIMEOUT_MS = 20000;
 const UPLOAD_RETRIES = 3;
 const UPLOAD_BACKOFF_MS = [1500, 3000, 5000];
@@ -330,7 +330,7 @@ async function publicUrlToKieUrl(publicUrl: string, index: number): Promise<stri
           code?: number;
           data?: { downloadUrl?: string; fileUrl?: string; url?: string };
         };
-        if (!data?.success || data?.code !== 200) throw new Error(data?.msg || "KIE URL upload error");
+        if (!data?.success || data?.code !== 200) throw new Error((data as { msg?: string })?.msg || "KIE URL upload error");
         const url = data?.data?.downloadUrl || data?.data?.fileUrl || data?.data?.url;
         if (url) return String(url);
       } catch (e) {

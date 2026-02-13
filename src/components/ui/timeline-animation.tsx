@@ -1,11 +1,11 @@
 "use client"
 
 import { motion, type Variants } from "framer-motion"
-import { forwardRef } from "react"
+import React, { forwardRef } from "react"
 import { cn } from "@/lib/utils"
 
 interface TimelineContentProps {
-  as?: keyof JSX.IntrinsicElements
+  as?: keyof React.JSX.IntrinsicElements
   animationNum?: number
   timelineRef?: React.RefObject<HTMLElement | null>
   customVariants?: { visible: (i: number) => object; hidden: object }
@@ -31,10 +31,10 @@ export const TimelineContent = forwardRef<HTMLDivElement, TimelineContentProps>(
     },
     ref
   ) => {
-    const variants: Variants = {
+    const variants = {
       visible: (i: number) => customVariants.visible(i),
       hidden: customVariants.hidden,
-    }
+    } as Variants
 
     return (
       <motion.div

@@ -240,7 +240,7 @@ function AnalysisVisual() {
         ].map((bar, i) => (
           <div
             key={i}
-            ref={(el) => (barsRef.current[i] = el)}
+            ref={(el) => { barsRef.current[i] = el; }}
             data-height={bar.height}
             className="rounded-t relative overflow-hidden"
             style={{
@@ -303,7 +303,7 @@ function GenerationVisual() {
       ].map((line, i) => (
         <div
           key={i}
-          ref={(el) => (linesRef.current[i] = el)}
+          ref={(el) => { linesRef.current[i] = el; }}
           data-width={line.width}
           className="h-3.5 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded relative overflow-hidden"
         >

@@ -9,14 +9,14 @@ import {
   useRef,
   useState,
 } from "react"
-import type { DynamicAnimationOptions } from "framer-motion"
+import type { AnimationOptions } from "framer-motion"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 
 interface TextProps {
   children: React.ReactNode
   reverse?: boolean
-  transition?: DynamicAnimationOptions
+  transition?: AnimationOptions
   splitBy?: "words" | "characters" | "lines" | string
   staggerDuration?: number
   staggerFrom?: "first" | "last" | "center" | "random" | number

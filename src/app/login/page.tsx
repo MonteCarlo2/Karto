@@ -130,16 +130,14 @@ export default function LoginPage() {
         const script1 = document.createElement("script");
         script1.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js";
         script1.async = true;
-        
+
         const script2 = document.createElement("script");
         script2.src = "https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.birds.min.js";
         script2.async = true;
-        
-        script1.onload = () => {
+
+        const runAfterScript1Loaded = () => {
           script2.onload = () => {
-            if (mounted) {
-              initVanta();
-            }
+            if (mounted) initVanta();
           };
           if (!document.head.querySelector(`script[src="${script2.src}"]`)) {
             document.head.appendChild(script2);
@@ -147,11 +145,13 @@ export default function LoginPage() {
             initVanta();
           }
         };
-        
+
+        script1.onload = () => runAfterScript1Loaded();
+
         if (!document.head.querySelector(`script[src="${script1.src}"]`)) {
           document.head.appendChild(script1);
         } else {
-          script1.onload();
+          runAfterScript1Loaded();
         }
       }
       
@@ -328,7 +328,8 @@ export default function LoginPage() {
     try {
       const supabase = createBrowserClient();
       const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: "yandex",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase Provider type может не включать "yandex"
+        provider: "yandex" as any,
         options: {
           redirectTo: `${window.location.origin}/`,
           queryParams: {
