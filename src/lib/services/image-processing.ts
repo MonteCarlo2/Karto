@@ -3,9 +3,20 @@ import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import fs from "fs/promises";
 
-// Директория для временных файлов
-const TEMP_DIR = path.join(process.cwd(), "public", "temp");
-const OUTPUT_DIR = path.join(process.cwd(), "public", "output");
+// В проде (Timeweb и др.) process.cwd() часто только для чтения — пишем в /tmp
+const WRITABLE_BASE =
+  process.env.NEXT_CACHE_DIR || process.env.TMPDIR || process.env.TEMP || "";
+const USE_TMP =
+  typeof WRITABLE_BASE === "string" &&
+  WRITABLE_BASE.length > 0 &&
+  (WRITABLE_BASE.startsWith("/tmp") || WRITABLE_BASE === "/tmp");
+
+const TEMP_DIR = USE_TMP
+  ? path.join(WRITABLE_BASE, "karto-temp")
+  : path.join(process.cwd(), "public", "temp");
+const OUTPUT_DIR = USE_TMP
+  ? path.join(WRITABLE_BASE, "karto-output")
+  : path.join(process.cwd(), "public", "output");
 
 // Убеждаемся что директории существуют
 async function ensureDirs() {
@@ -449,10 +460,35 @@ export async function imageToBase64(filepath: string): Promise<string> {
   return `data:image/png;base64,${buffer.toString("base64")}`;
 }
 
+/** Путь к файлу в writable dir по имени и поддиректории (для API serve-file) */
+export function getWritableFilePath(
+  filename: string,
+  dir: "temp" | "output"
+): string {
+  const base = dir === "temp" ? TEMP_DIR : OUTPUT_DIR;
+  return path.join(base, path.basename(filename));
+}
+
+/** Имя файла и поддиректория (temp | output) для serve-file */
+export function getServeFileParams(filepath: string): { f: string; dir: "temp" | "output" } | null {
+  if (!USE_TMP || !filepath) return null;
+  const normalized = path.normalize(filepath);
+  const base = path.basename(filepath);
+  if (normalized.startsWith(path.normalize(TEMP_DIR)))
+    return { f: base, dir: "temp" };
+  if (normalized.startsWith(path.normalize(OUTPUT_DIR)))
+    return { f: base, dir: "output" };
+  return null;
+}
+
 /**
- * Получение URL для локального файла
+ * Получение URL для локального файла.
+ * Если файл в /tmp (прод) — возвращаем URL API отдачи файла, иначе обычный путь из public.
  */
 export function getPublicUrl(filepath: string): string {
+  const params = getServeFileParams(filepath);
+  if (params)
+    return `/api/serve-file?f=${encodeURIComponent(params.f)}&dir=${params.dir}`;
   const relativePath = filepath.replace(path.join(process.cwd(), "public"), "");
   return relativePath.replace(/\\/g, "/");
 }
