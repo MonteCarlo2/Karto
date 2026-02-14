@@ -313,6 +313,9 @@ export default function LoginPage() {
         );
       } else if (err.message?.includes("Supabase не настроен")) {
         setError("Supabase не настроен. Пожалуйста, добавьте NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY в .env.local");
+      } else if (err.message?.includes("Invalid API key")) {
+        setError("Неверный или отсутствующий ключ Supabase. В настройках хостинга (Timeweb → переменные) добавьте NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY из проекта Supabase и пересоберите приложение.");
+        showNotification("Проверьте переменные Supabase на хостинге (NEXT_PUBLIC_SUPABASE_*)", "error");
       } else {
         setError(err.message || "Произошла ошибка при входе");
       }
@@ -345,12 +348,17 @@ export default function LoginPage() {
       // Supabase обработает авторизацию и перенаправит на redirectTo
     } catch (err: any) {
       console.error('Ошибка входа через Яндекс:', err);
-      setError(err.message || "Произошла ошибка при входе через Яндекс");
+      if (err.message?.includes("Invalid API key")) {
+        setError("Неверный или отсутствующий ключ Supabase. В настройках хостинга добавьте NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY и пересоберите приложение.");
+        showNotification("Проверьте переменные Supabase на хостинге", "error");
+      } else {
+        setError(err.message || "Произошла ошибка при входе через Яндекс");
+        showNotification(
+          "Не удалось войти через Яндекс. Проверьте настройки OAuth в Supabase Dashboard.",
+          "error"
+        );
+      }
       setIsLoading(false);
-      showNotification(
-        "Не удалось войти через Яндекс. Проверьте настройки OAuth в Supabase Dashboard.",
-        "error"
-      );
     }
   };
 
@@ -841,26 +849,24 @@ export default function LoginPage() {
                 height={28}
                 className="object-contain"
                 onError={(e) => {
-                  // Fallback на SVG если изображение не загрузилось
                   const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                  const svg = target.parentElement?.nextElementSibling as HTMLElement;
-                  if (svg) svg.style.display = 'block';
+                  target.style.display = "none";
+                  const svg = target.parentElement?.querySelector(".yandex-fallback-svg") as HTMLElement;
+                  if (svg) svg.style.display = "block";
                 }}
               />
+              {/* Fallback: логотип Яндекса «Я» (если /yandex-logo.png не загрузился) */}
+              <svg
+                className="yandex-fallback-svg w-6 h-6 hidden absolute inset-0 m-auto"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden
+              >
+                <rect width="24" height="24" rx="4" fill="#FC3F1D" />
+                <text x="12" y="17" textAnchor="middle" fill="white" fontSize="14" fontWeight="bold" fontFamily="Arial, sans-serif">Я</text>
+              </svg>
             </div>
-            <svg
-              className="w-5 h-5 hidden"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <circle cx="12" cy="12" r="10" fill="#FC3F1D" />
-              <path
-                d="M12 6L7 12l5 6 5-6-5-6z"
-                fill="white"
-              />
-            </svg>
             Продолжить с Яндекс
           </button>
 
