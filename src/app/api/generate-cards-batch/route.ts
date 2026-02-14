@@ -165,12 +165,14 @@ export async function POST(request: NextRequest) {
     }
     console.log(`🎯 [BATCH] Генерируем ${cardsToGenerate} карточек с уникальными концепциями`);
 
+    const port = process.env.PORT || "3000";
+    const host = process.env.VERCEL ? request.nextUrl.origin : `http://127.0.0.1:${port}`;
     const generateOne = async (index: number): Promise<string | null> => {
       const concept = concepts[index];
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), CARD_GENERATE_TIMEOUT_MS);
       try {
-        const response = await fetch(`${request.nextUrl.origin}/api/generate-card`, {
+        const response = await fetch(`${host}/api/generate-card`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
