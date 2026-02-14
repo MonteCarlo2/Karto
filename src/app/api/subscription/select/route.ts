@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
 
 /**
@@ -19,10 +20,22 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(token);
+    let user: { id: string } | null = null;
+    let authError: Error | null = null;
+    try {
+      const result = await supabase.auth.getUser(token);
+      user = result.data?.user ?? null;
+      authError = result.error as Error | null;
+    } catch (e) {
+      if (isSupabaseNetworkError(e)) {
+        console.warn("⚠️ [SUBSCRIPTION SELECT] Supabase недоступен");
+        return NextResponse.json(
+          { success: false, error: "Сервис временно недоступен. Попробуйте позже." },
+          { status: 200 }
+        );
+      }
+      throw e;
+    }
     if (authError || !user) {
       return NextResponse.json(
         { success: false, error: "Войдите в аккаунт, чтобы выбрать тариф" },
@@ -67,6 +80,13 @@ export async function POST(request: NextRequest) {
       redirectTo: "/profile",
     });
   } catch (err: unknown) {
+    if (isSupabaseNetworkError(err)) {
+      console.warn("⚠️ [SUBSCRIPTION SELECT] Supabase недоступен (сеть/таймаут)");
+      return NextResponse.json(
+        { success: false, error: "Сервис временно недоступен. Попробуйте позже." },
+        { status: 200 }
+      );
+    }
     console.error("❌ [SUBSCRIPTION SELECT]:", err);
     return NextResponse.json(
       { success: false, error: "Внутренняя ошибка" },

@@ -917,7 +917,17 @@ export default function VisualPage() {
 
       if (!response.ok || !data.success) {
         console.error("❌ [FRONTEND] Ошибка в ответе:", data);
-        
+
+        // Сервис временно недоступен (сеть/хостинг не дотягивается до KIE или Supabase)
+        if (response.status === 503 || data.code === "SERVICE_UNAVAILABLE") {
+          setGenerationError({
+            show: true,
+            message: data.error || "Сервис генерации временно недоступен. Попробуйте позже или проверьте подключение.",
+          });
+          setIsGenerating(false);
+          return;
+        }
+
         // Если это ошибка несоответствия товара - показываем красивое сообщение
         if (data.error && data.error.includes("не соответствует")) {
           setGenerationError({

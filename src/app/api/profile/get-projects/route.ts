@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@/lib/supabase/server";
 import { createServerClientWithAuth } from "@/lib/supabase/server-auth";
+import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 
 /**
  * Получение всех проектов пользователя
@@ -181,7 +182,11 @@ export async function GET(request: NextRequest) {
       success: true,
       projects,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (isSupabaseNetworkError(error)) {
+      console.warn("⚠️ [get-projects] Supabase недоступен (сеть/таймаут), отдаём пустой список");
+      return NextResponse.json({ success: true, projects: [] });
+    }
     console.error("Ошибка API:", error);
     return NextResponse.json(
       { error: "Внутренняя ошибка сервера" },

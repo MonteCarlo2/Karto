@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { getSubscriptionByUserId, subscriptionToState, FREE_WELCOME_CREATIVE_LIMIT } from "@/lib/subscription";
 import { sendWelcomeEmail } from "@/lib/send-welcome-email";
 
@@ -19,10 +20,19 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = createServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(token);
+    let user: { id: string; email?: string; user_metadata?: any } | null = null;
+    let authError: Error | null = null;
+    try {
+      const result = await supabase.auth.getUser(token);
+      user = result.data?.user ?? null;
+      authError = result.error as Error | null;
+    } catch (e) {
+      if (isSupabaseNetworkError(e)) {
+        console.warn("⚠️ [SUBSCRIPTION] Supabase недоступен при проверке пользователя");
+        return NextResponse.json({ success: true, subscription: null });
+      }
+      throw e;
+    }
     if (authError || !user) {
       return NextResponse.json(
         { success: false, subscription: null, error: "Не авторизован" },
@@ -73,6 +83,13 @@ export async function GET(request: NextRequest) {
       subscription: subscriptionToState(row as any),
     });
   } catch (err: unknown) {
+    if (isSupabaseNetworkError(err)) {
+      console.warn("⚠️ [SUBSCRIPTION] Supabase недоступен (сеть/таймаут), отдаём пустую подписку");
+      return NextResponse.json({
+        success: true,
+        subscription: null,
+      });
+    }
     console.error("❌ [SUBSCRIPTION] GET:", err);
     return NextResponse.json(
       { success: false, subscription: null, error: "Внутренняя ошибка" },

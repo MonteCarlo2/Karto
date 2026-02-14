@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildProductCardPrompt, CARD_STYLES } from "@/lib/services/nanobanana";
 import { generateWithKieAi } from "@/lib/services/kie-ai";
+import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { 
   downloadImage, 
   getPublicUrl,
@@ -581,12 +582,20 @@ ${finalTextPresentation}
       message: "Карточка товара создана!",
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    const errorString = String(err?.message ?? error);
     console.error("❌ Ошибка генерации:", error);
-    
+
+    if (isSupabaseNetworkError(error) || errorString.includes("fetch failed") || errorString.includes("timeout") || errorString.includes("ECONNREFUSED") || errorString.includes("ETIMEDOUT")) {
+      return NextResponse.json({
+        success: false,
+        error: "Сервис генерации временно недоступен. Попробуйте позже.",
+        code: "SERVICE_UNAVAILABLE",
+      }, { status: 503 });
+    }
+
     let errorMessage = "Ошибка генерации";
-    const errorString = String(error);
-    
     if (errorString.includes("401") || errorString.includes("Unauthorized")) {
       errorMessage = "Ошибка авторизации. Проверьте KIE_AI_API_KEY";
     } else if (errorString.includes("429")) {
@@ -594,7 +603,7 @@ ${finalTextPresentation}
     } else if (errorString.includes("insufficient") || errorString.includes("402")) {
       errorMessage = "Недостаточно средств на KIE";
     }
-    
+
     return NextResponse.json({
       success: false,
       error: errorMessage,

@@ -3,6 +3,9 @@ import { generateDesignConcepts } from "@/lib/services/style-concept-generator";
 import { getProductNamesFromReplicateGPT4oMini } from "@/lib/services/replicate";
 import { createServerClient } from "@/lib/supabase/server";
 import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
+import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
+
+const CARD_GENERATE_TIMEOUT_MS = 100_000; // 100 сек на одну карточку
 
 /**
  * Генерация 4 карточек одновременно с уникальными концепциями
@@ -164,6 +167,8 @@ export async function POST(request: NextRequest) {
 
     const generateOne = async (index: number): Promise<string | null> => {
       const concept = concepts[index];
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), CARD_GENERATE_TIMEOUT_MS);
       try {
         const response = await fetch(`${request.nextUrl.origin}/api/generate-card`, {
           method: "POST",
@@ -179,12 +184,16 @@ export async function POST(request: NextRequest) {
             variation: index,
             designConcept: concept,
           }),
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || `Ошибка карточки ${index + 1}`);
         return data.imageUrl;
-      } catch (error: any) {
-        console.error(`❌ Ошибка генерации карточки ${index + 1}:`, error?.message || error);
+      } catch (error: unknown) {
+        clearTimeout(timeoutId);
+        const msg = (error as { message?: string })?.message ?? String(error);
+        console.error(`❌ Ошибка генерации карточки ${index + 1}:`, msg);
         return null;
       }
     };
@@ -210,8 +219,9 @@ export async function POST(request: NextRequest) {
     if (successfulCards.length === 0) {
       return NextResponse.json({
         success: false,
-        error: "Не удалось сгенерировать ни одной карточки",
-      }, { status: 500 });
+        error: "Сервис генерации временно недоступен. Попробуйте позже или проверьте подключение.",
+        code: "SERVICE_UNAVAILABLE",
+      }, { status: 503 });
     }
 
     console.log(`✅ Успешно сгенерировано ${successfulCards.length}/${cardsToGenerate} карточек`);
@@ -232,13 +242,20 @@ export async function POST(request: NextRequest) {
       generationLimit: quotaAfter.limit,
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (isSupabaseNetworkError(error)) {
+      console.warn("⚠️ [BATCH] Supabase/сеть недоступны при генерации карточек");
+      return NextResponse.json({
+        success: false,
+        error: "Сервис генерации временно недоступен. Попробуйте позже.",
+        code: "SERVICE_UNAVAILABLE",
+      }, { status: 503 });
+    }
     console.error("❌ Ошибка batch генерации:", error);
-    
     return NextResponse.json({
       success: false,
       error: "Ошибка генерации карточек",
-      details: error.message || String(error),
+      details: (error as { message?: string })?.message || String(error),
     }, { status: 500 });
   }
 }

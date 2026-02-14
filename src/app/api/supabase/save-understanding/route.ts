@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { createServerClientWithAuth } from "@/lib/supabase/server-auth";
+import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { getSubscriptionByUserId } from "@/lib/subscription";
 
 /** Получить user id: сначала из Authorization, затем из cookies */
@@ -316,7 +317,14 @@ export async function POST(request: NextRequest) {
       session_id: finalSessionId,
       data,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (isSupabaseNetworkError(error)) {
+      console.warn("⚠️ [save-understanding] Supabase недоступен (сеть/таймаут)");
+      return NextResponse.json(
+        { error: "Сервис временно недоступен. Попробуйте позже." },
+        { status: 503 }
+      );
+    }
     console.error("Ошибка API:", error);
     return NextResponse.json(
       { error: "Внутренняя ошибка сервера" },
