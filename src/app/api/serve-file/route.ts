@@ -24,13 +24,14 @@ export async function GET(request: NextRequest) {
     const maxWidth = widthParam ? Math.min(800, Math.max(200, parseInt(widthParam, 10) || 0)) : 0;
 
     if (maxWidth > 0) {
-      buffer = await sharp(buffer)
+      const resized = await sharp(buffer)
         .resize(maxWidth, null, { withoutEnlargement: true })
         .jpeg({ quality: 82 })
         .toBuffer();
+      buffer = Buffer.from(resized);
     }
 
-    return new NextResponse(buffer, {
+    return new NextResponse(buffer as Buffer, {
       headers: {
         "Content-Type": maxWidth > 0 ? "image/jpeg" : "image/png",
         "Cache-Control": "public, max-age=3600",
