@@ -31,7 +31,10 @@ export async function GET(request: NextRequest) {
       buffer = Buffer.from(resized);
     }
 
-    return new NextResponse(buffer as Buffer, {
+    const body: BodyInit = new Blob([buffer], {
+      type: maxWidth > 0 ? "image/jpeg" : "image/png",
+    });
+    return new NextResponse(body, {
       headers: {
         "Content-Type": maxWidth > 0 ? "image/jpeg" : "image/png",
         "Cache-Control": "public, max-age=3600",
