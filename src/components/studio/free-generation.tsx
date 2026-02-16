@@ -29,6 +29,13 @@ import {
 } from "lucide-react";
 import { BugReportModal } from "@/components/ui/bug-report-modal";
 
+/** Для галереи: превью с нашего API — запрашиваем уменьшенную версию для быстрой загрузки. */
+function galleryImageUrl(url: string): string {
+  if (typeof url !== "string" || !url.includes("/api/serve-file")) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}w=400`;
+}
+
 // Анимация загрузки для слайдов
 function LoadingDotsCardSlide({ aspectRatio }: { aspectRatio: "3:4" | "4:3" | "9:16" | "1:1" }) {
   const gridCols = 12;
@@ -974,9 +981,13 @@ export default function FreeGeneration() {
                         }}
                       >
                       <img
-                        src={variant.url}
+                        src={galleryImageUrl(variant.url)}
                         alt={`Вариант ${index + 1}`}
                         className="w-full h-full object-cover rounded-lg"
+                        width={baseWidth}
+                        height={variant.aspectRatio === "3:4" ? Math.round(baseWidth * 4 / 3) : variant.aspectRatio === "4:3" ? Math.round(baseWidth * 3 / 4) : variant.aspectRatio === "9:16" ? Math.round(baseWidth * 16 / 9) : baseWidth}
+                        loading="lazy"
+                        decoding="async"
                       />
                       
                       {/* Кнопки в правом верхнем углу */}

@@ -217,44 +217,47 @@ export function StickyScrollReveal() {
             {/* Контейнер для изображения (AUTO height) */}
             <div className="relative w-full">
               
-              {/* ХАК: Невидимое изображение, которое задает высоту контейнера */}
-              <img 
-                src={IMG_S1_START} 
-                alt="Spacer" 
-                className="w-full h-auto opacity-0 pointer-events-none block" 
+              {/* Высота контейнера и явные размеры — меньше сдвигов верстки и быстрее LCP */}
+              <img
+                src={IMG_S1_START}
+                alt=""
+                role="presentation"
+                width={1200}
+                height={800}
+                className="w-full h-auto opacity-0 pointer-events-none block"
               />
-              
+
               {/* S1.1 */}
               <motion.div className="absolute inset-0" style={{ opacity: op_s1_1 }}>
-                <img src={IMG_S1_START} alt="Step 1 Start" className="w-full h-full object-contain" />
+                <img src={IMG_S1_START} alt="Step 1 Start" width={1200} height={800} className="w-full h-full object-contain" loading="eager" decoding="async" />
               </motion.div>
               {/* S1.2 */}
               <motion.div className="absolute inset-0" style={{ opacity: op_s1_2 }}>
-                <img src={IMG_S1_RESULT} alt="Step 1 Result" className="w-full h-full object-contain" />
+                <img src={IMG_S1_RESULT} alt="Step 1 Result" width={1200} height={800} className="w-full h-full object-contain" loading="lazy" decoding="async" />
               </motion.div>
 
               {/* S2.1 */}
               <motion.div className="absolute inset-0" style={{ opacity: op_s2_1 }}>
-                <img src={IMG_S2_START} alt="Step 2 Start" className="w-full h-full object-contain" />
+                <img src={IMG_S2_START} alt="Step 2 Start" width={1200} height={800} className="w-full h-full object-contain" loading="lazy" decoding="async" />
               </motion.div>
               {/* S2.2 */}
               <motion.div className="absolute inset-0" style={{ opacity: op_s2_2 }}>
-                <img src={IMG_S2_RESULT} alt="Step 2 Result" className="w-full h-full object-contain" />
+                <img src={IMG_S2_RESULT} alt="Step 2 Result" width={1200} height={800} className="w-full h-full object-contain" loading="lazy" decoding="async" />
               </motion.div>
 
               {/* S3.1 */}
               <motion.div className="absolute inset-0" style={{ opacity: op_s3_1 }}>
-                <img src={IMG_S3_START} alt="Step 3 Start" className="w-full h-full object-contain" />
+                <img src={IMG_S3_START} alt="Step 3 Start" width={1200} height={800} className="w-full h-full object-contain" loading="lazy" decoding="async" />
               </motion.div>
 
               {/* S3.2 */}
               <motion.div className="absolute inset-0" style={{ opacity: op_s3_2 }}>
-                <img src={IMG_S3_RESULT} alt="Step 3 Result" className="w-full h-full object-contain" />
+                <img src={IMG_S3_RESULT} alt="Step 3 Result" width={1200} height={800} className="w-full h-full object-contain" loading="lazy" decoding="async" />
               </motion.div>
 
               {/* S4 */}
               <motion.div className="absolute inset-0" style={{ opacity: op_s4 }}>
-                <img src={IMG_S4_RESULT} alt="Step 4" className="w-full h-full object-contain" />
+                <img src={IMG_S4_RESULT} alt="Step 4" width={1200} height={800} className="w-full h-full object-contain" loading="lazy" decoding="async" />
               </motion.div>
 
               {/* Курсор */}

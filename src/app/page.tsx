@@ -1,19 +1,44 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import { motion } from "framer-motion"
 import { ArrowRight, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { VideoBackground } from "@/components/ui/video-background"
-import { BugReportModal } from "@/components/ui/bug-report-modal"
 import { createBrowserClient } from "@/lib/supabase/client"
-import { StickyScrollReveal } from "@/components/landing/sticky-scroll-reveal"
-import { FreeGenSection } from "@/components/landing/free-gen-section"
-import { MarketplaceLogoTicker } from "@/components/landing/marketplace-logo-ticker"
-import { TeamResultSection } from "@/components/landing/team-result-section"
-import PricingSectionKarto from "@/components/ui/pricing-section-karto"
-import { FAQSectionKarto } from "@/components/landing/faq-section-karto"
+
+const BugReportModal = dynamic(
+  () => import("@/components/ui/bug-report-modal").then((m) => ({ default: m.BugReportModal })),
+  { ssr: false }
+)
+
+// Ниже первого экрана — подгружаем по мере прокрутки, чтобы не блокировать первый рендер и LCP
+const StickyScrollReveal = dynamic(
+  () => import("@/components/landing/sticky-scroll-reveal").then((m) => ({ default: m.StickyScrollReveal })),
+  { loading: () => <section className="min-h-[60vh] bg-[#F5F5F0]" aria-hidden /> }
+)
+const FreeGenSection = dynamic(
+  () => import("@/components/landing/free-gen-section").then((m) => ({ default: m.FreeGenSection })),
+  { loading: () => <section className="min-h-[40vh] bg-background" aria-hidden /> }
+)
+const MarketplaceLogoTicker = dynamic(
+  () => import("@/components/landing/marketplace-logo-ticker").then((m) => ({ default: m.MarketplaceLogoTicker })),
+  { loading: () => <div className="h-24 bg-muted/30" aria-hidden /> }
+)
+const TeamResultSection = dynamic(
+  () => import("@/components/landing/team-result-section").then((m) => ({ default: m.TeamResultSection })),
+  { loading: () => <section className="min-h-[30vh] bg-background" aria-hidden /> }
+)
+const PricingSectionKarto = dynamic(
+  () => import("@/components/ui/pricing-section-karto").then((m) => ({ default: m.default })),
+  { loading: () => <section className="min-h-[50vh] bg-muted/20" aria-hidden /> }
+)
+const FAQSectionKarto = dynamic(
+  () => import("@/components/landing/faq-section-karto").then((m) => ({ default: m.FAQSectionKarto })),
+  { loading: () => <section className="min-h-[30vh] bg-background" aria-hidden /> }
+)
 
 export default function Home() {
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);

@@ -4,16 +4,19 @@ import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { ToastProvider } from "@/components/ui/toast";
 import { AbortErrorSuppressor } from "@/components/ui/abort-error-suppressor";
+import { PreconnectLinks } from "@/components/ui/preconnect-links";
 import "./globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 const playfairDisplay = Playfair_Display({
@@ -21,6 +24,7 @@ const playfairDisplay = Playfair_Display({
   subsets: ["latin", "cyrillic"],
   weight: ["400", "500", "600", "700"],
   style: ["normal", "italic"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -39,6 +43,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${playfairDisplay.variable} antialiased min-h-screen flex flex-col bg-background text-foreground`}
         suppressHydrationWarning
       >
+        <PreconnectLinks />
         <ToastProvider>
           <AbortErrorSuppressor />
           <Navbar />
