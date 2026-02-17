@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 /**
  * Редирект на страницу авторизации Яндекса.
- * Callback — наш /api/auth/yandex/callback (без Supabase Edge Function).
+ * Callback — наш /api/auth/yandex/callback.
+ * redirect_uri должен ТОЧНО совпадать с Callback URL в настройках приложения в OAuth Яндекса.
  */
+function getBaseUrl(request: NextRequest): string {
+  const fromEnv = process.env.NEXT_PUBLIC_APP_URL;
+  if (fromEnv && fromEnv.trim()) return fromEnv.replace(/\/$/, "");
+  return request.nextUrl.origin;
+}
+
 export async function GET(request: NextRequest) {
   const clientId = process.env.YANDEX_CLIENT_ID;
   if (!clientId) {
@@ -13,9 +20,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const origin = request.nextUrl.origin;
-  const redirectUri = `${origin}/api/auth/yandex/callback`;
-  const state = origin;
+  const baseUrl = getBaseUrl(request);
+  const redirectUri = `${baseUrl}/api/auth/yandex/callback`;
+  const state = baseUrl;
   const scope = "login:email login:info";
 
   const params = new URLSearchParams({

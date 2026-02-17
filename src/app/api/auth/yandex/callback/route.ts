@@ -13,19 +13,23 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const error = searchParams.get("error");
 
-  const origin = request.nextUrl.origin;
-  const redirectUri = `${origin}/api/auth/yandex/callback`;
+  const baseUrl = (() => {
+    const fromEnv = process.env.NEXT_PUBLIC_APP_URL;
+    if (fromEnv && fromEnv.trim()) return fromEnv.replace(/\/$/, "");
+    return request.nextUrl.origin;
+  })();
+  const redirectUri = `${baseUrl}/api/auth/yandex/callback`;
 
   if (error) {
     const desc = searchParams.get("error_description") || error;
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent(desc)}`
+      `${baseUrl}/login?error=${encodeURIComponent(desc)}`
     );
   }
 
   if (!code) {
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent("Нет кода от Яндекса")}`
+      `${baseUrl}/login?error=${encodeURIComponent("Нет кода от Яндекса")}`
     );
   }
 
@@ -34,7 +38,7 @@ export async function GET(request: NextRequest) {
 
   if (!clientId || !clientSecret) {
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent("OAuth не настроен (YANDEX_CLIENT_ID/SECRET)")}`
+      `${baseUrl}/login?error=${encodeURIComponent("OAuth не настроен (YANDEX_CLIENT_ID/SECRET)")}`
     );
   }
 
@@ -55,7 +59,7 @@ export async function GET(request: NextRequest) {
     const errBody = await tokenRes.text();
     console.error("Yandex token error:", tokenRes.status, errBody);
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent("Ошибка обмена кода на токен")}`
+      `${baseUrl}/login?error=${encodeURIComponent("Ошибка обмена кода на токен")}`
     );
   }
 
@@ -63,7 +67,7 @@ export async function GET(request: NextRequest) {
   const accessToken = tokenData.access_token;
   if (!accessToken) {
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent("Яндекс не вернул токен")}`
+      `${baseUrl}/login?error=${encodeURIComponent("Яндекс не вернул токен")}`
     );
   }
 
@@ -74,7 +78,7 @@ export async function GET(request: NextRequest) {
 
   if (!userRes.ok) {
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent("Не удалось получить данные пользователя")}`
+      `${baseUrl}/login?error=${encodeURIComponent("Не удалось получить данные пользователя")}`
     );
   }
 
@@ -82,7 +86,7 @@ export async function GET(request: NextRequest) {
   const email = yandexUser.default_email || yandexUser.emails?.[0];
   if (!email) {
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent("У аккаунта Яндекс нет email")}`
+      `${baseUrl}/login?error=${encodeURIComponent("У аккаунта Яндекс нет email")}`
     );
   }
 
@@ -113,12 +117,12 @@ export async function GET(request: NextRequest) {
     if (createError && !isExistingUser) {
       console.error("Supabase createUser error:", createError);
       return NextResponse.redirect(
-        `${origin}/login?error=${encodeURIComponent(createError.message)}`
+        `${baseUrl}/login?error=${encodeURIComponent(createError.message)}`
       );
     }
 
     // Для уже зарегистрированного — редирект на главную с параметром «С возвращением»
-    const redirectTo = isExistingUser ? `${origin}/?welcome_back=1` : `${origin}/`;
+    const redirectTo = isExistingUser ? `${baseUrl}/?welcome_back=1` : `${baseUrl}/`;
 
     const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
       type: "magiclink",
@@ -130,7 +134,7 @@ export async function GET(request: NextRequest) {
     if (linkError || !actionLink) {
       console.error("generateLink error:", linkError);
       return NextResponse.redirect(
-        `${origin}/login?error=${encodeURIComponent("Не удалось создать сессию")}`
+        `${baseUrl}/login?error=${encodeURIComponent("Не удалось создать сессию")}`
       );
     }
 
@@ -138,7 +142,7 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     console.error("Yandex callback error:", e);
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent("Ошибка входа")}`
+      `${baseUrl}/login?error=${encodeURIComponent("Ошибка входа")}`
     );
   }
 }
