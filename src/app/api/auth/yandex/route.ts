@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Редирект на страницу авторизации Яндекса.
- * Callback — наш /api/auth/yandex/callback.
+ * Базовый URL сайта. На сервере всегда должен быть продакшен-URL, не localhost.
  * redirect_uri должен ТОЧНО совпадать с Callback URL в настройках приложения в OAuth Яндекса.
  */
 function getBaseUrl(request: NextRequest): string {
-  const fromEnv = process.env.NEXT_PUBLIC_APP_URL;
-  if (fromEnv && fromEnv.trim()) return fromEnv.replace(/\/$/, "");
-  return request.nextUrl.origin;
+  const fromEnv = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+  const origin = request.nextUrl.origin;
+  // На проде никогда не редиректим на localhost: приоритет у явного URL с сервера
+  if (fromEnv && !fromEnv.includes("localhost")) return fromEnv;
+  if (origin.includes("localhost") && fromEnv) return fromEnv;
+  return origin;
 }
 
 export async function GET(request: NextRequest) {

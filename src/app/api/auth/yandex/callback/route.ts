@@ -13,11 +13,23 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const error = searchParams.get("error");
 
+  // Базовый URL для редиректов: на сервере не должен быть localhost (иначе после входа уведёт на localhost)
   const baseUrl = (() => {
-    const fromEnv = process.env.NEXT_PUBLIC_APP_URL;
-    if (fromEnv && fromEnv.trim()) return fromEnv.replace(/\/$/, "");
-    return request.nextUrl.origin;
+    const fromEnv = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+    const origin = request.nextUrl.origin;
+    if (fromEnv && !fromEnv.includes("localhost")) return fromEnv;
+    if (origin.includes("localhost") && fromEnv) return fromEnv;
+    return origin;
   })();
+
+  // На проде редирект на localhost ломает вход — требуем явный URL
+  if (process.env.NODE_ENV === "production" && baseUrl.includes("localhost")) {
+    console.error("Yandex callback: baseUrl is localhost in production. Set NEXT_PUBLIC_APP_URL to https://karto.pro on the server.");
+    return NextResponse.redirect(
+      `${request.nextUrl.origin}/login?error=${encodeURIComponent("Ошибка настройки: на сервере задайте NEXT_PUBLIC_APP_URL=https://karto.pro")}`
+    );
+  }
+
   const redirectUri = `${baseUrl}/api/auth/yandex/callback`;
 
   if (error) {
