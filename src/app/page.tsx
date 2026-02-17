@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
@@ -42,7 +42,7 @@ const FAQSectionKarto = dynamic(
   { loading: () => <section className="min-h-[30vh] bg-background" aria-hidden /> }
 )
 
-export default function Home() {
+function HomeContent() {
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const searchParams = useSearchParams();
@@ -159,5 +159,13 @@ export default function Home() {
       {/* FAQ — сразу после тарифов; после FAQ главная заканчивается */}
       <FAQSectionKarto user={user} />
     </div>
+  )
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#F5F5F0] text-[#1F4E3D]">Загрузка...</div>}>
+      <HomeContent />
+    </Suspense>
   )
 }

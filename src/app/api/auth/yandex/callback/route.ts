@@ -12,7 +12,6 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const code = searchParams.get("code");
   const error = searchParams.get("error");
-  const state = searchParams.get("state");
 
   const origin = request.nextUrl.origin;
   const redirectUri = `${origin}/api/auth/yandex/callback`;
