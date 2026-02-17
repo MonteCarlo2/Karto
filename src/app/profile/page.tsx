@@ -141,7 +141,7 @@ export default function ProfilePage() {
         }
         
         setUser(session.user);
-        setNewName(session.user.user_metadata?.name || "");
+        setNewName(session.user.user_metadata?.name || session.user.user_metadata?.full_name || "");
       } catch (error) {
         console.error("Ошибка загрузки пользователя:", error);
         router.push("/login");
@@ -382,7 +382,7 @@ export default function ProfilePage() {
     );
   }
 
-  const userName = user?.user_metadata?.name || user?.email?.split("@")[0] || "Пользователь";
+  const userName = user?.user_metadata?.name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Пользователь";
   const userEmail = user?.email || "";
 
   const handleLogout = async () => {
@@ -783,6 +783,7 @@ export default function ProfilePage() {
                               width={32} 
                               height={32}
                               className="object-contain"
+                              unoptimized
                               onError={(e) => {
                                 const target = e.target as HTMLImageElement;
                                 target.style.display = 'none';
