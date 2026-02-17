@@ -292,11 +292,16 @@ function MarqueeColumn({
         <div
           key={`${src}-${idx}`}
           className="relative w-full shrink-0 overflow-hidden rounded-3xl shadow-sm"
+          style={{ aspectRatio: "3/4" }}
         >
           <img
             src={src}
             alt="Карточка товара"
-            className="block w-full h-auto"
+            className="block w-full h-full object-cover"
+            width={400}
+            height={533}
+            loading="lazy"
+            decoding="async"
             draggable={false}
           />
         </div>
