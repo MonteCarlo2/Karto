@@ -3,11 +3,13 @@
 import { useState, useEffect } from "react"
 import dynamic from "next/dynamic"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import { ArrowRight, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { VideoBackground } from "@/components/ui/video-background"
 import { createBrowserClient } from "@/lib/supabase/client"
+import { useToast } from "@/components/ui/toast"
 
 const BugReportModal = dynamic(
   () => import("@/components/ui/bug-report-modal").then((m) => ({ default: m.BugReportModal })),
@@ -43,6 +45,8 @@ const FAQSectionKarto = dynamic(
 export default function Home() {
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const searchParams = useSearchParams();
+  const { showToast } = useToast();
 
   useEffect(() => {
     const checkUser = async () => {
@@ -56,6 +60,18 @@ export default function Home() {
     };
     checkUser();
   }, []);
+
+  // Сообщение при входе по уже привязанному Яндекс-аккаунту (аккаунт уже был зарегистрирован)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (searchParams.get("welcome_back") === "1") {
+      showToast({
+        type: "success",
+        message: "С возвращением! Вы вошли в свой аккаунт.",
+      });
+      window.history.replaceState({}, "", window.location.pathname + window.location.hash || "");
+    }
+  }, [searchParams, showToast]);
 
   return (
     <div suppressHydrationWarning>

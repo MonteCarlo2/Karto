@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, Eye, EyeOff, ArrowLeft, User, Check, X } from "lucide-react";
@@ -11,6 +11,7 @@ import { useNotification } from "@/components/ui/notification";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showNotification, NotificationComponent } = useNotification();
   const [vantaEffect, setVantaEffect] = useState<any>(null);
   const vantaRef = useRef<HTMLDivElement>(null);
@@ -65,6 +66,12 @@ export default function LoginPage() {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
+
+  // Ошибка из URL (например после редиректа с /api/auth/yandex/callback)
+  useEffect(() => {
+    const err = searchParams.get("error");
+    if (err) setError(decodeURIComponent(err));
+  }, [searchParams]);
 
   // Скрываем navbar и footer на странице входа
   useEffect(() => {
@@ -268,13 +275,18 @@ export default function LoginPage() {
 
         // Если пользователь создан, Supabase автоматически отправил письмо
         if (data.user) {
+          // Supabase при существующем email может вернуть user без error, но identities пустой
+          const identities = (data.user as { identities?: unknown[] }).identities;
+          if (!identities || identities.length === 0) {
+            setError("Пользователь с таким email уже зарегистрирован. Войдите в аккаунт или восстановите пароль.");
+            return;
+          }
           setError(null);
           showNotification(
             "Регистрация успешна! Пожалуйста, проверьте вашу почту и подтвердите email адрес.",
             "success"
           );
-          
-          // Очищаем форму
+
           setName("");
           setEmail("");
           setPassword("");
@@ -293,8 +305,13 @@ export default function LoginPage() {
         setError("Ошибка подключения. Проверьте настройки Supabase в .env.local");
       } else if (err.message?.includes("Invalid login credentials") || err.message?.includes("Invalid credentials")) {
         setError("Неверный email или пароль");
-      } else if (err.message?.includes("User already registered") || err.message?.includes("already registered")) {
-        setError("Пользователь с таким email уже зарегистрирован");
+      } else if (
+        err.message?.includes("User already registered") ||
+        err.message?.includes("already registered") ||
+        err.message?.includes("already exists") ||
+        err.message?.toLowerCase().includes("user with this email")
+      ) {
+        setError("Пользователь с таким email уже зарегистрирован. Войдите в аккаунт или восстановите пароль.");
       } else if (err.message?.includes("Error sending confirmation email") || 
                  err.message?.includes("email") || 
                  err.code === "email_not_confirmed" ||
@@ -324,42 +341,9 @@ export default function LoginPage() {
     }
   };
 
-  const handleYandexLogin = async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const supabase = createBrowserClient();
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase Provider type может не включать "yandex"
-        provider: "yandex" as any,
-        options: {
-          redirectTo: `${window.location.origin}/`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
-      });
-
-      if (error) throw error;
-      
-      // OAuth перенаправляет автоматически через Supabase callback
-      // Supabase обработает авторизацию и перенаправит на redirectTo
-    } catch (err: any) {
-      console.error('Ошибка входа через Яндекс:', err);
-      if (err.message?.includes("Invalid API key")) {
-        setError("Неверный или отсутствующий ключ Supabase. В настройках хостинга добавьте NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY и пересоберите приложение.");
-        showNotification("Проверьте переменные Supabase на хостинге", "error");
-      } else {
-        setError(err.message || "Произошла ошибка при входе через Яндекс");
-        showNotification(
-          "Не удалось войти через Яндекс. Проверьте настройки OAuth в Supabase Dashboard.",
-          "error"
-        );
-      }
-      setIsLoading(false);
-    }
+  const handleYandexLogin = () => {
+    // Вход через наш API: редирект на Яндекс → callback на /api/auth/yandex/callback → Supabase сессия
+    window.location.href = "/api/auth/yandex";
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -848,6 +832,7 @@ export default function LoginPage() {
                 width={28}
                 height={28}
                 className="object-contain"
+                unoptimized
                 onError={(e) => {
                   const target = e.target as HTMLImageElement;
                   target.style.display = "none";
