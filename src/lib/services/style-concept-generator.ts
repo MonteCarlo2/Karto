@@ -157,11 +157,18 @@ ${safeUserPrompt ? " Учти пожелания пользователя в 4 �
     console.log("🔵 [OpenRouter] data.choices[0].message:", data.choices[0]?.message);
     console.log("🔵 [OpenRouter] data.choices[0].message.content:", data.choices[0]?.message?.content);
     
-    const content = data.choices[0]?.message?.content;
-
-    if (!content) {
-      console.error("❌ [OpenRouter] Нет контента в ответе. Полный ответ:", JSON.stringify(data, null, 2));
-      throw new Error(`OpenRouter не вернул контент. Проверьте модель и параметры запроса. Структура ответа: ${JSON.stringify(Object.keys(data))}`);
+    let content: string;
+    const rawContent = data.choices[0]?.message?.content;
+    if (rawContent == null) {
+      console.warn("⚠️ [OpenRouter] Нет контента в ответе — используем fallback-концепции");
+      return createFallbackConcepts(safeProductName, safeUserPrompt);
+    }
+    if (typeof rawContent === "string") {
+      content = rawContent;
+    } else if (Array.isArray(rawContent)) {
+      content = rawContent.map((p: any) => p?.text ?? p?.content ?? "").join("");
+    } else {
+      content = String(rawContent);
     }
 
     console.log("🔵 [OpenRouter] Контент получен, длина:", content.length);
@@ -317,7 +324,9 @@ ${safeUserPrompt ? " Учти пожелания пользователя в 4 �
             console.log(`🔵 [OpenRouter] Восстановлено ${repaired.length} объектов через разбиение по запятым`);
             parsed = repaired.map(s => JSON.parse(s));
           } else {
-            throw new Error("Не удалось распарсить ответ от OpenRouter: не найдено ни одного валидного объекта.");
+            console.warn("⚠️ [OpenRouter] Не найдено ни одного валидного объекта — используем fallback-концепции");
+            concepts = createFallbackConcepts(safeProductName, safeUserPrompt);
+            return concepts.slice(0, 4);
           }
         }
       }
@@ -336,15 +345,12 @@ ${safeUserPrompt ? " Учти пожелания пользователя в 4 �
           parsed.concept4,
         ].filter(Boolean);
       } else {
-        throw new Error("Неожиданный формат ответа");
+        console.warn("⚠️ [OpenRouter] Неожиданный формат ответа — используем fallback-концепции");
+        concepts = createFallbackConcepts(safeProductName, safeUserPrompt);
       }
     } catch (parseError: any) {
-      console.error("❌ [OpenRouter] Ошибка парсинга JSON!");
-      console.error("❌ [OpenRouter] Полный контент (первые 1000 символов):", content.substring(0, 1000));
-      console.error("❌ [OpenRouter] Полный контент (последние 500 символов):", content.substring(Math.max(0, content.length - 500)));
-      console.error("❌ [OpenRouter] Parse error:", parseError);
-      // НЕ используем fallback - пробрасываем ошибку дальше
-      throw new Error(`Не удалось распарсить ответ от OpenRouter: ${parseError.message}. Контент (первые 500 символов): ${content.substring(0, 500)}`);
+      console.warn("⚠️ [OpenRouter] Ошибка парсинга JSON — используем fallback-концепции. Ошибка:", parseError?.message);
+      concepts = createFallbackConcepts(safeProductName, safeUserPrompt);
     }
 
     // Проверяем, что получили 4 концепции
@@ -367,12 +373,8 @@ ${safeUserPrompt ? " Учти пожелания пользователя в 4 �
     return concepts.slice(0, 4);
 
   } catch (error: any) {
-    console.error("❌ [OpenRouter] КРИТИЧЕСКАЯ ОШИБКА генерации концепций!");
-    console.error("❌ [OpenRouter] Error:", error);
-    console.error("❌ [OpenRouter] Error message:", error.message);
-    console.error("❌ [OpenRouter] Error stack:", error.stack);
-    // НЕ используем fallback - пробрасываем ошибку, чтобы было видно проблему
-    throw new Error(`Ошибка генерации концепций через OpenRouter: ${error.message || String(error)}`);
+    console.warn("⚠️ [OpenRouter] Ошибка при генерации концепций — возвращаем fallback. Причина:", error?.message || String(error));
+    return createFallbackConcepts(safeProductName, safeUserPrompt);
   }
 }
 
