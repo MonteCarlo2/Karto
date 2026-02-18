@@ -770,37 +770,29 @@ export default function ProfilePage() {
                   <p className="text-xs text-gray-500 mb-4">Управляйте способами входа в KARTO.</p>
                   
                   <div className="space-y-3">
-                    {/* Яндекс: созданный через /api/auth/yandex/callback хранит provider в user_metadata */}
+                    {/* Яндекс: всегда показываем логотип; созданный через callback хранит provider в user_metadata */}
                     <div className="flex items-center justify-between py-3 px-4 bg-gray-50 rounded-xl">
                       <div className="flex items-center gap-3">
-                        {user?.user_metadata?.provider === 'yandex' ||
-                         user?.app_metadata?.provider === 'yandex' ||
-                         user?.identities?.some((id: any) => id.provider === 'yandex') ? (
-                          <div className="w-8 h-8 bg-red-500 rounded flex items-center justify-center text-white font-bold text-sm">
-                            Я
-                          </div>
-                        ) : (
-                          <div className="w-8 h-8 flex items-center justify-center">
-                            <Image 
-                              src="/yandex-logo.png" 
-                              alt="Яндекс" 
-                              width={32} 
-                              height={32}
-                              className="object-contain"
-                              unoptimized
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = 'none';
-                                if (target.parentElement) {
-                                  const fallback = document.createElement('div');
-                                  fallback.className = 'w-8 h-8 bg-red-500 rounded flex items-center justify-center text-white font-bold text-sm';
-                                  fallback.textContent = 'Я';
-                                  target.parentElement.appendChild(fallback);
-                                }
-                              }}
-                            />
-                          </div>
-                        )}
+                        <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                          <Image
+                            src="/yandex-logo.svg"
+                            alt="Яндекс"
+                            width={32}
+                            height={32}
+                            className="object-contain"
+                            unoptimized
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              if (target.parentElement) {
+                                const fallback = document.createElement('div');
+                                fallback.className = 'w-8 h-8 bg-red-500 rounded flex items-center justify-center text-white font-bold text-sm';
+                                fallback.textContent = 'Я';
+                                target.parentElement.appendChild(fallback);
+                              }
+                            }}
+                          />
+                        </div>
                         <div>
                           <p className="text-sm font-medium text-gray-900">Яндекс</p>
                           <p className="text-xs text-gray-500">

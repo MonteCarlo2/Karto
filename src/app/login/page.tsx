@@ -827,7 +827,7 @@ function LoginContent() {
           >
             <div className="w-7 h-7 flex items-center justify-center flex-shrink-0 relative">
               <Image
-                src="/yandex-logo.png"
+                src="/yandex-logo.svg"
                 alt="Яндекс"
                 width={28}
                 height={28}
@@ -840,7 +840,7 @@ function LoginContent() {
                   if (svg) svg.style.display = "block";
                 }}
               />
-              {/* Fallback: логотип Яндекса «Я» (если /yandex-logo.png не загрузился) */}
+              {/* Fallback: логотип Яндекса «Я» (если /yandex-logo.svg не загрузился) */}
               <svg
                 className="yandex-fallback-svg w-6 h-6 hidden absolute inset-0 m-auto"
                 viewBox="0 0 24 24"
