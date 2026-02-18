@@ -770,10 +770,11 @@ export default function ProfilePage() {
                   <p className="text-xs text-gray-500 mb-4">Управляйте способами входа в KARTO.</p>
                   
                   <div className="space-y-3">
-                    {/* Яндекс */}
+                    {/* Яндекс: созданный через /api/auth/yandex/callback хранит provider в user_metadata */}
                     <div className="flex items-center justify-between py-3 px-4 bg-gray-50 rounded-xl">
                       <div className="flex items-center gap-3">
-                        {user?.app_metadata?.provider === 'yandex' || 
+                        {user?.user_metadata?.provider === 'yandex' ||
+                         user?.app_metadata?.provider === 'yandex' ||
                          user?.identities?.some((id: any) => id.provider === 'yandex') ? (
                           <div className="w-8 h-8 bg-red-500 rounded flex items-center justify-center text-white font-bold text-sm">
                             Я
@@ -803,13 +804,15 @@ export default function ProfilePage() {
                         <div>
                           <p className="text-sm font-medium text-gray-900">Яндекс</p>
                           <p className="text-xs text-gray-500">
-                            {user?.app_metadata?.provider === 'yandex' || 
-                             user?.identities?.some((id: any) => id.provider === 'yandex') 
+                            {user?.user_metadata?.provider === 'yandex' ||
+                             user?.app_metadata?.provider === 'yandex' ||
+                             user?.identities?.some((id: any) => id.provider === 'yandex')
                              ? "Подключен" : "Подключите аккаунт Яндекс"}
                           </p>
                         </div>
                       </div>
-                      {user?.app_metadata?.provider === 'yandex' || 
+                      {user?.user_metadata?.provider === 'yandex' ||
+                       user?.app_metadata?.provider === 'yandex' ||
                        user?.identities?.some((id: any) => id.provider === 'yandex') ? (
                         <div className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-medium flex items-center gap-1.5">
                           <div className="w-2 h-2 bg-green-500 rounded-full" />
