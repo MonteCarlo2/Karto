@@ -124,7 +124,7 @@ async function createTask(params: {
 async function getTaskResult(taskId: string, maxWaitTime: number = 300000): Promise<string> {
   const apiKey = getKieAiApiKey();
   const startTime = Date.now();
-  const pollInterval = 2000; // Опрашиваем каждые 2 секунды
+  const pollInterval = 1000; // Опрашиваем каждую секунду — быстрее узнаём о готовности (было 2 с)
 
   console.log("⏳ [KIE AI] Ожидаем результат задачи:", taskId);
 

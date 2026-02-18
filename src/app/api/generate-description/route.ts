@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateProductDescription } from "@/lib/services/openrouter-description";
 
+// Допускаем долгий ответ (4 параллельных запроса к OpenRouter), чтобы не обрывать по таймауту
+export const maxDuration = 120;
+
 /**
- * Генерация 4 вариантов описания товара через GPT-4o-mini
+ * Генерация 4 вариантов описания товара через OpenRouter (Claude)
  * ВАЖНО: Все операции через серверный API route для безопасности
  */
 export async function POST(request: NextRequest) {
@@ -55,10 +58,9 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    // Надёжный режим: запускаем варианты ПОСЛЕДОВАТЕЛЬНО,
-    // чтобы не упираться в лимиты OpenRouter при 4 одновременных запросах.
+    // Запускаем все 4 варианта ПАРАЛЛЕЛЬНО — быстрее в ~4 раза, качество то же (промпты не трогаем)
     const startTime = Date.now();
-    console.log(`⚡ Запускаем 4 запроса ПОСЛЕДОВАТЕЛЬНО через OpenRouter...`);
+    console.log(`⚡ Запускаем 4 запроса ПАРАЛЛЕЛЬНО через OpenRouter...`);
 
     const descriptionTasks: Array<[1 | 2 | 3 | 4, string]> = [
       [1, "Официальный"],
@@ -66,19 +68,11 @@ export async function POST(request: NextRequest) {
       [3, "Структурированный"],
       [4, "Сбалансированный"],
     ];
-    const descriptions: PromiseSettledResult<string>[] = [];
+    const results = await Promise.allSettled(
+      descriptionTasks.map(([style, styleName]) => generateVariant(style, styleName))
+    );
+    const descriptions: PromiseSettledResult<string>[] = results;
 
-    for (const [style, styleName] of descriptionTasks) {
-      try {
-        const value = await generateVariant(style, styleName);
-        descriptions.push({ status: "fulfilled", value });
-      } catch (reason) {
-        descriptions.push({ status: "rejected", reason });
-      }
-      // Небольшая пауза между запросами снижает риск rate-limit
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    
     console.log(`📊 Promise.allSettled завершен. Получено результатов: ${descriptions.length}`);
     descriptions.forEach((result, index) => {
       if (result.status === "fulfilled") {
