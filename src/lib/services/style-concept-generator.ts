@@ -50,9 +50,9 @@ export async function generateDesignConcepts(
 - Концепции различаются: разный стиль, композиция, цвета, mood, подача текста. Каждая — профессиональная и детализированная.
 ${safeUserPrompt ? " Учти пожелания пользователя в 4 вариациях." : ""}
 
-Верни ТОЛЬКО JSON-массив из 4 объектов с полями: style, composition, colors, mood, textPresentation. Без markdown.`;
+Верни ТОЛЬКО валидный JSON: один массив ровно из 4 объектов. У каждого объекта поля: style, composition, colors, mood, textPresentation (все строки). Обязательно закрой каждый объект фигурной скобкой }, массив — квадратной ]. Никакого markdown и никакого текста до или после JSON. Ответ должен парситься JSON.parse от начала до конца.`;
 
-  const userMessage = `Товар: ${safeProductName}${safeUserPrompt ? `\nПожелания: ${safeUserPrompt}` : ""}\n\nВерни JSON-массив ровно из 4 объектов: style, composition, colors, mood, textPresentation. Без markdown.`;
+  const userMessage = `Товар: ${safeProductName}${safeUserPrompt ? `\nПожелания: ${safeUserPrompt}` : ""}\n\nОтветь только валидным JSON-массивом из 4 объектов с полями style, composition, colors, mood, textPresentation. Без markdown.`;
 
   console.log("🔵 [OpenRouter] ========== НАЧАЛО ГЕНЕРАЦИИ КОНЦЕПЦИЙ ==========");
   console.log("🔵 [OpenRouter] Товар:", productName);
@@ -63,58 +63,71 @@ ${safeUserPrompt ? " Учти пожелания пользователя в 4 �
   console.log("🔵 [OpenRouter] API URL:", OPENROUTER_API_URL);
   
   try {
-    const requestBody = {
-      model: "openai/gpt-5-mini",
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt,
+    const responseFormat = {
+      type: "json_schema",
+      json_schema: {
+        name: "design_concepts",
+        strict: true,
+        schema: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              style: { type: "string" },
+              composition: { type: "string" },
+              colors: { type: "string" },
+              mood: { type: "string" },
+              textPresentation: { type: "string" },
+            },
+            required: ["style", "composition", "colors", "mood"],
+            additionalProperties: false,
+          },
+          minItems: 4,
+          maxItems: 4,
         },
-        {
-          role: "user",
-          content: userMessage,
-        },
-      ],
-      temperature: 0.9,
-      max_tokens: 2000, // Достаточно для 4 концепций; меньше — быстрее ответ OpenRouter
+      },
     };
 
-    console.log("🔵 [OpenRouter] Отправляю запрос к OpenRouter API...");
-    console.log("🔵 [OpenRouter] URL:", OPENROUTER_API_URL);
-    console.log("🔵 [OpenRouter] Model:", requestBody.model);
-    console.log("🔵 [OpenRouter] Request body keys:", Object.keys(requestBody));
-    console.log("🔵 [OpenRouter] System prompt length:", systemPrompt.length);
-    console.log("🔵 [OpenRouter] User message length:", userMessage.length);
-
-    const response = await fetch(OPENROUTER_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://karto.app",
-        "X-Title": "KARTO - Product Card Generator", // Только ASCII символы
-      },
-      body: JSON.stringify(requestBody),
+    const buildBody = (withSchema: boolean): Record<string, unknown> => ({
+      model: "openai/gpt-5-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      temperature: 0.9,
+      max_tokens: 4096, // 4 детальные концепции — при 2000 ответ обрезался, JSON был невалидный
+      ...(withSchema ? { response_format: responseFormat } : {}),
     });
 
-    console.log("🔵 [OpenRouter] Получен ответ, статус:", response.status);
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://karto.app",
+      "X-Title": "KARTO - Product Card Generator",
+    };
 
-    if (!response.ok) {
-      let errorText: string;
-      try {
-        errorText = await response.text();
-      } catch (e) {
-        errorText = `Не удалось прочитать ответ: ${e}`;
+    let response = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(buildBody(true)),
+    });
+
+    if (response.status === 400) {
+      const errText = await response.text();
+      const retryWithoutSchema = /response_format|json_schema|structured|schema/i.test(errText);
+      if (retryWithoutSchema) {
+        console.warn("⚠️ [OpenRouter] Модель не поддерживает response_format, повтор без схемы");
+        response = await fetch(OPENROUTER_API_URL, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(buildBody(false)),
+        });
       }
-      console.error("❌ [OpenRouter] API Error:", response.status);
-      console.error("❌ [OpenRouter] Error details:", errorText);
-      console.error("❌ [OpenRouter] Request body (первые 500 символов):", JSON.stringify(requestBody).substring(0, 500));
-      
-      // Если это ошибка 400, возможно проблема с промптом
-      if (response.status === 400) {
-        throw new Error(`OpenRouter API error (400): Возможно проблема с промптом или параметрами запроса. Детали: ${errorText.substring(0, 200)}`);
+      if (!response.ok) {
+        throw new Error(`OpenRouter API error (400): ${errText.substring(0, 300)}`);
       }
-      
+    } else if (!response.ok) {
+      const errorText = await response.text().catch(() => "не удалось прочитать");
       throw new Error(`OpenRouter API error: ${response.status} - ${errorText.substring(0, 500)}`);
     }
 
