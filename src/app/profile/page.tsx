@@ -134,14 +134,14 @@ export default function ProfilePage() {
       try {
         const supabase = createBrowserClient();
         const { data: { session } } = await supabase.auth.getSession();
-        
         if (!session?.user) {
           router.push("/login");
           return;
         }
-        
-        setUser(session.user);
-        setNewName(session.user.user_metadata?.name || session.user.user_metadata?.full_name || "");
+        const { data: { user: fullUser } } = await supabase.auth.getUser();
+        const u = fullUser || session.user;
+        setUser(u);
+        setNewName(u?.user_metadata?.name || u?.user_metadata?.full_name || "");
       } catch (error) {
         console.error("Ошибка загрузки пользователя:", error);
         router.push("/login");
@@ -689,21 +689,24 @@ export default function ProfilePage() {
               <p className="text-gray-600 mb-6 -mt-4">Управляйте информацией вашего аккаунта.</p>
 
               {/* Ваши услуги */}
-              {subscription && (
+              {subscription && (subscription.flowsLimit > 0 || subscription.creativeLimit > 0) && (
                 <div className="mb-6 p-4 rounded-xl bg-[#F5F5F0] border border-[#2E5A43]/20">
                   <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <DollarSign className="w-4 h-4 text-[#2E5A43]" />
                     Ваши услуги
                   </h3>
-                  {subscription.planType === "flow" ? (
-                    <p className="text-sm text-gray-800">
-                      Поток: осталось <strong>{Math.max(0, subscription.flowsLimit - subscription.flowsUsed)}</strong> из {subscription.flowsLimit}.
-                    </p>
-                  ) : (
-                    <p className="text-sm text-gray-800">
-                      Свободное творчество: осталось <strong>{Math.max(0, subscription.creativeLimit - subscription.creativeUsed)}</strong> из {subscription.creativeLimit} генераций.
-                    </p>
-                  )}
+                  <div className="space-y-1">
+                    {subscription.flowsLimit > 0 && (
+                      <p className="text-sm text-gray-800">
+                        Поток: осталось <strong>{Math.max(0, subscription.flowsLimit - subscription.flowsUsed)}</strong> из {subscription.flowsLimit}.
+                      </p>
+                    )}
+                    {subscription.creativeLimit > 0 && (
+                      <p className="text-sm text-gray-800">
+                        Свободное творчество: осталось <strong>{Math.max(0, subscription.creativeLimit - subscription.creativeUsed)}</strong> из {subscription.creativeLimit} генераций.
+                      </p>
+                    )}
+                  </div>
                   <Link href="/#pricing" className="text-xs text-[#2E5A43] hover:underline mt-1 inline-block">Сменить тариф</Link>
                 </div>
               )}

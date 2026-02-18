@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
-import { getSubscriptionByUserId, subscriptionToState, FREE_WELCOME_CREATIVE_LIMIT } from "@/lib/subscription";
+import { getSubscriptionByUserId, FREE_WELCOME_CREATIVE_LIMIT } from "@/lib/subscription";
 import { sendWelcomeEmail } from "@/lib/send-welcome-email";
 
 /**
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      subscription: subscriptionToState(row as any),
+      subscription: row,
     });
   } catch (err: unknown) {
     if (isSupabaseNetworkError(err)) {

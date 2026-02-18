@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { generateWithKieAi } from "@/lib/services/kie-ai";
-import { getSubscriptionByUserId } from "@/lib/subscription";
+import { getSubscriptionByUserId, getSubscriptionRowsByUserId } from "@/lib/subscription";
 import { getPublicUrl, saveBase64Image } from "@/lib/services/image-processing";
 
 /**
@@ -40,21 +40,21 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
-    if (sub.plan_type === "flow") {
+    if (sub.creativeLimit <= 0) {
       return NextResponse.json(
         {
           success: false,
-          error: "У вас подключён тариф «Поток», а не «Свободное творчество». Для генерации изображений здесь выберите тариф «Свободное творчество» на главной странице.",
+          error: "У вас не куплено «Свободное творчество». Выберите тариф на главной странице.",
           code: "NO_CREATIVE_PLAN",
         },
         { status: 403 }
       );
     }
-    if (sub.creative_used >= sub.plan_volume) {
+    if (sub.creativeUsed >= sub.creativeLimit) {
       return NextResponse.json(
         {
           success: false,
-          error: "У вас не осталось генераций. Доступно: 0. Выберите тариф «Свободное творчество» на главной странице, чтобы получить генерации.",
+          error: "У вас не осталось генераций. Доступно: 0. Выберите тариф «Свободное творчество» на главной странице.",
           code: "NO_GENERATIONS_LEFT",
         },
         { status: 403 }
@@ -159,11 +159,16 @@ export async function POST(request: NextRequest) {
       "png"
     );
 
-    const { error: updErr } = await supabase
-      .from("user_subscriptions")
-      .update({ creative_used: sub.creative_used + 1 })
-      .eq("user_id", user.id);
-    if (updErr) console.error("Ошибка учёта генерации:", updErr);
+    const creativeRows = await getSubscriptionRowsByUserId(supabase as any, user.id);
+    const creativeRow = creativeRows.find((r) => r.plan_type === "creative");
+    if (creativeRow) {
+      const { error: updErr } = await supabase
+        .from("user_subscriptions")
+        .update({ creative_used: creativeRow.creative_used + 1 })
+        .eq("user_id", user.id)
+        .eq("plan_type", "creative");
+      if (updErr) console.error("Ошибка учёта генерации:", updErr);
+    }
 
     return NextResponse.json({
       success: true,

@@ -251,7 +251,7 @@ export default function FreeGeneration() {
         if (!mounted) return;
         const subscription = payload?.subscription;
 
-        if (!subscription || subscription.planType !== "creative") {
+        if (!subscription || subscription.creativeLimit <= 0) {
           setCreativeQuota({
             used: 0,
             remaining: 0,

@@ -49,28 +49,49 @@ export async function POST(request: NextRequest) {
 
     const planType = mode === "0" ? "flow" : "creative";
     const planVolume = mode === "0" ? FLOW_VOLUMES[tariffIndex] : CREATIVE_VOLUMES[tariffIndex];
+    const now = new Date().toISOString();
 
-    const { error: upsertError } = await supabase
+    const { data: existing } = await supabase
       .from("user_subscriptions")
-      .upsert(
-        {
-          user_id: user.id,
-          plan_type: planType,
-          plan_volume: planVolume,
-          period_start: new Date().toISOString(),
-          flows_used: 0,
-          creative_used: 0,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" }
-      );
+      .select("id, flows_used, creative_used")
+      .eq("user_id", user.id)
+      .eq("plan_type", planType)
+      .maybeSingle();
 
-    if (upsertError) {
-      console.error("❌ [SUBSCRIPTION SELECT] upsert error:", upsertError);
-      return NextResponse.json(
-        { success: false, error: "Не удалось сохранить тариф" },
-        { status: 500 }
-      );
+    if (existing) {
+      const { error: updateError } = await supabase
+        .from("user_subscriptions")
+        .update({
+          plan_volume: planVolume,
+          period_start: now,
+          updated_at: now,
+        })
+        .eq("user_id", user.id)
+        .eq("plan_type", planType);
+      if (updateError) {
+        console.error("❌ [SUBSCRIPTION SELECT] update error:", updateError);
+        return NextResponse.json(
+          { success: false, error: "Не удалось сохранить тариф" },
+          { status: 500 }
+        );
+      }
+    } else {
+      const { error: insertError } = await supabase.from("user_subscriptions").insert({
+        user_id: user.id,
+        plan_type: planType,
+        plan_volume: planVolume,
+        period_start: now,
+        flows_used: 0,
+        creative_used: 0,
+        updated_at: now,
+      });
+      if (insertError) {
+        console.error("❌ [SUBSCRIPTION SELECT] insert error:", insertError);
+        return NextResponse.json(
+          { success: false, error: "Не удалось сохранить тариф" },
+          { status: 500 }
+        );
+      }
     }
 
     return NextResponse.json({

@@ -48,6 +48,27 @@ export function subscriptionToState(row: SubscriptionRow): SubscriptionState {
   };
 }
 
+/** Объединить несколько строк подписки (flow + creative) в одно состояние. */
+export function mergeSubscriptionRows(rows: SubscriptionRow[]): SubscriptionState {
+  const flowRow = rows.find((r) => r.plan_type === "flow");
+  const creativeRow = rows.find((r) => r.plan_type === "creative");
+  const flowsLimit = flowRow ? flowRow.plan_volume : 0;
+  const creativeLimit = creativeRow ? creativeRow.plan_volume : 0;
+  const flowsUsed = flowRow ? flowRow.flows_used : 0;
+  const creativeUsed = creativeRow ? creativeRow.creative_used : 0;
+  const periodStart = flowRow?.period_start ?? creativeRow?.period_start ?? new Date().toISOString();
+  return {
+    planType: flowsLimit > 0 ? "flow" : "creative",
+    planVolume: flowsLimit || creativeLimit,
+    flowsUsed,
+    flowsLimit,
+    creativeUsed,
+    creativeLimit,
+    periodStart,
+    expiresAt: flowRow ? getSubscriptionExpiryIso(flowRow) : creativeRow ? getSubscriptionExpiryIso(creativeRow) : undefined,
+  };
+}
+
 export function getSubscriptionExpiryIso(row: Pick<SubscriptionRow, "period_start">): string {
   const startedAtMs = new Date(row.period_start).getTime();
   if (!Number.isFinite(startedAtMs)) return new Date(0).toISOString();
@@ -60,18 +81,32 @@ export function isSubscriptionExpired(row: Pick<SubscriptionRow, "period_start">
   return now.getTime() >= expiryMs;
 }
 
-/** Получить подписку по user_id (серверный Supabase client). */
-export async function getSubscriptionByUserId(supabase: any, userId: string): Promise<SubscriptionRow | null> {
+/** Получить подписку по user_id (одна строка — для обратной совместимости, если одна запись). */
+export async function getSubscriptionByUserId(supabase: any, userId: string): Promise<SubscriptionState | null> {
   const { data, error } = await supabase
     .from("user_subscriptions")
     .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error || !data) return null;
-  const row = data as SubscriptionRow;
-  if (!isSubscriptionExpired(row)) return row;
+    .eq("user_id", userId);
+  if (error) return null;
+  const rows = (data ?? []) as SubscriptionRow[];
+  const valid: SubscriptionRow[] = [];
+  for (const row of rows) {
+    if (isSubscriptionExpired(row)) {
+      await supabase.from("user_subscriptions").delete().eq("id", row.id);
+    } else {
+      valid.push(row);
+    }
+  }
+  if (valid.length === 0) return null;
+  return mergeSubscriptionRows(valid);
+}
 
-  // Тариф истёк: считаем его неактивным и удаляем запись.
-  await supabase.from("user_subscriptions").delete().eq("user_id", userId);
-  return null;
+/** Получить сырые строки подписки по user_id (для списания потока/генераций). */
+export async function getSubscriptionRowsByUserId(supabase: any, userId: string): Promise<SubscriptionRow[]> {
+  const { data, error } = await supabase
+    .from("user_subscriptions")
+    .select("*")
+    .eq("user_id", userId);
+  if (error || !data) return [];
+  return (data as SubscriptionRow[]).filter((r) => !isSubscriptionExpired(r));
 }

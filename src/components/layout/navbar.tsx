@@ -15,7 +15,7 @@ export function Navbar() {
   const [showProfileMenu, setShowProfileMenu] = React.useState(false)
   const [showStudioMenu, setShowStudioMenu] = React.useState(false)
   const [mounted, setMounted] = React.useState(false)
-  const [subscriptionLabel, setSubscriptionLabel] = React.useState<string | null>(null)
+  const [subscriptionLabels, setSubscriptionLabels] = React.useState<string[]>([])
   const pathname = usePathname()
   const router = useRouter()
   const isHome = pathname === "/"
@@ -59,7 +59,7 @@ export function Navbar() {
 
   React.useEffect(() => {
     if (!user) {
-      setSubscriptionLabel(null);
+      setSubscriptionLabels([]);
       return;
     }
     let mounted = true;
@@ -77,16 +77,19 @@ export function Navbar() {
         if (!mounted || !data.subscription) return;
         const s = data.subscription;
         if (!mounted) return;
-        if (s.planType === "flow") {
+        const labels: string[] = [];
+        if (s.flowsLimit > 0) {
           const left = Math.max(0, s.flowsLimit - s.flowsUsed);
-          setSubscriptionLabel(left === 1 ? "1 поток" : `${left} потоков`);
-        } else {
-          const left = Math.max(0, s.creativeLimit - s.creativeUsed);
-          setSubscriptionLabel(left === 1 ? "1 ген." : `${left} ген.`);
+          labels.push(left === 1 ? "1 поток" : `${left} потоков`);
         }
+        if (s.creativeLimit > 0) {
+          const left = Math.max(0, s.creativeLimit - s.creativeUsed);
+          labels.push(left === 1 ? "1 ген." : `${left} ген.`);
+        }
+        setSubscriptionLabels(labels);
       } catch {
         if (!mounted) return;
-        setSubscriptionLabel(null);
+        setSubscriptionLabels([]);
       }
     })();
     return () => { mounted = false; };
@@ -218,10 +221,14 @@ export function Navbar() {
                 >
                   <User className="w-5 h-5 text-foreground" />
                 </button>
-                {subscriptionLabel && (
-                  <span className="hidden sm:inline text-xs font-medium text-[#2E5A43] bg-[#2E5A43]/10 px-2.5 py-1 rounded-full border border-[#2E5A43]/30">
-                    {subscriptionLabel}
-                  </span>
+                {subscriptionLabels.length > 0 && (
+                  <div className="hidden sm:flex items-center gap-1.5">
+                    {subscriptionLabels.map((label, i) => (
+                      <span key={i} className="text-xs font-medium text-[#2E5A43] bg-[#2E5A43]/10 px-2.5 py-1 rounded-full border border-[#2E5A43]/30">
+                        {label}
+                      </span>
+                    ))}
+                  </div>
                 )}
                 <AnimatePresence>
                   {showProfileMenu && (

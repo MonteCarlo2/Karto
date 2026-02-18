@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { createServerClientWithAuth } from "@/lib/supabase/server-auth";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
-import { getSubscriptionByUserId } from "@/lib/subscription";
+import { getSubscriptionByUserId, getSubscriptionRowsByUserId } from "@/lib/subscription";
 
 /** Получить user id: сначала из Authorization, затем из cookies */
 async function getUserIdFromRequest(request: NextRequest, supabase: ReturnType<typeof createServerClient>): Promise<string | null> {
@@ -117,23 +117,32 @@ export async function POST(request: NextRequest) {
             { status: 403 }
           );
         }
-        if (sub.plan_type === "creative") {
+        if (sub.flowsLimit <= 0) {
           return NextResponse.json(
-            { error: "Поток не куплен. У вас подключено Свободное творчество." },
+            { error: "Поток не куплен. Выберите тариф «Поток» на главной." },
             { status: 403 }
           );
         }
-        if (sub.flows_used >= sub.plan_volume) {
-          const flowsLeft = Math.max(0, sub.plan_volume - sub.flows_used);
+        if (sub.flowsUsed >= sub.flowsLimit) {
+          const flowsLeft = Math.max(0, sub.flowsLimit - sub.flowsUsed);
           return NextResponse.json(
             { error: "Лимит потоков исчерпан. Доступно потоков: " + flowsLeft + "." },
             { status: 403 }
           );
         }
+        const flowRows = await getSubscriptionRowsByUserId(supabase as any, userId);
+        const flowRow = flowRows.find((r) => r.plan_type === "flow");
+        if (!flowRow) {
+          return NextResponse.json(
+            { error: "Запись подписки «Поток» не найдена." },
+            { status: 403 }
+          );
+        }
         const { error: updErr } = await supabase
           .from("user_subscriptions")
-          .update({ flows_used: sub.flows_used + 1 })
-          .eq("user_id", userId);
+          .update({ flows_used: flowRow.flows_used + 1 })
+          .eq("user_id", userId)
+          .eq("plan_type", "flow");
         if (updErr) {
           console.error("Ошибка списания потока:", updErr);
           return NextResponse.json(
@@ -220,23 +229,32 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
-      if (sub.plan_type === "creative") {
+      if (sub.flowsLimit <= 0) {
         return NextResponse.json(
-          { error: "Поток не куплен. У вас подключено Свободное творчество." },
+          { error: "Поток не куплен. Выберите тариф «Поток» на главной." },
           { status: 403 }
         );
       }
-      if (sub.flows_used >= sub.plan_volume) {
-        const flowsLeft = Math.max(0, sub.plan_volume - sub.flows_used);
+      if (sub.flowsUsed >= sub.flowsLimit) {
+        const flowsLeft = Math.max(0, sub.flowsLimit - sub.flowsUsed);
         return NextResponse.json(
           { error: "Лимит потоков исчерпан. Доступно потоков: " + flowsLeft + "." },
           { status: 403 }
         );
       }
+      const flowRows = await getSubscriptionRowsByUserId(supabase as any, userId);
+      const flowRow = flowRows.find((r) => r.plan_type === "flow");
+      if (!flowRow) {
+        return NextResponse.json(
+          { error: "Запись подписки «Поток» не найдена." },
+          { status: 403 }
+        );
+      }
       const { error: updErr } = await supabase
         .from("user_subscriptions")
-        .update({ flows_used: sub.flows_used + 1 })
-        .eq("user_id", userId);
+        .update({ flows_used: flowRow.flows_used + 1 })
+        .eq("user_id", userId)
+        .eq("plan_type", "flow");
       if (updErr) {
         console.error("Ошибка списания потока:", updErr);
         return NextResponse.json(
