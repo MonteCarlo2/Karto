@@ -1,6 +1,11 @@
 /**
  * Сервис для генерации дизайн-концепций через OpenRouter API
  * Использует GPT-5-mini для создания уникальных стилей и композиций
+ *
+ * ВАЖНО: OpenRouter часто возвращает JSON с ошибками (trailing comma, обрезанный ответ).
+ * Парсинг ответа должен оставаться устойчивым: repair (trailing comma), извлечение
+ * по скобкам, разбиение по "},\s*{", дополнение до 4 концепций через createFallbackConcept.
+ * Не удалять эти слои восстановления и не бросать ошибку при частично валидном ответе.
  */
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -205,13 +210,32 @@ ${safeUserPrompt ? " Учти пожелания пользователя в 4 �
         }
       }
       
+      // Пытаемся починить типичные ошибки LLM (trailing comma, лишние запятые)
+      const tryRepairJson = (raw: string): string => {
+        return raw
+          .replace(/,(\s*)}/g, "$1}")  // trailing comma перед }
+          .replace(/,(\s*)]/g, "$1]"); // trailing comma перед ]
+      };
+      let jsonToParse = jsonContent;
+      
       // Пробуем распарсить как JSON
       let parsed: any;
       try {
-        parsed = JSON.parse(jsonContent);
-      } catch (firstParseError: any) {
-        // Если первая попытка не удалась, пробуем восстановить JSON
+        parsed = JSON.parse(jsonToParse);
+      } catch (_) {
+        jsonToParse = tryRepairJson(jsonContent);
+        try {
+          parsed = JSON.parse(jsonToParse);
+          console.log("🔵 [OpenRouter] JSON распарсен после исправления trailing comma");
+        } catch (__) {
+          // оставляем jsonToParse для восстановления ниже
+        }
+      }
+      
+      if (parsed === undefined) {
+        // Если парсинг так и не удался, пробуем восстановить по объектам
         console.warn("⚠️ [OpenRouter] Первая попытка парсинга не удалась, пытаемся восстановить JSON...");
+        jsonToParse = jsonToParse || jsonContent;
         
         // Пытаемся найти все валидные объекты в массиве
         const objects: string[] = [];
@@ -220,8 +244,8 @@ ${safeUserPrompt ? " Учти пожелания пользователя в 4 �
         let inString = false;
         let escapeNext = false;
         
-        for (let i = 0; i < jsonContent.length; i++) {
-          const char = jsonContent[i];
+        for (let i = 0; i < jsonToParse.length; i++) {
+          const char = jsonToParse[i];
           
           if (escapeNext) {
             escapeNext = false;
@@ -270,7 +294,31 @@ ${safeUserPrompt ? " Учти пожелания пользователя в 4 �
           console.log(`🔵 [OpenRouter] Найдено ${objects.length} валидных объектов, создаем массив`);
           parsed = objects.map(obj => JSON.parse(obj));
         } else {
-          throw firstParseError;
+          // Альтернатива: разбить по "},\s*{" и попытаться распарсить каждый фрагмент
+          const arrayStart = jsonToParse.indexOf("[");
+          const arrayEnd = jsonToParse.lastIndexOf("]");
+          const inner = arrayStart >= 0 && arrayEnd > arrayStart
+            ? jsonToParse.slice(arrayStart + 1, arrayEnd)
+            : jsonToParse;
+          const parts = inner.split(/\}\s*,\s*\{/);
+          const repaired: string[] = [];
+          for (let i = 0; i < parts.length; i++) {
+            let block = parts[i].trim();
+            if (!block.startsWith("{")) block = "{" + block;
+            if (!block.endsWith("}")) block = block + "}";
+            try {
+              JSON.parse(block);
+              repaired.push(block);
+            } catch {
+              // пропускаем битый фрагмент
+            }
+          }
+          if (repaired.length > 0) {
+            console.log(`🔵 [OpenRouter] Восстановлено ${repaired.length} объектов через разбиение по запятым`);
+            parsed = repaired.map(s => JSON.parse(s));
+          } else {
+            throw new Error("Не удалось распарсить ответ от OpenRouter: не найдено ни одного валидного объекта.");
+          }
         }
       }
       
