@@ -8,9 +8,9 @@ import { TimelineContent } from "@/components/ui/timeline-animation"
 import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal"
 import { cn } from "@/lib/utils"
 import NumberFlow from "@number-flow/react"
-import { CheckCheck, Loader2 } from "lucide-react"
-import { motion } from "framer-motion"
-import { useId, useRef, useState } from "react"
+import { CheckCheck, Loader2, Check, X } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { useId, useRef, useState, useEffect } from "react"
 
 const PricingSwitch2 = ({
   button1,
@@ -165,14 +165,13 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
   const [mode, setMode] = useState<"0" | "1">("0")
   const [tariff, setTariff] = useState("0")
   const [selecting, setSelecting] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const pricingRef = useRef<HTMLDivElement>(null)
 
-  const handleSelectTariff = async () => {
-    if (!user) {
-      router.push("/login?returnUrl=/#pricing")
-      return
-    }
+  const doSelectTariff = async () => {
+    if (!user) return
     setSelecting(true)
+    setConfirmOpen(false)
     try {
       const supabase = createBrowserClient()
       const { data: { session } } = await supabase.auth.getSession()
@@ -193,6 +192,23 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
       setSelecting(false)
     }
   }
+
+  const handleSelectTariff = () => {
+    if (!user) {
+      router.push("/login?returnUrl=/#pricing")
+      return
+    }
+    setConfirmOpen(true)
+  }
+
+  useEffect(() => {
+    if (!confirmOpen) return
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setConfirmOpen(false)
+    }
+    window.addEventListener("keydown", onEscape)
+    return () => window.removeEventListener("keydown", onEscape)
+  }, [confirmOpen])
 
   const isFlow = mode === "0"
   const tariffIndex = Number.parseInt(tariff, 10) || 0
@@ -399,6 +415,116 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
           </div>
         </div>
       </div>
+
+      {/* Окно подтверждения тарифа */}
+      <AnimatePresence>
+        {confirmOpen && (
+          <>
+            <motion.div
+              key="confirm-backdrop"
+              role="presentation"
+              className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setConfirmOpen(false)}
+            />
+            <motion.div
+              key="confirm-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="confirm-tariff-title"
+              className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 px-4"
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="rounded-2xl border border-neutral-200/80 bg-[#F5F5F0] shadow-xl shadow-black/10">
+                <div className="border-b border-neutral-200/80 px-6 py-5">
+                  <h3
+                    id="confirm-tariff-title"
+                    className="text-xl font-semibold text-neutral-900"
+                    style={{ fontFamily: "var(--font-serif)" }}
+                  >
+                    Подтверждение тарифа
+                  </h3>
+                  <p className="mt-1 text-sm text-neutral-500">
+                    Проверьте выбор перед продолжением
+                  </p>
+                </div>
+                <div className="px-6 py-5 space-y-5">
+                  <div className="rounded-xl bg-white/80 border border-neutral-200/80 p-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-neutral-500">Режим</span>
+                      <span className="font-medium text-neutral-900">
+                        {isFlow ? "Поток" : "Свободное творчество"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-neutral-500">Объём</span>
+                      <span className="font-medium text-neutral-900">
+                        {tariffOptions[tariffIndex]}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline pt-1 border-t border-neutral-100">
+                      <span className="text-neutral-500">Сумма</span>
+                      <span className="text-2xl font-bold text-[#1F4E3D]">
+                        {currentPrice} ₽
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-2">
+                      Что вы получаете
+                    </p>
+                    <ul className="space-y-2">
+                      {features.slice(0, 5).map((text, i) => (
+                        <li key={i} className="flex items-start gap-2.5 text-sm text-neutral-700">
+                          <span className="mt-0.5 shrink-0 rounded-full bg-[#84CC16]/20 p-0.5">
+                            <Check className="h-3.5 w-3.5 text-[#1F4E3D]" strokeWidth={2.5} />
+                          </span>
+                          <span>{text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <div className="flex gap-3 px-6 pb-6">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmOpen(false)}
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 transition-colors hover:bg-neutral-50"
+                  >
+                    <X className="h-4 w-4" />
+                    Отмена
+                  </button>
+                  <button
+                    type="button"
+                    onClick={doSelectTariff}
+                    disabled={selecting}
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#1F4E3D] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#163d30] disabled:opacity-60"
+                  >
+                    {selecting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Выбор...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCheck className="h-4 w-4" />
+                        Подтверждаю
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </section>
   )
 }

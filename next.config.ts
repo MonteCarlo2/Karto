@@ -5,6 +5,11 @@ const nextConfig: NextConfig = {
   // (export = статический /out, тогда статика не отдаётся нашим сервером).
   output: "standalone",
 
+  // Браузер по умолчанию запрашивает /favicon.ico — отдаём наш логотип, чтобы не было мелькания
+  async rewrites() {
+    return [{ source: "/favicon.ico", destination: "/favicon-32x32.png" }];
+  },
+
   // Разрешаем внешние изображения для отображения результатов
   images: {
     remotePatterns: [
