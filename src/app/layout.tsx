@@ -27,9 +27,9 @@ const playfairDisplay = Playfair_Display({
   display: "swap",
 });
 
-const siteTitle = "KARTO — Создание карточек товара для маркетплейсов";
+const siteTitle = "KARTO — Генерация карточек товара для маркетплейсов";
 const siteDescription =
-  "Профессиональный инструмент для продавцов. Создавайте идеальные карточки товаров с правильным описанием, ценой и изображениями.";
+  "Генерация карточек товара для маркетплейсов: идеальное описание, цена и изображения. Профессиональный инструмент для продавцов Wildberries, Ozon и др.";
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://karto.pro";
 
 export const metadata: Metadata = {
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "any", type: "image/png" },
+      { url: "/favicon.ico", sizes: "any", type: "image/x-icon" },
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
     ],
     apple: "/favicon-32x32.png",

@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/generate-favicon-ico.js",
     "build": "next build && node scripts/copy-standalone.js",
     "start": "node .next/standalone/server.js",
+    "start:prod": "node .next/standalone/server.js",
     "lint": "eslint"
   },
   "dependencies": {
@@ -47,6 +49,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
+    "png-to-ico": "^2.1.8",
     "shadcn": "^3.8.4",
     "tailwindcss": "^4",
     "typescript": "^5"
