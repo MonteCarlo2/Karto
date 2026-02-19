@@ -38,6 +38,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   icons: {
     icon: [
+      { url: "/favicon.ico", sizes: "any", type: "image/png" },
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
     ],
     apple: "/favicon-32x32.png",
@@ -61,12 +62,25 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const organizationJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "KARTO",
+    url: siteUrl,
+    logo: `${siteUrl}/favicon-32x32.png`,
+    description: siteDescription,
+  };
+
   return (
     <html lang="ru" className="scroll-smooth">
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${playfairDisplay.variable} antialiased min-h-screen flex flex-col bg-background text-foreground`}
         suppressHydrationWarning
       >
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
         <PreconnectLinks />
         <ToastProvider>
           <AbortErrorSuppressor />
