@@ -118,6 +118,9 @@ function HomeContent() {
               transition={{ duration: 0.8, delay: 0.3 }}
               className="max-w-4xl space-y-6 text-left"
             >
+              <p className="text-sm font-semibold tracking-widest uppercase" style={{ color: '#1F4E3D' }} aria-hidden="true">
+                KARTO
+              </p>
               <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold leading-tight tracking-tight" style={{ fontFamily: 'var(--font-serif)', color: '#000000', fontWeight: 700 }}>
                 От замысла<br/>
                 к ясной форме.

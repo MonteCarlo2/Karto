@@ -68,6 +68,16 @@ export default function RootLayout({
     name: "KARTO",
     url: siteUrl,
     logo: `${siteUrl}/favicon-32x32.png`,
+    image: `${siteUrl}/favicon-32x32.png`,
+    description: siteDescription,
+  };
+
+  const websiteJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "KARTO",
+    alternateName: "Karto",
+    url: siteUrl,
     description: siteDescription,
   };
 
@@ -80,6 +90,10 @@ export default function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
         />
         <PreconnectLinks />
         <ToastProvider>
