@@ -171,20 +171,25 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
   const doSelectTariff = async () => {
     if (!user) return
     setSelecting(true)
-    setConfirmOpen(false)
     try {
       const supabase = createBrowserClient()
       const { data: { session } } = await supabase.auth.getSession()
       const headers: Record<string, string> = { "Content-Type": "application/json" }
       if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`
-      const res = await fetch("/api/subscription/select", {
+      const res = await fetch("/api/payment/create", {
         method: "POST",
         headers,
         body: JSON.stringify({ mode, tariffIndex: Number.parseInt(tariff, 10) || 0 }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Ошибка выбора тарифа")
-      router.push(data.redirectTo || "/profile")
+      if (!res.ok) throw new Error(data.error || "Ошибка создания платежа")
+      const confirmationUrl = data.confirmation_url
+      if (confirmationUrl) {
+        setConfirmOpen(false)
+        window.location.href = confirmationUrl
+        return
+      }
+      throw new Error("Не получена ссылка на оплату")
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Ошибка. Попробуйте позже."
       alert(msg)
@@ -510,7 +515,7 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                     {selecting ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Выбор...
+                        Переход к оплате...
                       </>
                     ) : (
                       <>
