@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://karto.pro/</loc><changefreq>daily</changefreq><priority>1</priority></url>
+  <url><loc>https://karto.pro/pricing</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://karto.pro/studio</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://karto.pro/studio/understanding</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://karto.pro/studio/description</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://karto.pro/studio/visual</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://karto.pro/studio/price</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://karto.pro/studio/free</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://karto.pro/login</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://karto.pro/profile</loc><changefreq>monthly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://karto.pro/ai-policy</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>
+  <url><loc>https://karto.pro/payments-policy</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>
+  <url><loc>https://karto.pro/policy-and-terms</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>
+  <url><loc>https://karto.pro/data-processing</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>
+  <url><loc>https://karto.pro/privacy</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>
+  <url><loc>https://karto.pro/terms</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>
+</urlset>

@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://karto.pro/sitemap.xml
+Host: karto.pro

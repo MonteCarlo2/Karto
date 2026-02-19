@@ -27,12 +27,32 @@ const playfairDisplay = Playfair_Display({
   display: "swap",
 });
 
+const siteTitle = "KARTO — Создание карточек товара для маркетплейсов";
+const siteDescription =
+  "Профессиональный инструмент для продавцов. Создавайте идеальные карточки товаров с правильным описанием, ценой и изображениями.";
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://karto.pro";
+
 export const metadata: Metadata = {
-  title: "KARTO — Создание карточек товара для маркетплейсов",
-  description: "Профессиональный инструмент для продавцов. Создавайте идеальные карточки товаров с правильным описанием, ценой и изображениями.",
+  title: siteTitle,
+  description: siteDescription,
+  metadataBase: new URL(siteUrl),
   icons: {
-    icon: [{ url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" }],
-    apple: "/apple-touch-icon.png",
+    icon: [
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: "/favicon-32x32.png",
+  },
+  openGraph: {
+    type: "website",
+    url: siteUrl,
+    title: siteTitle,
+    description: siteDescription,
+    siteName: "KARTO",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteTitle,
+    description: siteDescription,
   },
 };
 
