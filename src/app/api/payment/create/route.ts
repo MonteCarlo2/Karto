@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
@@ -9,6 +10,8 @@ import {
 } from "@/lib/subscription";
 
 const YOOKASSA_API = "https://api.yookassa.ru/v3/payments";
+/** ЮKassa требует ключ идемпотентности не длиннее допустимого (иначе "Idempotence key is too long"). */
+const IDEMPOTENCE_KEY_MAX_LENGTH = 36;
 
 /**
  * POST: создание платежа в ЮKassa. Возвращает confirmation_url для редиректа.
@@ -80,7 +83,8 @@ export async function POST(request: NextRequest) {
         : "https://karto.pro");
     const returnUrl = `${baseUrl.replace(/\/$/, "")}/profile?payment=success`;
 
-    const idempotenceKey = `karto-${user.id}-${planType}-${tariffIndex}-${Date.now()}`;
+    const idempotenceRaw = `karto-${user.id}-${planType}-${tariffIndex}-${Date.now()}`;
+    const idempotenceKey = createHash("sha256").update(idempotenceRaw).digest("hex").slice(0, IDEMPOTENCE_KEY_MAX_LENGTH);
     const yookassaBody = {
       amount: {
         value: amountRub.toFixed(2),

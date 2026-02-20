@@ -4,12 +4,13 @@ import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
 
 /**
  * POST: webhook ЮKassa. Вызывается при смене статуса платежа.
- * Обрабатываем только payment.succeeded — добавляем купленный объём к текущей подписке.
+ * В кабинете ЮKassa обязательно укажи URL: https://karto.pro/api/payment/webhook и событие payment.succeeded.
  * Логика: потоки и генерации суммируются (1 поток + покупка 5 = 6 потоков; 3 бесплатных + покупка 10 = 13 генераций).
  */
 export async function POST(request: NextRequest) {
   try {
     const raw = await request.text();
+    console.log("📥 [PAYMENT WEBHOOK] Получен запрос, длина body:", raw?.length ?? 0);
     let body: {
       type?: string;
       event?: string;
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     const payment = body.object;
+    console.log("📥 [PAYMENT WEBHOOK] payment.succeeded, payment.id:", payment?.id);
     if (!payment || payment.status !== "succeeded") {
       return new NextResponse(null, { status: 200 });
     }
@@ -47,8 +49,15 @@ export async function POST(request: NextRequest) {
     const planType = mode === "0" ? "flow" : "creative";
     const purchasedVolume = mode === "0" ? FLOW_VOLUMES[tariffIndex] : CREATIVE_VOLUMES[tariffIndex];
     const now = new Date().toISOString();
+    console.log("📥 [PAYMENT WEBHOOK] Обработка: userId=", userId, "planType=", planType, "purchasedVolume=", purchasedVolume);
 
-    const supabase = createServerClient();
+    let supabase;
+    try {
+      supabase = createServerClient();
+    } catch (e) {
+      console.error("❌ [PAYMENT WEBHOOK] Не удалось создать Supabase-клиент (проверьте SUPABASE_SERVICE_ROLE_KEY):", e);
+      return new NextResponse(null, { status: 200 });
+    }
     const { data: existing } = await supabase
       .from("user_subscriptions")
       .select("id, plan_volume, period_start")
@@ -82,7 +91,10 @@ export async function POST(request: NextRequest) {
         updated_at: now,
       });
       if (insertError) {
-        console.error("❌ [PAYMENT WEBHOOK] insert error:", insertError);
+        console.error("❌ [PAYMENT WEBHOOK] insert error:", insertError.code, insertError.message);
+        if (insertError.code === "23505") {
+          console.error("💡 [PAYMENT WEBHOOK] Ошибка уникальности. Убедитесь, что в Supabase выполнен скрипт: UNIQUE(user_id, plan_type) (файл supabase/migrations/20250210_user_subscriptions_flow_and_creative.sql)");
+        }
         return new NextResponse(null, { status: 200 });
       }
       console.log("✅ [PAYMENT WEBHOOK] Создана подписка:", userId, planType, purchasedVolume);
