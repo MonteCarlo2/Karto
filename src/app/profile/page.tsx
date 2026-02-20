@@ -102,10 +102,37 @@ function ProfileContent() {
     return () => { mounted = false; };
   }, [user]);
 
-  // После возврата с оплаты: опрашиваем подписку несколько раз (вебхук может прийти с задержкой)
+  // После возврата с оплаты: подтверждаем платёж через API (fallback, если вебхук не сработал), затем опрашиваем подписку
   useEffect(() => {
     if (!user || !paymentSuccess) return;
     setPaymentSuccessPolling(true);
+    let pendingId: string | null = null;
+    try {
+      pendingId = typeof window !== "undefined" ? window.localStorage.getItem("karto_pending_payment_id") : null;
+    } catch {}
+    (async () => {
+      if (pendingId) {
+        try {
+          const supabase = createBrowserClient();
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            const res = await fetch("/api/payment/confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+              body: JSON.stringify({ payment_id: pendingId }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (data?.success) {
+              const sub = await fetchSubscription();
+              setSubscription(sub);
+            }
+          }
+        } catch {}
+        try {
+          if (typeof window !== "undefined") window.localStorage.removeItem("karto_pending_payment_id");
+        } catch {}
+      }
+    })();
     const maxAttempts = 6;
     const intervalMs = 2000;
     let attempts = 0;
@@ -116,6 +143,9 @@ function ProfileContent() {
       if (attempts >= maxAttempts || (sub && (sub.flowsLimit > 0 || sub.creativeLimit > 0))) {
         clearInterval(t);
         setPaymentSuccessPolling(false);
+        try {
+          if (typeof window !== "undefined") window.localStorage.removeItem("karto_pending_payment_id");
+        } catch {}
         if (typeof window !== "undefined") {
           const u = new URL(window.location.href);
           u.searchParams.delete("payment");

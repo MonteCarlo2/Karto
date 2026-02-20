@@ -100,6 +100,7 @@ export async function POST(request: NextRequest) {
       console.log("✅ [PAYMENT WEBHOOK] Создана подписка:", userId, planType, purchasedVolume);
     }
 
+    await supabase.from("payment_processed").insert({ payment_id: payment.id }).then(() => {}, () => {});
     return new NextResponse(null, { status: 200 });
   } catch (err) {
     console.error("❌ [PAYMENT WEBHOOK]:", err);
