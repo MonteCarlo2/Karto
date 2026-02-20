@@ -4,8 +4,8 @@ import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
 
 /**
  * POST: webhook ЮKassa. Вызывается при смене статуса платежа.
- * Обрабатываем только payment.succeeded — записываем/обновляем user_subscriptions.
- * В кабинете ЮKassa укажи URL: https://ваш-домен/api/payment/webhook и событие payment.succeeded.
+ * Обрабатываем только payment.succeeded — добавляем купленный объём к текущей подписке.
+ * Логика: потоки и генерации суммируются (1 поток + покупка 5 = 6 потоков; 3 бесплатных + покупка 10 = 13 генераций).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -45,41 +45,37 @@ export async function POST(request: NextRequest) {
     }
 
     const planType = mode === "0" ? "flow" : "creative";
-    const planVolume = mode === "0" ? FLOW_VOLUMES[tariffIndex] : CREATIVE_VOLUMES[tariffIndex];
+    const purchasedVolume = mode === "0" ? FLOW_VOLUMES[tariffIndex] : CREATIVE_VOLUMES[tariffIndex];
     const now = new Date().toISOString();
 
     const supabase = createServerClient();
     const { data: existing } = await supabase
       .from("user_subscriptions")
-      .select("id")
+      .select("id, plan_volume, period_start")
       .eq("user_id", userId)
       .eq("plan_type", planType)
       .maybeSingle();
 
-    const updatePayload: Record<string, unknown> = {
-      plan_volume: planVolume,
-      period_start: now,
-      updated_at: now,
-    };
-    if (planType === "flow") updatePayload.flows_used = 0;
-    if (planType === "creative") updatePayload.creative_used = 0;
-
     if (existing) {
+      const newVolume = (existing.plan_volume ?? 0) + purchasedVolume;
       const { error: updateError } = await supabase
         .from("user_subscriptions")
-        .update(updatePayload)
+        .update({
+          plan_volume: newVolume,
+          updated_at: now,
+        })
         .eq("user_id", userId)
         .eq("plan_type", planType);
       if (updateError) {
         console.error("❌ [PAYMENT WEBHOOK] update error:", updateError);
         return new NextResponse(null, { status: 200 });
       }
-      console.log("✅ [PAYMENT WEBHOOK] Обновлена подписка:", userId, planType, planVolume);
+      console.log("✅ [PAYMENT WEBHOOK] Добавлено к подписке:", userId, planType, `+${purchasedVolume} → всего ${newVolume}`);
     } else {
       const { error: insertError } = await supabase.from("user_subscriptions").insert({
         user_id: userId,
         plan_type: planType,
-        plan_volume: planVolume,
+        plan_volume: purchasedVolume,
         period_start: now,
         flows_used: 0,
         creative_used: 0,
@@ -89,7 +85,7 @@ export async function POST(request: NextRequest) {
         console.error("❌ [PAYMENT WEBHOOK] insert error:", insertError);
         return new NextResponse(null, { status: 200 });
       }
-      console.log("✅ [PAYMENT WEBHOOK] Создана подписка:", userId, planType, planVolume);
+      console.log("✅ [PAYMENT WEBHOOK] Создана подписка:", userId, planType, purchasedVolume);
     }
 
     return new NextResponse(null, { status: 200 });
