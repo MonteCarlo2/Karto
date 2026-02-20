@@ -38,6 +38,8 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   icons: {
     icon: [
+      // 120×120 — формат, который Яндекс явно рекомендует для выдачи (чётче в результатах поиска)
+      { url: "/favicon-120x120.png", sizes: "120x120", type: "image/png" },
       { url: "/favicon.ico", sizes: "any", type: "image/x-icon" },
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
     ],
@@ -67,8 +69,8 @@ export default function RootLayout({
     "@type": "Organization",
     name: "KARTO",
     url: siteUrl,
-    logo: `${siteUrl}/favicon-32x32.png`,
-    image: `${siteUrl}/favicon-32x32.png`,
+    logo: `${siteUrl}/favicon-120x120.png`,
+    image: `${siteUrl}/favicon-120x120.png`,
     description: siteDescription,
   };
 

@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
 
   async rewrites() {
     return [
-      { source: "/favicon.ico", destination: "/favicon-32x32.png" },
+      // Не делаем редирект с /favicon.ico — Яндекс считает это ошибкой («Файл перенаправляет на другой адрес»). Отдаём реальный favicon.ico из public (создаётся в prebuild).
       { source: "/sitemap.xml", destination: "/api/sitemap-xml" },
     ];
   },
