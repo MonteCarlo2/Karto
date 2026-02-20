@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { StageMenu } from "@/components/ui/stage-menu";
 import { 
@@ -40,6 +40,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { BugReportModal } from "@/components/ui/bug-report-modal";
+import { useToast } from "@/components/ui/toast";
 
 // Стили карточек (wireframe макеты)
 const CARD_STYLES = [
@@ -605,7 +606,11 @@ export default function VisualPage() {
   const [generationError, setGenerationError] = useState<{
     show: boolean;
     message?: string;
+    canRetry?: boolean;
   }>({ show: false });
+  const { showToast } = useToast();
+  const longWaitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchAbortRef = useRef<AbortController | null>(null);
   const [visualQuota, setVisualQuota] = useState<{ used: number; remaining: number; limit: number }>({
     used: 0,
     remaining: 12,
@@ -882,7 +887,24 @@ export default function VisualPage() {
 
     setIsGenerating(true);
     setGeneratedCards([]);
-    
+    setGenerationError({ show: false });
+
+    // Таймаут запроса 5 минут (часто обрыв — из‑за прокси/хостинга, не из‑за браузера)
+    const FETCH_TIMEOUT_MS = 300_000;
+    const LONG_WAIT_NOTIFY_MS = 120_000; // через 2 мин — уведомление пользователю
+
+    if (longWaitTimerRef.current) clearTimeout(longWaitTimerRef.current);
+    longWaitTimerRef.current = null;
+    fetchAbortRef.current = new AbortController();
+    let fetchTimeoutId: ReturnType<typeof setTimeout> = setTimeout(() => fetchAbortRef.current?.abort(), FETCH_TIMEOUT_MS);
+    longWaitTimerRef.current = setTimeout(() => {
+      showToast({
+        type: "info",
+        title: "Генерация занимает больше времени",
+        message: "Приносим извинения за ожидание. Сервер продолжает работу — не закрывайте страницу.",
+      });
+    }, LONG_WAIT_NOTIFY_MS);
+
     try {
       // Подготовка данных для генерации
       const requestData = {
@@ -908,7 +930,9 @@ export default function VisualPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(requestData),
+        signal: fetchAbortRef.current.signal,
       });
+      clearTimeout(fetchTimeoutId);
 
       console.log("📡 [FRONTEND] Ответ получен, статус:", response.status);
 
@@ -922,7 +946,8 @@ export default function VisualPage() {
         if (response.status === 503 || data.code === "SERVICE_UNAVAILABLE") {
           setGenerationError({
             show: true,
-            message: data.error || "Сервис генерации временно недоступен. Попробуйте позже или проверьте подключение.",
+            message: data.error || "Сервис генерации временно недоступен. Попробуйте позже или нажмите «Повторить».",
+            canRetry: true,
           });
           setIsGenerating(false);
           return;
@@ -981,13 +1006,42 @@ export default function VisualPage() {
       }
 
     } catch (error: unknown) {
-      if (error instanceof Error && error.name === "AbortError") return;
+      clearTimeout(fetchTimeoutId);
+      if (longWaitTimerRef.current) {
+        clearTimeout(longWaitTimerRef.current);
+        longWaitTimerRef.current = null;
+      }
+      if (error instanceof Error && error.name === "AbortError") {
+        setGenerationError({
+          show: true,
+          message: "Время ожидания истекло (генерация заняла более 5 минут). Попробуйте ещё раз.",
+          canRetry: true,
+        });
+        return;
+      }
+      const isNetworkError =
+        error instanceof TypeError &&
+        (error.message === "Failed to fetch" || (error.message ?? "").toLowerCase().includes("network"));
+      if (isNetworkError) {
+        setGenerationError({
+          show: true,
+          message: "Соединение прервалось во время генерации (часто из‑за долгой работы сервера). Нажмите «Повторить», чтобы попробовать снова.",
+          canRetry: true,
+        });
+        return;
+      }
       console.error("❌ Ошибка генерации:", error);
       setGenerationError({
         show: true,
         message: error instanceof Error ? error.message : "Неизвестная ошибка при генерации карточки. Попробуйте еще раз.",
+        canRetry: true,
       });
     } finally {
+      clearTimeout(fetchTimeoutId);
+      if (longWaitTimerRef.current) {
+        clearTimeout(longWaitTimerRef.current);
+        longWaitTimerRef.current = null;
+      }
       setIsGenerating(false);
     }
   };
@@ -1131,9 +1185,20 @@ export default function VisualPage() {
                     {generationError.message || "Не удалось сгенерировать карточку. Попробуйте еще раз."}
                   </p>
                   <div className="flex gap-2">
+                    {generationError.canRetry && (
+                      <button
+                        onClick={() => {
+                          setGenerationError({ show: false });
+                          handleGenerate();
+                        }}
+                        className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors"
+                      >
+                        Повторить
+                      </button>
+                    )}
                     <button
                       onClick={() => setGenerationError({ show: false })}
-                      className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition-colors"
+                      className={generationError.canRetry ? "px-4 py-2 border border-gray-300 rounded-lg font-medium hover:bg-gray-50" : "flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition-colors"}
                     >
                       Понятно
                     </button>
@@ -1883,9 +1948,20 @@ export default function VisualPage() {
                           {generationError.message || "Не удалось сгенерировать карточку. Попробуйте еще раз."}
                         </p>
                         <div className="flex gap-2">
+                          {generationError.canRetry && (
+                            <button
+                              onClick={() => {
+                                setGenerationError({ show: false });
+                                handleGenerate();
+                              }}
+                              className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors"
+                            >
+                              Повторить
+                            </button>
+                          )}
                           <button
                             onClick={() => setGenerationError({ show: false })}
-                            className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition-colors"
+                            className={generationError.canRetry ? "px-4 py-2 border border-gray-300 rounded-lg font-medium hover:bg-gray-50" : "flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition-colors"}
                           >
                             Понятно
                           </button>

@@ -107,14 +107,22 @@ export async function POST(request: NextRequest) {
         "Idempotence-Key": idempotenceKey,
       },
       body: JSON.stringify(yookassaBody),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!res.ok) {
       const errText = await res.text();
       console.error("❌ [PAYMENT CREATE] YooKassa error:", res.status, errText);
+      let userMessage = "Не удалось создать платёж. Попробуйте позже.";
+      try {
+        const errJson = JSON.parse(errText) as { description?: string; code?: string };
+        if (errJson.description) userMessage = errJson.description;
+      } catch {
+        if (res.status === 408 || res.status === 504) userMessage = "Платёжная система не ответила вовремя. Попробуйте ещё раз.";
+      }
       return NextResponse.json(
-        { success: false, error: "Не удалось создать платёж. Попробуйте позже." },
-        { status: 502 }
+        { success: false, error: userMessage },
+        { status: 200 }
       );
     }
 
@@ -127,8 +135,8 @@ export async function POST(request: NextRequest) {
     if (!confirmationUrl) {
       console.error("❌ [PAYMENT CREATE] No confirmation_url in response:", data);
       return NextResponse.json(
-        { success: false, error: "Ошибка ответа платёжной системы" },
-        { status: 502 }
+        { success: false, error: "Ошибка ответа платёжной системы. Попробуйте ещё раз." },
+        { status: 200 }
       );
     }
 

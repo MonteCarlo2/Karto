@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -72,6 +72,21 @@ export default function ProfilePage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionState | null>(null);
+  const [paymentSuccessPolling, setPaymentSuccessPolling] = useState(false);
+  const searchParams = useSearchParams();
+  const paymentSuccess = searchParams.get("payment") === "success";
+
+  const fetchSubscription = async (): Promise<SubscriptionState | null> => {
+    const supabase = createBrowserClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return null;
+    const res = await fetch("/api/subscription", {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.subscription || null;
+  };
 
   useEffect(() => {
     if (!user) {
@@ -80,25 +95,36 @@ export default function ProfilePage() {
     }
     let mounted = true;
     (async () => {
-      try {
-        const supabase = createBrowserClient();
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token || !mounted) return;
-        const res = await fetch("/api/subscription", {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        if (!mounted) return;
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!mounted) return;
-        setSubscription(data.subscription || null);
-      } catch {
-        if (!mounted) return;
-        setSubscription(null);
-      }
+      const sub = await fetchSubscription();
+      if (!mounted) return;
+      setSubscription(sub);
     })();
     return () => { mounted = false; };
   }, [user]);
+
+  // После возврата с оплаты: опрашиваем подписку несколько раз (вебхук может прийти с задержкой)
+  useEffect(() => {
+    if (!user || !paymentSuccess) return;
+    setPaymentSuccessPolling(true);
+    const maxAttempts = 6;
+    const intervalMs = 2000;
+    let attempts = 0;
+    const t = setInterval(async () => {
+      attempts++;
+      const sub = await fetchSubscription();
+      setSubscription(sub);
+      if (attempts >= maxAttempts || (sub && (sub.flowsLimit > 0 || sub.creativeLimit > 0))) {
+        clearInterval(t);
+        setPaymentSuccessPolling(false);
+        if (typeof window !== "undefined") {
+          const u = new URL(window.location.href);
+          u.searchParams.delete("payment");
+          window.history.replaceState({}, "", u.pathname + u.search);
+        }
+      }
+    }, intervalMs);
+    return () => clearInterval(t);
+  }, [user, paymentSuccess]);
 
   // Функции для проверки пароля (как в login/page.tsx)
   const checkPasswordRequirements = (pwd: string) => {
@@ -687,6 +713,13 @@ export default function ProfilePage() {
             >
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Мой аккаунт</h2>
               <p className="text-gray-600 mb-6 -mt-4">Управляйте информацией вашего аккаунта.</p>
+
+              {/* После оплаты: сообщение об обновлении данных */}
+              {paymentSuccessPolling && (
+                <div className="mb-4 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm">
+                  Оплата прошла. Обновляем данные…
+                </div>
+              )}
 
               {/* Ваши услуги */}
               {subscription && (subscription.flowsLimit > 0 || subscription.creativeLimit > 0) && (

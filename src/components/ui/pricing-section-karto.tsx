@@ -183,13 +183,14 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Ошибка создания платежа")
+      if (data.success === false && data.error) throw new Error(data.error)
       const confirmationUrl = data.confirmation_url
       if (confirmationUrl) {
         setConfirmOpen(false)
         window.location.href = confirmationUrl
         return
       }
-      throw new Error("Не получена ссылка на оплату")
+      throw new Error(data.error || "Не получена ссылка на оплату")
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Ошибка. Попробуйте позже."
       alert(msg)

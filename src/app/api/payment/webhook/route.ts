@@ -56,20 +56,25 @@ export async function POST(request: NextRequest) {
       .eq("plan_type", planType)
       .maybeSingle();
 
+    const updatePayload: Record<string, unknown> = {
+      plan_volume: planVolume,
+      period_start: now,
+      updated_at: now,
+    };
+    if (planType === "flow") updatePayload.flows_used = 0;
+    if (planType === "creative") updatePayload.creative_used = 0;
+
     if (existing) {
       const { error: updateError } = await supabase
         .from("user_subscriptions")
-        .update({
-          plan_volume: planVolume,
-          period_start: now,
-          updated_at: now,
-        })
+        .update(updatePayload)
         .eq("user_id", userId)
         .eq("plan_type", planType);
       if (updateError) {
         console.error("❌ [PAYMENT WEBHOOK] update error:", updateError);
         return new NextResponse(null, { status: 200 });
       }
+      console.log("✅ [PAYMENT WEBHOOK] Обновлена подписка:", userId, planType, planVolume);
     } else {
       const { error: insertError } = await supabase.from("user_subscriptions").insert({
         user_id: userId,
@@ -84,6 +89,7 @@ export async function POST(request: NextRequest) {
         console.error("❌ [PAYMENT WEBHOOK] insert error:", insertError);
         return new NextResponse(null, { status: 200 });
       }
+      console.log("✅ [PAYMENT WEBHOOK] Создана подписка:", userId, planType, planVolume);
     }
 
     return new NextResponse(null, { status: 200 });
