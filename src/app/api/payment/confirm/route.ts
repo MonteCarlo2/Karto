@@ -6,9 +6,9 @@ import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
 const YOOKASSA_API = "https://api.yookassa.ru/v3/payments";
 
 /**
- * POST: подтверждение платежа по возврату с ЮKassa (fallback, если вебхук не сработал).
- * Body: { payment_id: string }. Требует Authorization: Bearer <token>.
- * Запрашивает платёж в ЮKassa, при status=succeeded начисляет подписку (та же логика, что в webhook).
+ * POST: подтверждение платежа по возврату с ЮKassa.
+ * Ожидающий платёж берётся из Supabase (таблица pending_payment). Требует Authorization: Bearer <token>.
+ * Запрашивает платёж в ЮKassa, при status=succeeded обновляет user_subscriptions в Supabase.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -30,11 +30,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Не авторизован" }, { status: 401 });
     }
 
-    const body = await request.json().catch(() => ({}));
-    const paymentId = typeof body?.payment_id === "string" ? body.payment_id.trim() : null;
-    if (!paymentId) {
-      return NextResponse.json({ success: false, error: "Нужен payment_id" }, { status: 400 });
+    const { data: pendingRow } = await supabase
+      .from("pending_payment")
+      .select("id, payment_id")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!pendingRow?.payment_id) {
+      return NextResponse.json({ success: true });
     }
+    const paymentId = pendingRow.payment_id;
 
     const auth = Buffer.from(`${shopId}:${secretKey}`).toString("base64");
     const res = await fetch(`${YOOKASSA_API}/${paymentId}`, {
@@ -118,6 +125,7 @@ export async function POST(request: NextRequest) {
       console.log("✅ [PAYMENT CONFIRM] Создана подписка (возврат с оплаты):", userId, planType, purchasedVolume);
     }
 
+    await supabase.from("pending_payment").delete().eq("id", pendingRow.id);
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
     if (isSupabaseNetworkError(err)) {

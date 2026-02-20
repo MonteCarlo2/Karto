@@ -136,6 +136,7 @@ export async function POST(request: NextRequest) {
       status?: string;
     };
     const confirmationUrl = data?.confirmation?.confirmation_url;
+    const paymentId = data?.id;
     if (!confirmationUrl) {
       console.error("❌ [PAYMENT CREATE] No confirmation_url in response:", data);
       return NextResponse.json(
@@ -144,10 +145,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (paymentId) {
+      const { error: pendingErr } = await supabase.from("pending_payment").insert({
+        user_id: user.id,
+        payment_id: paymentId,
+      });
+      if (pendingErr) {
+        console.warn("⚠️ [PAYMENT CREATE] pending_payment insert failed (выполните миграцию 20250219_pending_payment.sql):", pendingErr.message);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       confirmation_url: confirmationUrl,
-      paymentId: data.id,
+      paymentId: paymentId,
     });
   } catch (err: unknown) {
     if (isSupabaseNetworkError(err)) {

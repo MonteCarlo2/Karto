@@ -185,11 +185,7 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
       if (!res.ok) throw new Error(data.error || "Ошибка создания платежа")
       if (data.success === false && data.error) throw new Error(data.error)
       const confirmationUrl = data.confirmation_url
-      const paymentId = data.paymentId
       if (confirmationUrl) {
-        if (paymentId && typeof window !== "undefined") {
-          try { window.localStorage.setItem("karto_pending_payment_id", paymentId) } catch {}
-        }
         setConfirmOpen(false)
         window.location.href = confirmationUrl
         return
