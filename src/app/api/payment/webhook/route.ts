@@ -37,12 +37,12 @@ export async function POST(request: NextRequest) {
     }
 
     const metadata = payment.metadata || {};
-    const userId = metadata.user_id;
-    const mode = metadata.mode === "1" ? "1" : "0";
-    const tariffIndex = Math.min(2, Math.max(0, Number(metadata.tariffIndex) || 0));
+    const userId = typeof metadata.user_id === "string" ? metadata.user_id.trim() : (metadata.user_id ?? "");
+    const mode = metadata.mode === "1" || metadata.mode === 1 ? "1" : "0";
+    const tariffIndex = Math.min(2, Math.max(0, Number(metadata.tariffIndex) ?? 0));
 
     if (!userId) {
-      console.warn("⚠️ [PAYMENT WEBHOOK] No user_id in metadata, payment id:", payment.id);
+      console.warn("⚠️ [PAYMENT WEBHOOK] No user_id in metadata, payment id:", payment.id, "metadata:", JSON.stringify(metadata));
       return new NextResponse(null, { status: 200 });
     }
 
@@ -101,6 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     await supabase.from("payment_processed").insert({ payment_id: payment.id }).then(() => {}, () => {});
+    console.log("✅ [PAYMENT WEBHOOK] Платёж обработан, payment_id:", payment.id);
     return new NextResponse(null, { status: 200 });
   } catch (err) {
     console.error("❌ [PAYMENT WEBHOOK]:", err);

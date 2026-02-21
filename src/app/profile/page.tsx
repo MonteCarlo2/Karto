@@ -115,6 +115,7 @@ function ProfileContent() {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
             body: JSON.stringify({}),
+            credentials: "include",
           });
           const data = await res.json().catch(() => ({}));
           if (data?.success) {

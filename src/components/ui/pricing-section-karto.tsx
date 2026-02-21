@@ -186,6 +186,9 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
       if (data.success === false && data.error) throw new Error(data.error)
       const confirmationUrl = data.confirmation_url
       if (confirmationUrl) {
+        if (data.paymentId && typeof data.paymentId === "string") {
+          document.cookie = `karto_pending_payment_id=${encodeURIComponent(data.paymentId)}; path=/; max-age=600; SameSite=Lax`
+        }
         setConfirmOpen(false)
         window.location.href = confirmationUrl
         return

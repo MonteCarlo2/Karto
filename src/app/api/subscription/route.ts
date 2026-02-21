@@ -78,10 +78,10 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({
-      success: true,
-      subscription: row,
-    });
+    return NextResponse.json(
+      { success: true, subscription: row },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
   } catch (err: unknown) {
     if (isSupabaseNetworkError(err)) {
       console.warn("⚠️ [SUBSCRIPTION] Supabase недоступен (сеть/таймаут), отдаём пустую подписку");

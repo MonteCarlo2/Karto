@@ -155,11 +155,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      confirmation_url: confirmationUrl,
-      paymentId: paymentId,
-    });
+    return NextResponse.json(
+      { success: true, confirmation_url: confirmationUrl, paymentId: paymentId },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (err: unknown) {
     if (isSupabaseNetworkError(err)) {
       return NextResponse.json(

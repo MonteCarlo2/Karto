@@ -30,6 +30,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Не авторизован" }, { status: 401 });
     }
 
+    const body = await request.json().catch(() => ({}));
+    let bodyPaymentId = typeof body?.payment_id === "string" ? body.payment_id.trim() : null;
+    if (!bodyPaymentId) {
+      const cookieHeader = request.headers.get("cookie") || "";
+      const match = cookieHeader.match(/karto_pending_payment_id=([^;]+)/);
+      if (match) bodyPaymentId = match[1].trim();
+    }
+
     const { data: pendingRow } = await supabase
       .from("pending_payment")
       .select("id, payment_id")
@@ -38,10 +46,10 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    if (!pendingRow?.payment_id) {
-      return NextResponse.json({ success: true });
+    let paymentId = pendingRow?.payment_id ?? bodyPaymentId;
+    if (!paymentId) {
+      return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
     }
-    const paymentId = pendingRow.payment_id;
 
     const auth = Buffer.from(`${shopId}:${secretKey}`).toString("base64");
     const res = await fetch(`${YOOKASSA_API}/${paymentId}`, {
@@ -82,7 +90,8 @@ export async function POST(request: NextRequest) {
     const { error: processedError } = await supabase.from("payment_processed").insert({ payment_id: paymentId });
     if (processedError) {
       if (processedError.code === "23505") {
-        return NextResponse.json({ success: true });
+        if (pendingRow?.id) await supabase.from("pending_payment").delete().eq("id", pendingRow.id);
+        return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
       }
       if (processedError.code === "42P01") {
         console.warn("💡 [PAYMENT CONFIRM] Таблица payment_processed не найдена. Выполните supabase/migrations/20250219_payment_processed.sql для идемпотентности.");
@@ -125,8 +134,8 @@ export async function POST(request: NextRequest) {
       console.log("✅ [PAYMENT CONFIRM] Создана подписка (возврат с оплаты):", userId, planType, purchasedVolume);
     }
 
-    await supabase.from("pending_payment").delete().eq("id", pendingRow.id);
-    return NextResponse.json({ success: true });
+    if (pendingRow?.id) await supabase.from("pending_payment").delete().eq("id", pendingRow.id);
+    return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (err: unknown) {
     if (isSupabaseNetworkError(err)) {
       return NextResponse.json({ success: false, error: "Сервис временно недоступен" }, { status: 200 });
