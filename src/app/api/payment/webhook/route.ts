@@ -3,10 +3,17 @@ import { createServerClient } from "@/lib/supabase/server";
 import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
 
 /**
+ * GET: проверка в браузере — возвращает 200 и текст (ЮKassa шлёт только POST).
  * POST: webhook ЮKassa. Вызывается при смене статуса платежа.
- * В кабинете ЮKassa обязательно укажи URL: https://karto.pro/api/payment/webhook и событие payment.succeeded.
- * Логика: потоки и генерации суммируются (1 поток + покупка 5 = 6 потоков; 3 бесплатных + покупка 10 = 13 генераций).
+ * В кабинете ЮKassa URL: https://karto.pro/api/payment/webhook, событие payment.succeeded.
  */
+export async function GET() {
+  return new NextResponse("Webhook ЮKassa. Принимаем только POST от кассы.", {
+    status: 200,
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const raw = await request.text();
@@ -38,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     const metadata = payment.metadata || {};
     const userId = typeof metadata.user_id === "string" ? metadata.user_id.trim() : (metadata.user_id ?? "");
-    const mode = metadata.mode === "1" || metadata.mode === 1 ? "1" : "0";
+    const mode = String(metadata.mode) === "1" ? "1" : "0";
     const tariffIndex = Math.min(2, Math.max(0, Number(metadata.tariffIndex) ?? 0));
 
     if (!userId) {
