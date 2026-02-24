@@ -8,12 +8,6 @@ export function createServerClient() {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  // Детальное логирование для отладки
-  console.log("🔍 [DEBUG] Проверка переменных окружения:");
-  console.log("  - SUPABASE_URL:", supabaseUrl ? `✓ (${supabaseUrl.substring(0, 30)}...)` : "✗ отсутствует");
-  console.log("  - NEXT_PUBLIC_SUPABASE_URL:", process.env.NEXT_PUBLIC_SUPABASE_URL ? "✓ установлен" : "✗ отсутствует");
-  console.log("  - SUPABASE_SERVICE_ROLE_KEY:", supabaseServiceRoleKey ? `✓ (длина: ${supabaseServiceRoleKey.length}, начинается с: ${supabaseServiceRoleKey.substring(0, 10)}...)` : "✗ отсутствует");
-
   if (!supabaseUrl) {
     console.error("❌ Отсутствует SUPABASE_URL или NEXT_PUBLIC_SUPABASE_URL");
     throw new Error(
@@ -85,7 +79,6 @@ export function createServerClient() {
         persistSession: false,
       },
     });
-    console.log("✅ Supabase клиент создан успешно");
     return client;
   } catch (error: any) {
     console.error("❌ Ошибка создания Supabase клиента:", error);
