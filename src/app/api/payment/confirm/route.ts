@@ -72,7 +72,8 @@ export async function POST(request: NextRequest) {
     }
 
     const metadata = payment.metadata || {};
-    const userId = typeof metadata.user_id === "string" ? metadata.user_id.trim() : String(metadata.user_id ?? "").trim();
+    const userIdRaw = metadata.user_id ?? metadata.userId ?? "";
+    const userId = (typeof userIdRaw === "string" ? userIdRaw : String(userIdRaw)).trim();
     const mode = String(metadata.mode) === "1" ? "1" : "0";
     const tariffIndex = Math.min(2, Math.max(0, Number(metadata.tariffIndex) ?? 0));
 
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
       const newVolume = (existing.plan_volume ?? 0) + purchasedVolume;
       const { error: updateError } = await supabase
         .from("user_subscriptions")
-        .update({ plan_volume: newVolume })
+        .update({ plan_volume: newVolume, period_start: now })
         .eq("user_id", userId)
         .eq("plan_type", planType);
       if (updateError) {
