@@ -95,10 +95,7 @@ export async function POST(request: NextRequest) {
       const newVolume = (existing.plan_volume ?? 0) + purchasedVolume;
       const { error: updateError } = await supabase
         .from("user_subscriptions")
-        .update({
-          plan_volume: newVolume,
-          updated_at: now,
-        })
+        .update({ plan_volume: newVolume })
         .eq("user_id", userId)
         .eq("plan_type", planType);
       if (updateError) {
@@ -114,7 +111,6 @@ export async function POST(request: NextRequest) {
         period_start: now,
         flows_used: 0,
         creative_used: 0,
-        updated_at: now,
       });
       if (insertError) {
         console.error("❌ [PAYMENT WEBHOOK] insert error:", insertError.code, insertError.message);

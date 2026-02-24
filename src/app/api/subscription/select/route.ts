@@ -61,11 +61,7 @@ export async function POST(request: NextRequest) {
     if (existing) {
       const { error: updateError } = await supabase
         .from("user_subscriptions")
-        .update({
-          plan_volume: planVolume,
-          period_start: now,
-          updated_at: now,
-        })
+        .update({ plan_volume: planVolume, period_start: now })
         .eq("user_id", user.id)
         .eq("plan_type", planType);
       if (updateError) {
@@ -83,7 +79,6 @@ export async function POST(request: NextRequest) {
         period_start: now,
         flows_used: 0,
         creative_used: 0,
-        updated_at: now,
       });
       if (insertError) {
         console.error("❌ [SUBSCRIPTION SELECT] insert error:", insertError);
