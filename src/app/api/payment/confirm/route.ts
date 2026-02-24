@@ -72,15 +72,12 @@ export async function POST(request: NextRequest) {
     }
 
     const metadata = payment.metadata || {};
-    const userId = metadata.user_id;
-    const mode = metadata.mode === "1" ? "1" : "0";
-    const tariffIndex = Math.min(2, Math.max(0, Number(metadata.tariffIndex) || 0));
+    const userId = typeof metadata.user_id === "string" ? metadata.user_id.trim() : String(metadata.user_id ?? "").trim();
+    const mode = String(metadata.mode) === "1" ? "1" : "0";
+    const tariffIndex = Math.min(2, Math.max(0, Number(metadata.tariffIndex) ?? 0));
 
-    if (userId !== user.id) {
-      return NextResponse.json({ success: false, error: "Чужой платёж" }, { status: 403 });
-    }
-    if (!userId) {
-      return NextResponse.json({ success: false, error: "Нет данных платежа" }, { status: 200 });
+    if (!userId || userId !== user.id) {
+      return NextResponse.json({ success: false, error: "Чужой платёж или нет данных платежа" }, { status: 200 });
     }
 
     const planType = mode === "0" ? "flow" : "creative";

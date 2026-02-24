@@ -65,6 +65,25 @@ export async function POST(request: NextRequest) {
       console.error("❌ [PAYMENT WEBHOOK] Не удалось создать Supabase-клиент (проверьте SUPABASE_SERVICE_ROLE_KEY):", e);
       return new NextResponse(null, { status: 200 });
     }
+
+    const { data: alreadyProcessed } = await supabase
+      .from("payment_processed")
+      .select("payment_id")
+      .eq("payment_id", payment.id)
+      .maybeSingle();
+    if (alreadyProcessed) {
+      console.log("📥 [PAYMENT WEBHOOK] Платёж уже обработан (идемпотентность), payment_id:", payment.id);
+      return new NextResponse(null, { status: 200 });
+    }
+    const { error: claimError } = await supabase.from("payment_processed").insert({ payment_id: payment.id });
+    if (claimError?.code === "23505") {
+      console.log("📥 [PAYMENT WEBHOOK] Платёж уже обработан (гонка), payment_id:", payment.id);
+      return new NextResponse(null, { status: 200 });
+    }
+    if (claimError) {
+      console.warn("⚠️ [PAYMENT WEBHOOK] payment_processed insert:", claimError.message);
+    }
+
     const { data: existing } = await supabase
       .from("user_subscriptions")
       .select("id, plan_volume, period_start")
@@ -107,7 +126,6 @@ export async function POST(request: NextRequest) {
       console.log("✅ [PAYMENT WEBHOOK] Создана подписка:", userId, planType, purchasedVolume);
     }
 
-    await supabase.from("payment_processed").insert({ payment_id: payment.id }).then(() => {}, () => {});
     console.log("✅ [PAYMENT WEBHOOK] Платёж обработан, payment_id:", payment.id);
     return new NextResponse(null, { status: 200 });
   } catch (err) {
