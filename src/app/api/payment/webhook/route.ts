@@ -15,6 +15,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  console.log("[PAYMENT WEBHOOK] === POST received ===");
   try {
     const raw = await request.text();
     console.log("[PAYMENT WEBHOOK] body length:", raw?.length ?? 0);

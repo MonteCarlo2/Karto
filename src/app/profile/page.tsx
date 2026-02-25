@@ -110,18 +110,23 @@ function ProfileContent() {
       try {
         const supabase = createBrowserClient();
         const { data: { session } } = await supabase.auth.getSession();
-        if (session?.access_token) {
-          const res = await fetch("/api/payment/confirm", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-            body: JSON.stringify({}),
-            credentials: "include",
-          });
-          const data = await res.json().catch(() => ({}));
-          if (data?.success) {
-            const sub = await fetchSubscription();
-            setSubscription(sub);
-          }
+        if (!session?.access_token) return;
+        // Передаём payment_id из cookie в теле — при редиректе с ЮKassa cookie может не уйти с запросом
+        let paymentId: string | null = null;
+        if (typeof document !== "undefined") {
+          const m = document.cookie.match(/karto_pending_payment_id=([^;]+)/);
+          if (m) paymentId = decodeURIComponent(m[1].trim());
+        }
+        const res = await fetch("/api/payment/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify(paymentId ? { payment_id: paymentId } : {}),
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data?.success) {
+          const sub = await fetchSubscription();
+          setSubscription(sub);
         }
       } catch {}
     })();

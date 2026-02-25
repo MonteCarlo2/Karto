@@ -27,7 +27,11 @@ export async function creditSubscription(
       .update({ plan_volume: newVolume, period_start: now })
       .eq("user_id", userId)
       .eq("plan_type", planType);
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      console.error("[PAYMENT CREDIT] UPDATE error:", error.message, "user:", userId, "plan:", planType);
+      return { ok: false, error: error.message };
+    }
+    console.log("[PAYMENT CREDIT] UPDATE ok:", userId, planType, "newVolume:", newVolume);
     return { ok: true };
   }
 
@@ -39,6 +43,10 @@ export async function creditSubscription(
     flows_used: 0,
     creative_used: 0,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    console.error("[PAYMENT CREDIT] INSERT error:", error.message, "user:", userId, "plan:", planType);
+    return { ok: false, error: error.message };
+  }
+  console.log("[PAYMENT CREDIT] INSERT ok:", userId, planType, "volume:", addVolume);
   return { ok: true };
 }

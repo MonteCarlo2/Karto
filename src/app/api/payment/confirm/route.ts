@@ -10,6 +10,7 @@ const YOOKASSA_API = "https://api.yookassa.ru/v3/payments";
  * POST: подтверждение по возврату с ЮKassa. Берёт payment_id из pending_payment или cookie.
  */
 export async function POST(request: NextRequest) {
+  console.log("[PAYMENT CONFIRM] === POST received ===");
   try {
     const shopId = process.env.YOOKASSA_SHOP_ID;
     const secretKey = process.env.YOOKASSA_SECRET_KEY;
@@ -39,7 +40,10 @@ export async function POST(request: NextRequest) {
       paymentId = row?.payment_id ?? null;
     }
 
-    if (!paymentId) return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
+    if (!paymentId) {
+      console.warn("[PAYMENT CONFIRM] payment_id not found (cookie, body, pending_payment). user:", user.id);
+      return NextResponse.json({ success: false, error: "Не найден идентификатор платежа. Обновите страницу или купите снова." }, { status: 200 });
+    }
 
     const auth = Buffer.from(`${shopId}:${secretKey}`).toString("base64");
     const res = await fetch(`${YOOKASSA_API}/${paymentId}`, { headers: { Authorization: `Basic ${auth}` }, signal: AbortSignal.timeout(10000) });
@@ -60,10 +64,15 @@ export async function POST(request: NextRequest) {
 
     const planType = mode === "0" ? "flow" : "creative";
     const addVolume = mode === "0" ? FLOW_VOLUMES[tariffIndex] : CREATIVE_VOLUMES[tariffIndex];
+    console.log("[PAYMENT CONFIRM] crediting:", userId, planType, "+", addVolume);
 
     const { error: insErr } = await supabase.from("payment_processed").insert({ payment_id: paymentId });
     if (insErr?.code === "23505") {
       return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+    if (insErr) {
+      console.error("[PAYMENT CONFIRM] payment_processed insert:", insErr.message);
+      return NextResponse.json({ success: false, error: "Ошибка записи платежа" }, { status: 200 });
     }
 
     const result = await creditSubscription(supabase, userId, planType, addVolume);
