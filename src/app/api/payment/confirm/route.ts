@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
 import { creditSubscription } from "@/lib/payment-credit";
+import { capturePayment } from "@/lib/yookassa-capture";
 
 const YOOKASSA_API = "https://api.yookassa.ru/v3/payments";
 
@@ -54,7 +55,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Не удалось проверить платёж" }, { status: 200 });
     }
 
-    const payment = (await res.json()) as { status?: string; metadata?: Record<string, unknown> };
+    const payment = (await res.json()) as {
+      status?: string;
+      metadata?: Record<string, unknown>;
+      amount?: { value?: string; currency?: string };
+    };
+    if (payment?.status === "waiting_for_capture") {
+      const amount = payment.amount;
+      const value = amount?.value ?? "0";
+      const currency = amount?.currency ?? "RUB";
+      console.log("[PAYMENT CONFIRM] capturing waiting payment:", paymentId.slice(0, 20), value);
+      const capture = await capturePayment(paymentId, value, currency, `confirm-cap-${paymentId}`);
+      if (!capture.ok) {
+        console.error("[PAYMENT CONFIRM] capture failed:", capture.error);
+        return NextResponse.json({ success: false, error: "Не удалось подтвердить платёж" }, { status: 200 });
+      }
+      console.log("[PAYMENT CONFIRM] capture ok");
+      (payment as { status: string }).status = "succeeded";
+    }
     if (payment?.status !== "succeeded") {
       console.log("[PAYMENT CONFIRM] status not succeeded:", payment?.status);
       return NextResponse.json({ success: false, error: "Платёж ещё не завершён" }, { status: 200 });
