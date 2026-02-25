@@ -22,16 +22,29 @@ export async function POST(request: NextRequest) {
     let body: { type?: string; event?: string; object?: { id?: string; status?: string; metadata?: Record<string, unknown> } };
     try {
       body = JSON.parse(raw);
-    } catch {
+    } catch (e) {
+      console.warn("[PAYMENT WEBHOOK] JSON parse error");
       return new NextResponse("Bad request", { status: 400 });
     }
 
-    if (body?.type !== "notification" || body?.event !== "payment.succeeded") {
+    const ev = (body?.event ?? "").trim();
+    const typ = (body?.type ?? "").trim();
+    console.log("[PAYMENT WEBHOOK] type=%s event=%s", typ, ev);
+
+    if (ev !== "payment.succeeded") {
+      console.log("[PAYMENT WEBHOOK] skip: event not payment.succeeded");
       return new NextResponse(null, { status: 200 });
     }
 
     const payment = body.object;
-    if (!payment || payment.status !== "succeeded") return new NextResponse(null, { status: 200 });
+    if (!payment) {
+      console.warn("[PAYMENT WEBHOOK] skip: no object");
+      return new NextResponse(null, { status: 200 });
+    }
+    if (payment.status !== "succeeded") {
+      console.log("[PAYMENT WEBHOOK] skip: object.status=%s", payment.status);
+      return new NextResponse(null, { status: 200 });
+    }
 
     const meta = payment.metadata || {};
     const userId = String(meta.user_id ?? meta.userId ?? "").trim();
@@ -45,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     const planType = mode === "0" ? "flow" : "creative";
     const addVolume = mode === "0" ? FLOW_VOLUMES[tariffIndex] : CREATIVE_VOLUMES[tariffIndex];
-    console.log("[PAYMENT WEBHOOK] credit:", userId, planType, "+", addVolume);
+    console.log("[PAYMENT WEBHOOK] credit:", userId.slice(0, 8) + "...", planType, "+", addVolume);
 
     let supabase;
     try {
@@ -55,15 +68,23 @@ export async function POST(request: NextRequest) {
       return new NextResponse(null, { status: 200 });
     }
 
+    console.log("[PAYMENT WEBHOOK] checking payment_processed...");
     const { data: exists } = await supabase.from("payment_processed").select("payment_id").eq("payment_id", payment.id).maybeSingle();
     if (exists) {
       console.log("[PAYMENT WEBHOOK] already processed:", payment.id);
       return new NextResponse(null, { status: 200 });
     }
+    console.log("[PAYMENT WEBHOOK] inserting payment_processed...");
     const { error: claimErr } = await supabase.from("payment_processed").insert({ payment_id: payment.id });
-    if (claimErr?.code === "23505") return new NextResponse(null, { status: 200 });
-    if (claimErr) console.warn("[PAYMENT WEBHOOK] payment_processed:", claimErr.message);
-
+    if (claimErr?.code === "23505") {
+      console.log("[PAYMENT WEBHOOK] duplicate payment_processed:", payment.id);
+      return new NextResponse(null, { status: 200 });
+    }
+    if (claimErr) {
+      console.error("[PAYMENT WEBHOOK] payment_processed insert error:", claimErr.message);
+      return new NextResponse(null, { status: 200 });
+    }
+    console.log("[PAYMENT WEBHOOK] payment_processed ok, crediting...");
     const result = await creditSubscription(supabase, userId, planType, addVolume);
     if (!result.ok) console.error("[PAYMENT WEBHOOK] credit error:", result.error);
     else console.log("[PAYMENT WEBHOOK] credited ok:", payment.id);

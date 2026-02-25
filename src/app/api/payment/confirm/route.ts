@@ -44,8 +44,10 @@ export async function POST(request: NextRequest) {
       console.warn("[PAYMENT CONFIRM] payment_id not found (cookie, body, pending_payment). user:", user.id);
       return NextResponse.json({ success: false, error: "Не найден идентификатор платежа. Обновите страницу или купите снова." }, { status: 200 });
     }
+    console.log("[PAYMENT CONFIRM] payment_id:", paymentId.slice(0, 20) + "...");
 
     const auth = Buffer.from(`${shopId}:${secretKey}`).toString("base64");
+    console.log("[PAYMENT CONFIRM] fetching YooKassa...");
     const res = await fetch(`${YOOKASSA_API}/${paymentId}`, { headers: { Authorization: `Basic ${auth}` }, signal: AbortSignal.timeout(10000) });
     if (!res.ok) {
       console.warn("[PAYMENT CONFIRM] YooKassa:", res.status);
@@ -53,7 +55,10 @@ export async function POST(request: NextRequest) {
     }
 
     const payment = (await res.json()) as { status?: string; metadata?: Record<string, unknown> };
-    if (payment?.status !== "succeeded") return NextResponse.json({ success: false, error: "Платёж ещё не завершён" }, { status: 200 });
+    if (payment?.status !== "succeeded") {
+      console.log("[PAYMENT CONFIRM] status not succeeded:", payment?.status);
+      return NextResponse.json({ success: false, error: "Платёж ещё не завершён" }, { status: 200 });
+    }
 
     const meta = payment.metadata || {};
     const userId = String(meta.user_id ?? meta.userId ?? "").trim();
@@ -64,8 +69,9 @@ export async function POST(request: NextRequest) {
 
     const planType = mode === "0" ? "flow" : "creative";
     const addVolume = mode === "0" ? FLOW_VOLUMES[tariffIndex] : CREATIVE_VOLUMES[tariffIndex];
-    console.log("[PAYMENT CONFIRM] crediting:", userId, planType, "+", addVolume);
+    console.log("[PAYMENT CONFIRM] crediting:", userId.slice(0, 8) + "...", planType, "+", addVolume);
 
+    console.log("[PAYMENT CONFIRM] inserting payment_processed...");
     const { error: insErr } = await supabase.from("payment_processed").insert({ payment_id: paymentId });
     if (insErr?.code === "23505") {
       return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
@@ -74,7 +80,7 @@ export async function POST(request: NextRequest) {
       console.error("[PAYMENT CONFIRM] payment_processed insert:", insErr.message);
       return NextResponse.json({ success: false, error: "Ошибка записи платежа" }, { status: 200 });
     }
-
+    console.log("[PAYMENT CONFIRM] payment_processed ok, crediting...");
     const result = await creditSubscription(supabase, userId, planType, addVolume);
     if (!result.ok) {
       console.error("[PAYMENT CONFIRM] credit:", result.error);
