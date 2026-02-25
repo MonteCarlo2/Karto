@@ -84,7 +84,7 @@ export function isSubscriptionExpired(row: Pick<SubscriptionRow, "period_start">
   return now.getTime() >= expiryMs;
 }
 
-/** Получить подписку по user_id (одна строка — для обратной совместимости, если одна запись). */
+/** Получить подписку по user_id. Не удаляем строки по сроку — только выборка и объединение. */
 export async function getSubscriptionByUserId(supabase: any, userId: string): Promise<SubscriptionState | null> {
   const { data, error } = await supabase
     .from("user_subscriptions")
@@ -92,16 +92,8 @@ export async function getSubscriptionByUserId(supabase: any, userId: string): Pr
     .eq("user_id", userId);
   if (error) return null;
   const rows = (data ?? []) as SubscriptionRow[];
-  const valid: SubscriptionRow[] = [];
-  for (const row of rows) {
-    if (isSubscriptionExpired(row)) {
-      await supabase.from("user_subscriptions").delete().eq("id", row.id);
-    } else {
-      valid.push(row);
-    }
-  }
-  if (valid.length === 0) return null;
-  return mergeSubscriptionRows(valid);
+  if (rows.length === 0) return null;
+  return mergeSubscriptionRows(rows);
 }
 
 /** Получить сырые строки подписки по user_id (для списания потока/генераций). */

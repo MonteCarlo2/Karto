@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
+import { creditSubscription } from "@/lib/payment-credit";
 
 /**
- * GET: проверка в браузере — возвращает 200 и текст (ЮKassa шлёт только POST).
- * POST: webhook ЮKassa. Вызывается при смене статуса платежа.
- * В кабинете ЮKassa URL: https://karto.pro/api/payment/webhook, событие payment.succeeded.
+ * GET: проверка в браузере.
+ * POST: webhook ЮKassa. URL: https://karto.pro/api/payment/webhook, событие payment.succeeded.
  */
 export async function GET() {
-  return new NextResponse("Webhook ЮKassa. Принимаем только POST от кассы.", {
+  return new NextResponse("Webhook ЮKassa. Только POST.", {
     status: 200,
     headers: { "Content-Type": "text/plain; charset=utf-8" },
   });
@@ -17,16 +17,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const raw = await request.text();
-    console.log("📥 [PAYMENT WEBHOOK] Получен запрос, длина body:", raw?.length ?? 0);
-    let body: {
-      type?: string;
-      event?: string;
-      object?: {
-        id?: string;
-        status?: string;
-        metadata?: Record<string, string>;
-      };
-    };
+    console.log("[PAYMENT WEBHOOK] body length:", raw?.length ?? 0);
+    let body: { type?: string; event?: string; object?: { id?: string; status?: string; metadata?: Record<string, unknown> } };
     try {
       body = JSON.parse(raw);
     } catch {
@@ -38,95 +30,46 @@ export async function POST(request: NextRequest) {
     }
 
     const payment = body.object;
-    console.log("📥 [PAYMENT WEBHOOK] payment.succeeded, payment.id:", payment?.id);
-    if (!payment || payment.status !== "succeeded") {
-      return new NextResponse(null, { status: 200 });
-    }
+    if (!payment || payment.status !== "succeeded") return new NextResponse(null, { status: 200 });
 
-    const metadata = payment.metadata || {};
-    const userIdRaw = metadata.user_id ?? metadata.userId ?? "";
-    const userId = (typeof userIdRaw === "string" ? userIdRaw : String(userIdRaw)).trim();
-    const mode = String(metadata.mode) === "1" ? "1" : "0";
-    const tariffIndex = Math.min(2, Math.max(0, Number(metadata.tariffIndex) ?? 0));
+    const meta = payment.metadata || {};
+    const userId = String(meta.user_id ?? meta.userId ?? "").trim();
+    const mode = String(meta.mode) === "1" ? "1" : "0";
+    const tariffIndex = Math.min(2, Math.max(0, Number(meta.tariffIndex) ?? 0));
 
-    if (!userId || userId.length < 30) {
-      console.warn("⚠️ [PAYMENT WEBHOOK] No user_id in metadata, payment id:", payment.id, "metadata:", JSON.stringify(metadata));
+    if (userId.length < 30) {
+      console.warn("[PAYMENT WEBHOOK] no user_id, payment:", payment.id);
       return new NextResponse(null, { status: 200 });
     }
 
     const planType = mode === "0" ? "flow" : "creative";
-    const purchasedVolume = mode === "0" ? FLOW_VOLUMES[tariffIndex] : CREATIVE_VOLUMES[tariffIndex];
-    const now = new Date().toISOString();
-    console.log("📥 [PAYMENT WEBHOOK] Обработка: userId=", userId, "planType=", planType, "purchasedVolume=", purchasedVolume);
+    const addVolume = mode === "0" ? FLOW_VOLUMES[tariffIndex] : CREATIVE_VOLUMES[tariffIndex];
+    console.log("[PAYMENT WEBHOOK] credit:", userId, planType, "+", addVolume);
 
     let supabase;
     try {
       supabase = createServerClient();
     } catch (e) {
-      console.error("❌ [PAYMENT WEBHOOK] Не удалось создать Supabase-клиент (проверьте SUPABASE_SERVICE_ROLE_KEY):", e);
+      console.error("[PAYMENT WEBHOOK] Supabase client:", e);
       return new NextResponse(null, { status: 200 });
     }
 
-    const { data: alreadyProcessed } = await supabase
-      .from("payment_processed")
-      .select("payment_id")
-      .eq("payment_id", payment.id)
-      .maybeSingle();
-    if (alreadyProcessed) {
-      console.log("📥 [PAYMENT WEBHOOK] Платёж уже обработан (идемпотентность), payment_id:", payment.id);
+    const { data: exists } = await supabase.from("payment_processed").select("payment_id").eq("payment_id", payment.id).maybeSingle();
+    if (exists) {
+      console.log("[PAYMENT WEBHOOK] already processed:", payment.id);
       return new NextResponse(null, { status: 200 });
     }
-    const { error: claimError } = await supabase.from("payment_processed").insert({ payment_id: payment.id });
-    if (claimError?.code === "23505") {
-      console.log("📥 [PAYMENT WEBHOOK] Платёж уже обработан (гонка), payment_id:", payment.id);
-      return new NextResponse(null, { status: 200 });
-    }
-    if (claimError) {
-      console.warn("⚠️ [PAYMENT WEBHOOK] payment_processed insert:", claimError.message);
-    }
+    const { error: claimErr } = await supabase.from("payment_processed").insert({ payment_id: payment.id });
+    if (claimErr?.code === "23505") return new NextResponse(null, { status: 200 });
+    if (claimErr) console.warn("[PAYMENT WEBHOOK] payment_processed:", claimErr.message);
 
-    const { data: existing } = await supabase
-      .from("user_subscriptions")
-      .select("id, plan_volume, period_start")
-      .eq("user_id", userId)
-      .eq("plan_type", planType)
-      .maybeSingle();
+    const result = await creditSubscription(supabase, userId, planType, addVolume);
+    if (!result.ok) console.error("[PAYMENT WEBHOOK] credit error:", result.error);
+    else console.log("[PAYMENT WEBHOOK] credited ok:", payment.id);
 
-    if (existing) {
-      const newVolume = (existing.plan_volume ?? 0) + purchasedVolume;
-      const { error: updateError } = await supabase
-        .from("user_subscriptions")
-        .update({ plan_volume: newVolume, period_start: now })
-        .eq("user_id", userId)
-        .eq("plan_type", planType);
-      if (updateError) {
-        console.error("❌ [PAYMENT WEBHOOK] update error:", updateError);
-        return new NextResponse(null, { status: 200 });
-      }
-      console.log("✅ [PAYMENT WEBHOOK] Добавлено к подписке:", userId, planType, `+${purchasedVolume} → всего ${newVolume}`);
-    } else {
-      const { error: insertError } = await supabase.from("user_subscriptions").insert({
-        user_id: userId,
-        plan_type: planType,
-        plan_volume: purchasedVolume,
-        period_start: now,
-        flows_used: 0,
-        creative_used: 0,
-      });
-      if (insertError) {
-        console.error("❌ [PAYMENT WEBHOOK] insert error:", insertError.code, insertError.message);
-        if (insertError.code === "23505") {
-          console.error("💡 [PAYMENT WEBHOOK] Ошибка уникальности. Убедитесь, что в Supabase выполнен скрипт: UNIQUE(user_id, plan_type) (файл supabase/migrations/20250210_user_subscriptions_flow_and_creative.sql)");
-        }
-        return new NextResponse(null, { status: 200 });
-      }
-      console.log("✅ [PAYMENT WEBHOOK] Создана подписка:", userId, planType, purchasedVolume);
-    }
-
-    console.log("✅ [PAYMENT WEBHOOK] Платёж обработан, payment_id:", payment.id);
     return new NextResponse(null, { status: 200 });
   } catch (err) {
-    console.error("❌ [PAYMENT WEBHOOK]:", err);
+    console.error("[PAYMENT WEBHOOK]", err);
     return new NextResponse(null, { status: 200 });
   }
 }
