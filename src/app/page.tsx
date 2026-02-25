@@ -73,6 +73,41 @@ function HomeContent() {
     }
   }, [searchParams, showToast]);
 
+  // Обновление URL при прокрутке по секциям (как это работает, цена, вопросы), чтобы при повторном клике «Цена» происходил переход
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sectionIds = ["hero", "how-it-works", "pricing", "faq"];
+    let ticking = false;
+    const updateHash = () => {
+      const y = window.scrollY + window.innerHeight * 0.35;
+      let current = "";
+      for (let i = sectionIds.length - 1; i >= 0; i--) {
+        const el = document.getElementById(sectionIds[i]);
+        if (el) {
+          const top = el.getBoundingClientRect().top + window.scrollY;
+          if (y >= top) {
+            current = sectionIds[i] === "hero" ? "" : sectionIds[i];
+            break;
+          }
+        }
+      }
+      const want = current ? `#${current}` : "";
+      if (window.location.hash !== want) {
+        window.history.replaceState({}, "", window.location.pathname + want);
+      }
+      ticking = false;
+    };
+    const onScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(updateHash);
+        ticking = true;
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    updateHash();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
     <div suppressHydrationWarning>
       {/* Кнопка "Сообщить о проблеме" - фиксированная в правом нижнем углу, маленькая и неприметная */}
@@ -94,7 +129,7 @@ function HomeContent() {
         user={user}
       />
       {/* SECTION 1: HERO - Изображение на весь экран с рельефностью */}
-      <section className="relative w-full overflow-hidden" style={{ maxWidth: '100vw', margin: 0, padding: 0, height: '100vh', minHeight: '100vh', maxHeight: '100vh', paddingTop: '0' }} suppressHydrationWarning>
+      <section id="hero" className="relative w-full overflow-hidden" style={{ maxWidth: '100vw', margin: 0, padding: 0, height: '100vh', minHeight: '100vh', maxHeight: '100vh', paddingTop: '0' }} suppressHydrationWarning>
         {/* Фоновое видео - точно по границам viewport с эффектом полотна */}
         <div className="absolute inset-0 w-full h-full" style={{ overflow: 'hidden', maxWidth: '100%', width: '100%', height: '100vh', maxHeight: '100vh' }} suppressHydrationWarning>
           <VideoBackground

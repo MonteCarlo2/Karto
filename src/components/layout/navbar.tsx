@@ -135,6 +135,19 @@ export function Navbar() {
     { name: "Вопросы", href: isHome ? "#faq" : "/#faq" },
   ]
 
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (pathname !== "/") return
+    const hash = href.startsWith("#") ? href : href.replace(/^[^#]*/, "") || ""
+    const id = hash.slice(1)
+    if (!id) return
+    e.preventDefault()
+    const el = document.getElementById(id)
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" })
+      window.history.replaceState({}, "", `/${hash}`)
+    }
+  }
+
   // Скрываем navbar на странице свободной генерации
   if (isFreeGeneration) {
     return null;
@@ -154,6 +167,7 @@ export function Navbar() {
               <Link
                 key={link.name}
                 href={link.href}
+                onClick={(e) => handleNavClick(e, link.href)}
                 className="text-base font-medium text-foreground transition-colors hover:text-[#2E5A43]"
               >
                 {link.name}
@@ -292,8 +306,11 @@ export function Navbar() {
                 <Link
                   key={link.name}
                   href={link.href}
+                  onClick={(e) => {
+                    handleNavClick(e, link.href)
+                    setIsOpen(false)
+                  }}
                   className="text-base font-medium text-muted-foreground transition-colors hover:text-foreground py-2 px-4 rounded-lg hover:bg-muted"
-                  onClick={() => setIsOpen(false)}
                 >
                   {link.name}
                 </Link>

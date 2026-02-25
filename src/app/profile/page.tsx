@@ -830,7 +830,7 @@ function ProfileContent() {
                     {/* Яндекс: всегда показываем логотип; созданный через callback хранит provider в user_metadata */}
                     <div className="flex items-center justify-between py-3 px-4 bg-gray-50 rounded-xl">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 flex items-center justify-center shrink-0 relative">
                           <Image
                             src="/yandex-logo.svg"
                             alt="Яндекс"
@@ -840,15 +840,21 @@ function ProfileContent() {
                             unoptimized
                             onError={(e) => {
                               const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                              if (target.parentElement) {
-                                const fallback = document.createElement('div');
-                                fallback.className = 'w-8 h-8 bg-red-500 rounded flex items-center justify-center text-white font-bold text-sm';
-                                fallback.textContent = 'Я';
-                                target.parentElement.appendChild(fallback);
-                              }
+                              target.style.display = "none";
+                              const svg = target.parentElement?.querySelector(".yandex-fallback-svg") as HTMLElement;
+                              if (svg) svg.style.display = "block";
                             }}
                           />
+                          <svg
+                            className="yandex-fallback-svg w-8 h-8 hidden absolute inset-0 m-auto"
+                            viewBox="0 0 32 32"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                            aria-hidden
+                          >
+                            <rect width="32" height="32" rx="4" fill="#FC3F1D" />
+                            <text x="16" y="23" textAnchor="middle" fill="white" fontSize="20" fontWeight="bold" fontFamily="Arial, sans-serif">Я</text>
+                          </svg>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-900">Яндекс</p>
