@@ -4,9 +4,9 @@
  */
 export const FLOW_VOLUMES = [1, 5, 15] as const;
 export const CREATIVE_VOLUMES = [10, 30, 100] as const;
-/** Цены в рублях: Поток (1/5/15), Свободное творчество (10/30/100 ген.). Первый тариф — 5 ₽ для тестов. */
-export const FLOW_PRICES = [5, 1190, 2990] as const;
-export const CREATIVE_PRICES = [5, 590, 1490] as const;
+/** Цены в рублях: Поток (1/5/15), Свободное творчество (10/30/100 ген.). */
+export const FLOW_PRICES = [299, 1190, 2990] as const;
+export const CREATIVE_PRICES = [249, 590, 1490] as const;
 /** Количество бесплатных генераций «Свободное творчество» для новых пользователей после регистрации */
 export const FREE_WELCOME_CREATIVE_LIMIT = 3;
 export const SUBSCRIPTION_PERIOD_DAYS = 30;
