@@ -832,7 +832,7 @@ function ProfileContent() {
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 flex items-center justify-center shrink-0 relative">
                           <Image
-                            src="/yandex-logo.svg"
+                            src="/yandex-logo.png"
                             alt="Яндекс"
                             width={32}
                             height={32}

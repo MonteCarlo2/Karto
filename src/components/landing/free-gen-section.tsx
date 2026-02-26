@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button"
 import { ArcGalleryHero } from "@/components/ui/arc-gallery-hero"
 
 const GALLERY_ITEMS = [
-  // Оставили 3 выбранных из старой галереи (без картинки с рукой)
-  "/temp/028101ff-bfc7-40c5-aa1d-d1e01f02c5ba.png",
-  "/temp/0fe5822e-bb1c-4d5c-bfa4-7479f2f79121.png",
-  "/temp/17de21b7-0973-4c70-b0c0-45b4806f9465.png",
+  // Первые 3 берём из стабильной папки public/gallery (чтобы не было заглушек в проде)
+  "/gallery/card-1.png",
+  "/gallery/card-2.png",
+  "/gallery/card-3.png",
   // Добавили 7 новых изображений
   "/gallery/neuroblogger-cats.jpg",
   "/gallery/for-gallery.jpg",
