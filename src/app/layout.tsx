@@ -6,6 +6,7 @@ import { ToastProvider } from "@/components/ui/toast";
 import { AbortErrorSuppressor } from "@/components/ui/abort-error-suppressor";
 import { PreconnectLinks } from "@/components/ui/preconnect-links";
 import { YandexMetrika } from "@/components/analytics/yandex-metrika";
+import { Suspense } from "react";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -99,7 +100,9 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
         />
         <PreconnectLinks />
-        <YandexMetrika />
+        <Suspense fallback={null}>
+          <YandexMetrika />
+        </Suspense>
         <ToastProvider>
           <AbortErrorSuppressor />
           <Navbar />
