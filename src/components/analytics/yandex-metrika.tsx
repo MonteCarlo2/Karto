@@ -1,8 +1,9 @@
 "use client";
 
 import Script from "next/script";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { COOKIE_CONSENT_EVENT, getCookieConsent } from "@/lib/cookie-consent";
 
 type YmFn = (...args: unknown[]) => void;
 
@@ -19,12 +20,31 @@ export function YandexMetrika() {
   const searchParams = useSearchParams();
   const isFirstRouteEvent = useRef(true);
   const lastUrlRef = useRef<string>("");
+  const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
+  const [ready, setReady] = useState(false);
 
   const counterId = Number(process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID || DEFAULT_COUNTER_ID);
   const query = searchParams?.toString();
   const currentPath = `${pathname}${query ? `?${query}` : ""}`;
 
   useEffect(() => {
+    const syncConsent = () => {
+      const consent = getCookieConsent();
+      setAnalyticsEnabled(Boolean(consent?.analytics));
+      setReady(true);
+    };
+
+    syncConsent();
+    window.addEventListener(COOKIE_CONSENT_EVENT, syncConsent as EventListener);
+    window.addEventListener("storage", syncConsent);
+    return () => {
+      window.removeEventListener(COOKIE_CONSENT_EVENT, syncConsent as EventListener);
+      window.removeEventListener("storage", syncConsent);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!analyticsEnabled) return;
     if (typeof window === "undefined" || typeof window.ym !== "function") return;
 
     const currentUrl = `${window.location.origin}${currentPath}`;
@@ -42,7 +62,9 @@ export function YandexMetrika() {
       referer,
     });
     lastUrlRef.current = currentUrl;
-  }, [counterId, currentPath]);
+  }, [analyticsEnabled, counterId, currentPath]);
+
+  if (!ready || !analyticsEnabled) return null;
 
   return (
     <>

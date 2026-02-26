@@ -75,7 +75,7 @@ export default function ConsentPersonalDataPage() {
               <li suppressHydrationWarning>Предоставления доступа к ИИ-сервисам генерации товарных карточек;</li>
               <li suppressHydrationWarning>Направления информационных и рекламных сообщений (в случае активации соответствующего согласия);</li>
               <li suppressHydrationWarning>Получения обратной связи и технической поддержки;</li>
-              <li suppressHydrationWarning>Сбора аналитики для улучшения работы платформы через сервис Яндекс.Метрика.</li>
+              <li suppressHydrationWarning>Сбора аналитики для улучшения работы платформы через сервис Яндекс.Метрика (при отдельном согласии на аналитические cookies).</li>
             </ul>
           </section>
 

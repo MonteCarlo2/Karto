@@ -6,6 +6,7 @@ import { ToastProvider } from "@/components/ui/toast";
 import { AbortErrorSuppressor } from "@/components/ui/abort-error-suppressor";
 import { PreconnectLinks } from "@/components/ui/preconnect-links";
 import { YandexMetrika } from "@/components/analytics/yandex-metrika";
+import { CookieConsentBanner } from "@/components/analytics/cookie-consent-banner";
 import { Suspense } from "react";
 import "./globals.css";
 
@@ -103,6 +104,7 @@ export default function RootLayout({
         <Suspense fallback={null}>
           <YandexMetrika />
         </Suspense>
+        <CookieConsentBanner />
         <ToastProvider>
           <AbortErrorSuppressor />
           <Navbar />

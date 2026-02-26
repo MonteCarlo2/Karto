@@ -252,7 +252,7 @@ export default function PrivacyPage() {
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>8.1</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Использование Сервиса подразумевает согласие Пользователя на сбор куки-файлов. Пользователь уведомлен об этом через всплывающий баннер при первом посещении сайта.
+                  При первом посещении сайта Пользователю показывается баннер согласия на cookies. До получения согласия аналитические cookies и инструменты аналитики (Яндекс.Метрика) не активируются.
                 </p>
               </div>
               <p className="text-base leading-7 mt-4" suppressHydrationWarning>
@@ -261,14 +261,43 @@ export default function PrivacyPage() {
               <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
                 <li suppressHydrationWarning>поддержания авторизации во время работы над проектом;</li>
                 <li suppressHydrationWarning>сохранения настроек редактора карточек.</li>
+                <li suppressHydrationWarning>сбора обезличенной статистики посещений и действий на сайте через Яндекс.Метрику (только при согласии).</li>
               </ul>
+              <p className="text-[15px] leading-6" suppressHydrationWarning>
+                Пользователь может выбрать «Только необходимые cookies», «Принять все» или изменить выбор через баннер при следующем посещении.
+              </p>
+            </div>
+          </section>
+
+          <section suppressHydrationWarning>
+            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
+              9. Использование систем веб-аналитики
+            </h2>
+            <div className="space-y-4 text-[15px] leading-6" suppressHydrationWarning>
+              <p suppressHydrationWarning>
+                На сайте используется программа для отслеживания и веб-аналитики «Яндекс.Метрика»
+                от ООО «ЯНДЕКС» (Россия).
+              </p>
+              <p suppressHydrationWarning>
+                С помощью этой системы собираются обезличенные данные о действиях посетителей, включая:
+                источник захода на сайт, время на сайте, клики, использование интерфейсов, данные об устройстве
+                пользователя (IP-адрес, версия браузера, разрешение экрана).
+              </p>
+              <p suppressHydrationWarning>
+                Эти данные используются исключительно для улучшения функциональности сайта KARTO.pro и качества сервиса.
+                Яндекс.Метрика активируется только после согласия пользователя с cookies-баннером.
+              </p>
+              <p suppressHydrationWarning>
+                Пользователь может ограничить сбор данных, отключив cookies в браузере или используя блокировщики
+                аналитических скриптов.
+              </p>
             </div>
           </section>
 
           {/* Section 9 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              9. Политика в отношении несовершеннолетних
+              10. Политика в отношении несовершеннолетних
             </h2>
             <p className="text-base leading-7" suppressHydrationWarning>
               Сервис является бизнес-инструментом (B2B/Prosumer) и не предназначен для лиц младше 18 лет. Мы сознательно не собираем данные детей.
@@ -278,7 +307,7 @@ export default function PrivacyPage() {
           {/* Section 10 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              10. Изменения Политики
+              11. Изменения Политики
             </h2>
             <p className="text-base leading-7" suppressHydrationWarning>
               Оператор может обновлять Политику по мере добавления новых функций (например, интеграции по API с кабинетом селлера Wildberries). Продолжение использования Сервиса означает согласие с изменениями.
@@ -288,7 +317,7 @@ export default function PrivacyPage() {
           {/* Section 11 */}
           <section suppressHydrationWarning>
             <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              11. Контакты
+              12. Контакты
             </h2>
             <p className="text-base leading-7" suppressHydrationWarning>
               По вопросам приватности и удаления данных обращайтесь в службу поддержки через интерфейс платформы или по электронной почте, указанной на сайте.
