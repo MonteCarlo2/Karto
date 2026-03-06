@@ -861,6 +861,40 @@ export default function VisualPage() {
     }
   }, [generatedCards, selectedCardIndex, isSeriesMode, sessionId, visualQuota.used, visualQuota.limit]);
 
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const pollForGeneratedCards = async (sid: string, maxWaitMs: number = 360_000): Promise<string[] | null> => {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < maxWaitMs) {
+      try {
+        const res = await fetch("/api/supabase/get-results", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sid }),
+        });
+        const data = await res.json().catch(() => ({} as any));
+        const state = data?.visual_state;
+        const cards = state?.generatedCards;
+        if (Array.isArray(cards) && cards.length > 0) {
+          if (typeof state.generation_used === "number" || typeof state.generation_limit === "number") {
+            const limit = Math.max(1, Number(state.generation_limit || 12));
+            const used = Math.max(0, Number(state.generation_used || 0));
+            setVisualQuota({
+              used,
+              limit,
+              remaining: Math.max(0, limit - used),
+            });
+          }
+          return cards;
+        }
+      } catch (_) {
+        // ignore and retry
+      }
+      await sleep(2000);
+    }
+    return null;
+  };
+
   // Генерация карточки
   const handleGenerate = async () => {
     // Не генерируем, если уже в режиме серии
@@ -951,14 +985,23 @@ export default function VisualPage() {
       if (!response.ok || !data.success) {
         console.error("❌ [FRONTEND] Ошибка в ответе:", data);
 
-        // Генерация уже выполняется для этой сессии (повторный запрос отклонён)
-        if (response.status === 409 || data.code === "BATCH_ALREADY_RUNNING") {
+        // Генерация уже выполняется для этой сессии — НЕ показываем ошибку, просто ждём результат.
+        if (response.status === 202 || response.status === 409 || data.code === "BATCH_ALREADY_RUNNING") {
+          showToast({
+            type: "info",
+            title: "Генерация уже идёт",
+            message: "Сервер уже генерирует карточки. Ожидаем результат…",
+          });
+          const cards = await pollForGeneratedCards(sessionId, 360_000);
+          if (cards && cards.length > 0) {
+            setGeneratedCards(cards);
+            return;
+          }
           setGenerationError({
             show: true,
-            message: data.error || "Генерация уже выполняется. Дождитесь завершения — не нажимайте «Повторить» и не обновляйте страницу.",
-            canRetry: false,
+            message: "Генерация занимает слишком много времени. Попробуйте ещё раз.",
+            canRetry: true,
           });
-          setIsGenerating(false);
           return;
         }
 
@@ -1043,9 +1086,19 @@ export default function VisualPage() {
         error instanceof TypeError &&
         (error.message === "Failed to fetch" || (error.message ?? "").toLowerCase().includes("network"));
       if (isNetworkError) {
+        showToast({
+          type: "info",
+          title: "Соединение прервалось",
+          message: "Сервер мог продолжить генерацию. Пытаемся восстановить результат…",
+        });
+        const cards = sessionId ? await pollForGeneratedCards(sessionId, 360_000) : null;
+        if (cards && cards.length > 0) {
+          setGeneratedCards(cards);
+          return;
+        }
         setGenerationError({
           show: true,
-          message: "Соединение прервалось во время генерации (часто из‑за долгой работы сервера). Нажмите «Повторить», чтобы попробовать снова.",
+          message: "Соединение прервалось во время генерации. Нажмите «Повторить», чтобы попробовать снова.",
           canRetry: true,
         });
         return;

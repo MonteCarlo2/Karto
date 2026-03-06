@@ -49,22 +49,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const supabase = createServerClient();
+
     // Защита от повторного запуска батча для той же сессии (лишние расходы KIE)
     if (batchLockBySession.has(sessionId)) {
-      console.warn("⚠️ [BATCH] Сессия уже в процессе генерации, отклоняем повторный запрос:", sessionId);
+      console.warn("⚠️ [BATCH] Сессия уже в процессе генерации, повторный запрос:", sessionId);
+
+      // Если результат уже успели сохранить — отдаем его сразу, чтобы фронт не «терял» карточки.
+      const { data: visualRow } = await supabase
+        .from("visual_data")
+        .select("visual_state")
+        .eq("session_id", sessionId)
+        .maybeSingle();
+
+      const generatedCards = (visualRow?.visual_state as any)?.generatedCards;
+      if (Array.isArray(generatedCards) && generatedCards.length > 0) {
+        console.log("✅ [BATCH] Найдены сохранённые generatedCards, возвращаем без новой генерации");
+        return NextResponse.json(
+          { success: true, imageUrls: generatedCards, code: "BATCH_CACHED_RESULT" },
+          { status: 200 }
+        );
+      }
+
+      // Иначе сообщаем «в процессе» — фронт может подождать и забрать результат из Supabase.
       return NextResponse.json(
         {
           success: false,
           error: "Генерация уже выполняется для этой сессии. Дождитесь завершения.",
           code: "BATCH_ALREADY_RUNNING",
         },
-        { status: 409 }
+        { status: 202 }
       );
     }
     batchLockBySession.add(sessionId);
     sessionIdForLock = sessionId;
-
-    const supabase = createServerClient();
     const quotaBefore = await getVisualQuota(supabase as any, sessionId);
     if (quotaBefore.remaining <= 0) {
       return NextResponse.json(
@@ -248,6 +266,40 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Успешно сгенерировано ${successfulCards.length}/${cardsToGenerate} карточек`);
     const quotaAfter = await incrementVisualQuota(supabase as any, sessionId, successfulCards.length);
+
+    // Сохраняем generatedCards в Supabase, чтобы фронт мог восстановить результат даже при обрыве/повторе запроса.
+    try {
+      const { data: existingVisualRow } = await supabase
+        .from("visual_data")
+        .select("visual_state")
+        .eq("session_id", sessionId)
+        .maybeSingle();
+
+      const existingState = (existingVisualRow?.visual_state || {}) as Record<string, unknown>;
+      const nextState = {
+        ...existingState,
+        generatedCards: successfulCards,
+        selectedCardIndex: null,
+        isSeriesMode: false,
+        generation_used: quotaAfter.used,
+        generation_limit: quotaAfter.limit,
+        lastGeneratedAt: new Date().toISOString(),
+      };
+
+      const { error: saveErr } = await supabase
+        .from("visual_data")
+        .upsert(
+          {
+            session_id: sessionId,
+            visual_state: nextState,
+          },
+          { onConflict: "session_id" }
+        );
+      if (saveErr) console.error("❌ [BATCH] Не удалось сохранить generatedCards в Supabase:", saveErr);
+      else console.log("💾 [BATCH] generatedCards сохранены в Supabase");
+    } catch (e) {
+      console.error("❌ [BATCH] Ошибка сохранения generatedCards:", e);
+    }
 
     return NextResponse.json({
       success: true,
