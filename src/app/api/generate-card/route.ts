@@ -545,7 +545,7 @@ ${finalTextPresentation}
     }
     console.log("═══════════════════════════════════════");
     
-    // Генерируем через KIE (nano-banana-2)
+    // Генерируем через KIE (nano-banana-pro)
     // Убеждаемся, что aspectRatio в правильном формате (3:4 или 1:1)
     const finalAspectRatio = aspectRatio === "1:1" ? "1:1" : "3:4";
     

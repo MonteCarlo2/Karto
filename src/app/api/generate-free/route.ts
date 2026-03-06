@@ -4,7 +4,7 @@ import { generateWithKieAi } from "@/lib/services/kie-ai";
 import { getSubscriptionByUserId, getSubscriptionRowsByUserId } from "@/lib/subscription";
 
 /**
- * Свободная генерация изображений через KIE AI (nano-banana-2)
+ * Свободная генерация изображений через KIE AI (nano-banana-pro)
  * Требуется подписка «Свободное творчество» и лимит генераций.
  */
 export async function POST(request: NextRequest) {
