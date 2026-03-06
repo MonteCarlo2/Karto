@@ -611,6 +611,8 @@ export default function VisualPage() {
   const { showToast } = useToast();
   const longWaitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fetchAbortRef = useRef<AbortController | null>(null);
+  /** Защита от повторного запуска батча (двойной клик / Повторить пока первый запрос ещё в полёте). */
+  const batchInFlightRef = useRef(false);
   const [visualQuota, setVisualQuota] = useState<{ used: number; remaining: number; limit: number }>({
     used: 0,
     remaining: 12,
@@ -865,6 +867,12 @@ export default function VisualPage() {
     if (isSeriesMode) {
       return;
     }
+    // Защита от повторного запуска (двойной клик, «Повторить» пока первый запрос ещё в полёте)
+    if (batchInFlightRef.current) {
+      console.warn("⚠️ [FRONTEND] Батч уже запущен, игнорируем повторный вызов");
+      showToast({ type: "info", title: "Генерация уже идёт", message: "Дождитесь завершения текущей генерации." });
+      return;
+    }
     
     console.log("🔴 [FRONTEND] ========== КНОПКА НАЖАТА ==========");
     console.log("🔴 [FRONTEND] handleGenerate вызвана!");
@@ -923,6 +931,7 @@ export default function VisualPage() {
       console.log("🚀 [FRONTEND] Данные:", requestData);
       console.log("🚀 [FRONTEND] Вызываю endpoint: /api/generate-cards-batch");
 
+      batchInFlightRef.current = true;
       // Используем batch endpoint для генерации 4 карточек с разными концепциями от OpenRouter
       const response = await fetch("/api/generate-cards-batch", {
         method: "POST",
@@ -941,6 +950,17 @@ export default function VisualPage() {
 
       if (!response.ok || !data.success) {
         console.error("❌ [FRONTEND] Ошибка в ответе:", data);
+
+        // Генерация уже выполняется для этой сессии (повторный запрос отклонён)
+        if (response.status === 409 || data.code === "BATCH_ALREADY_RUNNING") {
+          setGenerationError({
+            show: true,
+            message: data.error || "Генерация уже выполняется. Дождитесь завершения — не нажимайте «Повторить» и не обновляйте страницу.",
+            canRetry: false,
+          });
+          setIsGenerating(false);
+          return;
+        }
 
         // Сервис временно недоступен (сеть/хостинг не дотягивается до KIE или Supabase)
         if (response.status === 503 || data.code === "SERVICE_UNAVAILABLE") {
@@ -1042,6 +1062,7 @@ export default function VisualPage() {
         clearTimeout(longWaitTimerRef.current);
         longWaitTimerRef.current = null;
       }
+      batchInFlightRef.current = false;
       setIsGenerating(false);
     }
   };

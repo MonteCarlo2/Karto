@@ -7,11 +7,16 @@ import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 
 const CARD_GENERATE_TIMEOUT_MS = 100_000; // 100 сек на одну карточку
 
+/** Сессии, для которых уже выполняется батч — не запускаем второй параллельный батч. */
+const batchLockBySession = new Set<string>();
+
 /**
  * Генерация 4 карточек одновременно с уникальными концепциями
  */
 export async function POST(request: NextRequest) {
   console.log("🚀 [BATCH] ========== НАЧАЛО BATCH ГЕНЕРАЦИИ ==========");
+
+  let sessionIdForLock: string | null = null;
 
   try {
     console.log("📥 [BATCH] Получаю body запроса...");
@@ -43,6 +48,21 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Защита от повторного запуска батча для той же сессии (лишние расходы KIE)
+    if (batchLockBySession.has(sessionId)) {
+      console.warn("⚠️ [BATCH] Сессия уже в процессе генерации, отклоняем повторный запрос:", sessionId);
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Генерация уже выполняется для этой сессии. Дождитесь завершения.",
+          code: "BATCH_ALREADY_RUNNING",
+        },
+        { status: 409 }
+      );
+    }
+    batchLockBySession.add(sessionId);
+    sessionIdForLock = sessionId;
 
     const supabase = createServerClient();
     const quotaBefore = await getVisualQuota(supabase as any, sessionId);
@@ -259,5 +279,10 @@ export async function POST(request: NextRequest) {
       error: "Ошибка генерации карточек",
       details: (error as { message?: string })?.message || String(error),
     }, { status: 500 });
+  } finally {
+    if (sessionIdForLock) {
+      batchLockBySession.delete(sessionIdForLock);
+      console.log("🔓 [BATCH] Снята блокировка сессии:", sessionIdForLock);
+    }
   }
 }
