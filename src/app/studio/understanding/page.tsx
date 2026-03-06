@@ -88,7 +88,7 @@ export default function UnderstandingPage() {
   const [productName, setProductName] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<{ names: string[] } | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<{ names: string[]; _error?: string } | null>(null);
   const [selectedNameIndex, setSelectedNameIndex] = useState<number | null>(null);
   const [customName, setCustomName] = useState("");
   const [showCustomInput, setShowCustomInput] = useState(false);
@@ -332,6 +332,9 @@ export default function UnderstandingPage() {
     setIsAnalyzing(true);
     setAnalysisResult(null);
     
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 40_000);
+    
     try {
       const formData = new FormData();
       formData.append("image", fileToUse);
@@ -339,16 +342,26 @@ export default function UnderstandingPage() {
       const response = await fetch("/api/recognize", {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
       
-      if (!response.ok) {
-        throw new Error("Ошибка при определении товара");
-      }
+      clearTimeout(timeoutId);
       
       const data = await response.json();
+      
+      if (response.status === 503) {
+        const message = data.message || "Сервис распознавания недоступен. Введите название вручную.";
+        setAnalysisResult({ names: [], _error: message });
+        setShowCustomInput(true);
+        return;
+      }
+      
+      if (!response.ok) {
+        throw new Error(data.message || data.error || "Ошибка при определении товара");
+      }
+      
       if (data.names && Array.isArray(data.names)) {
         setAnalysisResult({ names: data.names });
-        // Сбрасываем выбор при новом анализе
         setSelectedNameIndex(null);
         setCustomName("");
         setShowCustomInput(false);
@@ -358,9 +371,16 @@ export default function UnderstandingPage() {
         setCustomName("");
         setShowCustomInput(false);
       }
-    } catch (error) {
+    } catch (error: any) {
+      clearTimeout(timeoutId);
       console.error("Ошибка определения товара:", error);
-      setAnalysisResult({ names: ["Ошибка. Попробуйте ещё раз."] });
+      if (error?.name === "AbortError") {
+        setAnalysisResult({ names: [], _error: "Превышено время ожидания. С сервера нет доступа к Replicate. Введите название вручную." });
+        setShowCustomInput(true);
+      } else {
+        setAnalysisResult({ names: [], _error: error?.message || "Ошибка. Введите название вручную." });
+        setShowCustomInput(true);
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -746,16 +766,22 @@ export default function UnderstandingPage() {
                                 </div>
                               ) : analysisResult ? (
                                 <div>
-                                  <h3
-                                    className="text-lg font-semibold mb-4"
-                                    style={{
-                                      fontFamily: "var(--font-sans), Inter, sans-serif",
-                                      color: "#000000",
-                                      letterSpacing: "-0.01em",
-                                    }}
-                                  >
-                                    Подборка названий
-                                  </h3>
+                                  {analysisResult._error ? (
+                                    <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+                                      {analysisResult._error}
+                                    </div>
+                                  ) : (
+                                    <h3
+                                      className="text-lg font-semibold mb-4"
+                                      style={{
+                                        fontFamily: "var(--font-sans), Inter, sans-serif",
+                                        color: "#000000",
+                                        letterSpacing: "-0.01em",
+                                      }}
+                                    >
+                                      Подборка названий
+                                    </h3>
+                                  )}
                                   <div className="space-y-2" style={{ paddingBottom: showCustomInput ? "0" : "0" }}>
                                     <AnimatePresence>
                                       {analysisResult.names.slice(0, 5).map((name, index) => (

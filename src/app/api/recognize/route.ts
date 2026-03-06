@@ -53,8 +53,30 @@ function extractFromDescription(desc: string): string[] {
   return out.slice(0, 5);
 }
 
+const RECOGNIZE_TIMEOUT_MS = 35_000;
+const NETWORK_ERROR_PATTERNS = [
+  "Connect Timeout",
+  "fetch failed",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "ETIMEDOUT",
+  "ECONNREFUSED",
+  "ENOTFOUND",
+];
+
+function isNetworkError(e: unknown): boolean {
+  const msg = String((e as any)?.message ?? (e as any)?.code ?? "");
+  return NETWORK_ERROR_PATTERNS.some((p) => msg.includes(p));
+}
+
 export async function POST(request: NextRequest) {
-  try {
+  const timeoutId = { current: null as ReturnType<typeof setTimeout> | null };
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId.current = setTimeout(() => {
+      reject(new Error("RECOGNIZE_TIMEOUT"));
+    }, RECOGNIZE_TIMEOUT_MS);
+  });
+
+  const run = async () => {
     const formData = await request.formData();
     const file = formData.get("image") as File | null;
 
@@ -95,6 +117,16 @@ export async function POST(request: NextRequest) {
     } catch (e: any) {
       const errorMessage = String(e?.message || e || "");
       console.error("❌ GPT-4o-mini (Replicate) упал с ошибкой:", errorMessage);
+      if (isNetworkError(e)) {
+        console.error("❌ Ошибка сети до Replicate — с хостинга нет доступа к api.replicate.com");
+        return NextResponse.json(
+          {
+            error: "network",
+            message: "Сервис распознавания недоступен: с сервера не удаётся связаться с Replicate. Проверьте, что хостинг не блокирует исходящие запросы к api.replicate.com, или введите название вручную.",
+          },
+          { status: 503 }
+        );
+      }
       if (errorMessage.includes("insufficient_quota") || errorMessage.includes("quota")) {
         console.warn("⚠️ GPT-4o-mini (Replicate): закончилась квота, переключаемся на Claude 4 Sonnet");
       } else {
@@ -123,7 +155,15 @@ export async function POST(request: NextRequest) {
         }
       } catch (e: any) {
         console.error("❌ Claude 4 Sonnet (Replicate) failed:", e);
-        console.error("Детали ошибки:", JSON.stringify(e, null, 2));
+        if (isNetworkError(e)) {
+          return NextResponse.json(
+            {
+              error: "network",
+              message: "Сервис распознавания недоступен: с сервера не удаётся связаться с Replicate. Введите название вручную.",
+            },
+            { status: 503 }
+          );
+        }
       }
     }
 
@@ -146,10 +186,37 @@ export async function POST(request: NextRequest) {
       description,
       message: "Товар успешно определен",
     });
-  } catch (error) {
+  };
+
+  try {
+    const result = await Promise.race([run(), timeoutPromise]);
+    if (timeoutId.current) clearTimeout(timeoutId.current);
+    return result;
+  } catch (error: any) {
+    if (timeoutId.current) clearTimeout(timeoutId.current);
+    const msg = String(error?.message ?? error);
+    if (msg.includes("RECOGNIZE_TIMEOUT")) {
+      console.error("❌ Таймаут распознавания (35 с)");
+      return NextResponse.json(
+        {
+          error: "timeout",
+          message: "Сервис распознавания не ответил вовремя. С хостинга может не быть доступа к Replicate. Введите название вручную.",
+        },
+        { status: 503 }
+      );
+    }
+    if (isNetworkError(error)) {
+      return NextResponse.json(
+        {
+          error: "network",
+          message: "Сервис распознавания недоступен. Введите название вручную.",
+        },
+        { status: 503 }
+      );
+    }
     console.error("❌ Ошибка определения товара:", error);
     return NextResponse.json(
-      { error: "Ошибка при определении товара", details: String(error) },
+      { error: "Ошибка при определении товара", details: msg },
       { status: 500 }
     );
   }
