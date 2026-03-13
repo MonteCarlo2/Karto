@@ -1,38 +1,40 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-// TEST MODE: always shows. Change to localStorage check before release.
+// TEST MODE — set to false before production release
 const ALWAYS_SHOW = true;
 const STORAGE_KEY = "karto_video_announcement_seen_v2";
 
 type Phase = "card-static" | "wipe" | "card-video" | "free-video";
 
-// Card phase: portrait 3:4 — Free phase: landscape 16:9
 const CARD_W = 520;
 const CARD_H = Math.round(CARD_W * (4 / 3)); // 693
-const FREE_W = 860;
-const FREE_H = Math.round(FREE_W * (9 / 16)); // 484
+const FREE_W = 880;
+const FREE_H = Math.round(FREE_W * (9 / 16)); // 495
 
 export function VideoAnnouncementBanner() {
   const [visible, setVisible] = useState(false);
   const [phase, setPhase] = useState<Phase>("card-static");
-  const [wipeX, setWipeX] = useState(100); // 100=hidden, 0=fully revealed
+  const [wipeX, setWipeX] = useState(100);
   const cardVideoRef = useRef<HTMLVideoElement>(null);
   const freeVideoRef = useRef<HTMLVideoElement>(null);
   const rafRef = useRef<number>(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
-    if (ALWAYS_SHOW) {
-      setVisible(true);
-      return;
-    }
-    try {
-      if (!localStorage.getItem(STORAGE_KEY)) setVisible(true);
-    } catch {}
+    if (ALWAYS_SHOW) { setVisible(true); return; }
+    try { if (!localStorage.getItem(STORAGE_KEY)) setVisible(true); } catch {}
   }, []);
 
+  const close = useCallback(() => {
+    if (!ALWAYS_SHOW) {
+      try { localStorage.setItem(STORAGE_KEY, "1"); } catch {}
+    }
+    setVisible(false);
+  }, []);
+
+  // Phase sequencer
   useEffect(() => {
     if (!visible) return;
     clearTimeout(timerRef.current);
@@ -42,7 +44,7 @@ export function VideoAnnouncementBanner() {
       timerRef.current = setTimeout(() => setPhase("wipe"), 2800);
     } else if (phase === "wipe") {
       const start = performance.now();
-      const dur = 1600;
+      const dur = 1700;
       const run = (now: number) => {
         const t = Math.min((now - start) / dur, 1);
         const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -63,86 +65,142 @@ export function VideoAnnouncementBanner() {
         setPhase("free-video");
       }, 6000);
     }
-    // free-video: no auto-close, user closes manually
+    // free-video: no loop, no auto-close — freezes on last frame
 
     return () => {
       clearTimeout(timerRef.current);
       cancelAnimationFrame(rafRef.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, visible]);
+  }, [phase, visible, close]);
 
-  const close = () => {
-    if (!ALWAYS_SHOW) {
-      try { localStorage.setItem(STORAGE_KEY, "1"); } catch {}
+  // Manual navigation
+  const goToCard = () => {
+    clearTimeout(timerRef.current);
+    cancelAnimationFrame(rafRef.current);
+    freeVideoRef.current?.pause();
+    setWipeX(0);
+    if (cardVideoRef.current) {
+      cardVideoRef.current.currentTime = 0;
+      cardVideoRef.current.play().catch(() => {});
     }
-    setVisible(false);
+    setPhase("card-video");
+  };
+
+  const goToFree = () => {
+    clearTimeout(timerRef.current);
+    cancelAnimationFrame(rafRef.current);
+    if (freeVideoRef.current) {
+      freeVideoRef.current.currentTime = 0;
+      freeVideoRef.current.play().catch(() => {});
+    }
+    setPhase("free-video");
   };
 
   if (!visible) return null;
 
   const isFree = phase === "free-video";
   const isCardStatic = phase === "card-static";
-  const isAfterWipe = phase === "card-video" || isFree;
+  const isAfterWipe = (phase === "card-video") && !isFree;
 
   return (
     <div
       className="fixed inset-0 z-[200] flex flex-col items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.82)", backdropFilter: "blur(14px)" }}
+      style={{
+        background: "rgba(4,6,5,0.88)",
+        backdropFilter: "blur(18px)",
+        WebkitBackdropFilter: "blur(18px)",
+        cursor: "default",
+        userSelect: "none",
+      }}
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
     >
-      {/* ── Big headline ABOVE the card ─────────────────────────── */}
-      <div
-        className="w-full flex flex-col items-center mb-6 px-6"
-        style={{ maxWidth: isFree ? FREE_W : CARD_W }}
+      {/* X — top right of viewport */}
+      <button
+        onClick={close}
+        className="absolute top-5 right-5 z-10 w-10 h-10 rounded-full flex items-center justify-center transition-all"
+        style={{
+          background: "rgba(255,255,255,0.07)",
+          color: "rgba(255,255,255,0.4)",
+          outline: "none",
+          border: "none",
+        }}
+        aria-label="Закрыть"
       >
-        <p
-          className="text-xs font-semibold tracking-[0.22em] uppercase mb-3"
-          style={{ color: "rgba(255,255,255,0.45)", letterSpacing: "0.22em" }}
-        >
-          KARTO · ОБНОВЛЕНИЕ
-        </p>
-        <h1
-          className="text-4xl sm:text-5xl font-bold text-white text-center leading-tight"
-          style={{ letterSpacing: "-0.03em" }}
-        >
-          {isFree ? (
-            <>Ваше воображение.<br />Без ограничений.</>
-          ) : (
-            <>Мы готовим<br />кое-что новое.</>
-          )}
-        </h1>
-      </div>
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+          <path d="M1 1l11 11M12 1L1 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        </svg>
+      </button>
 
-      {/* ── Media card ──────────────────────────────────────────── */}
+      {/* ── HEADLINE above media ─────────────────────────── */}
       <div
-        className="relative overflow-hidden"
+        className="flex flex-col items-center mb-6 px-6 pointer-events-none"
         style={{
           width: `min(${isFree ? FREE_W : CARD_W}px, 92vw)`,
-          height: isFree
-            ? `min(${FREE_H}px, 52vh)`
-            : `min(${CARD_H}px, 68vh)`,
-          transition: "width 1.1s cubic-bezier(0.4,0,0.2,1), height 1.1s cubic-bezier(0.4,0,0.2,1)",
-          borderRadius: 20,
-          overflow: "hidden",
-          // No border, no background — just pure media
-          boxShadow: "0 40px 120px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06)",
+          transition: "width 1.1s cubic-bezier(0.4,0,0.2,1)",
         }}
       >
-        {/* ── Card layers (static image + wipe → animated video) ── */}
+        {/* Eyebrow */}
+        <p
+          className="text-[0.65rem] tracking-[0.32em] uppercase mb-4"
+          style={{ color: "rgba(255,255,255,0.32)", fontFamily: "var(--font-geist-sans)" }}
+        >
+          Скоро в KARTO
+        </p>
+
+        {/* Main headline — Playfair italic */}
+        <h1
+          className="text-center text-white leading-[1.04]"
+          style={{
+            fontFamily: "var(--font-playfair)",
+            fontSize: "clamp(2.2rem, 5vw, 3.6rem)",
+            fontWeight: 700,
+            fontStyle: "italic",
+            letterSpacing: "-0.02em",
+            opacity: 1,
+            transition: "opacity 0.5s ease",
+          }}
+        >
+          {isFree ? (
+            <>Ваше воображение.<br />Без границ.</>
+          ) : (
+            <>Ваши товары.<br />Оживают.</>
+          )}
+        </h1>
+
+        {/* Section hint */}
+        <p
+          className="mt-3 text-[0.78rem]"
+          style={{ color: "rgba(255,255,255,0.35)", fontFamily: "var(--font-geist-sans)", letterSpacing: "0.04em" }}
+        >
+          {isFree
+            ? "Свободная видеогенерация · появится в режиме «Свободное творчество»"
+            : "Анимация карточек · появится в режиме «Свободное творчество»"}
+        </p>
+      </div>
+
+      {/* ── MEDIA card ─────────────────────────────────── */}
+      <div
+        className="relative overflow-hidden pointer-events-none"
+        style={{
+          width: `min(${isFree ? FREE_W : CARD_W}px, 92vw)`,
+          height: isFree ? `min(${FREE_H}px, 50vh)` : `min(${CARD_H}px, 62vh)`,
+          transition: "width 1.1s cubic-bezier(0.4,0,0.2,1), height 1.1s cubic-bezier(0.4,0,0.2,1)",
+          borderRadius: 14,
+          boxShadow: "0 0 100px rgba(0,0,0,0.9)",
+          // No border, no background — pure media
+        }}
+      >
+        {/* ── Card layers ── */}
         <div
           className="absolute inset-0"
           style={{ opacity: isFree ? 0 : 1, transition: "opacity 0.7s ease" }}
         >
-          {/* Static card — base layer */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/card-3.png"
             alt=""
             className="absolute inset-0 w-full h-full object-cover"
           />
-
-          {/* Animated card video — wipe-revealed from left */}
           <video
             ref={cardVideoRef}
             src="/fed43aba167d0c1b1398a0b84feb5295_1773418511_8b66ag6q.mp4"
@@ -153,44 +211,50 @@ export function VideoAnnouncementBanner() {
             playsInline
           />
 
-          {/* Shimmer streak at wipe edge */}
+          {/* Shimmer at wipe edge */}
           {phase === "wipe" && wipeX > 2 && wipeX < 98 && (
             <div
-              className="absolute inset-y-0 w-14 pointer-events-none"
+              className="absolute inset-y-0 w-16 pointer-events-none"
               style={{
-                left: `calc(${100 - wipeX}% - 28px)`,
-                background:
-                  "linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.55) 50%,transparent 100%)",
+                left: `calc(${100 - wipeX}% - 32px)`,
+                background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.65),transparent)",
               }}
             />
           )}
 
-          {/* Card phase bottom overlay text */}
+          {/* Text on card video */}
           <div
             className="absolute inset-x-0 bottom-0 pointer-events-none"
             style={{
-              background:
-                "linear-gradient(to top,rgba(0,0,0,0.7) 0%,rgba(0,0,0,0.15) 50%,transparent 100%)",
-              padding: "80px 28px 24px",
+              background: "linear-gradient(to top,rgba(0,0,0,0.72) 0%,transparent 65%)",
+              padding: "72px 28px 24px",
             }}
           >
-            {/* "Готовьтесь." — before wipe */}
             <p
-              className="absolute bottom-6 left-7 right-16 text-3xl font-bold text-white leading-tight"
+              className="absolute bottom-6 left-7 right-7 leading-snug"
               style={{
-                letterSpacing: "-0.025em",
+                fontFamily: "var(--font-playfair)",
+                fontSize: "clamp(1.3rem,3vw,1.9rem)",
+                fontWeight: 700,
+                fontStyle: "italic",
+                color: "#fff",
+                letterSpacing: "-0.01em",
                 opacity: isCardStatic ? 1 : 0,
-                transition: "opacity 0.45s ease",
+                transition: "opacity 0.4s ease",
               }}
             >
               Готовьтесь.
             </p>
-            {/* "Ваши карточки. Теперь живые." — after wipe */}
             <p
-              className="absolute bottom-6 left-7 right-16 text-3xl font-bold text-white leading-tight"
+              className="absolute bottom-6 left-7 right-7 leading-snug"
               style={{
-                letterSpacing: "-0.025em",
-                opacity: isAfterWipe && !isFree ? 1 : 0,
+                fontFamily: "var(--font-playfair)",
+                fontSize: "clamp(1.3rem,3vw,1.9rem)",
+                fontWeight: 700,
+                fontStyle: "italic",
+                color: "#fff",
+                letterSpacing: "-0.01em",
+                opacity: isAfterWipe ? 1 : 0,
                 transition: "opacity 0.5s ease 0.3s",
               }}
             >
@@ -199,34 +263,37 @@ export function VideoAnnouncementBanner() {
           </div>
         </div>
 
-        {/* ── Free generation video ──────────────────────────────── */}
+        {/* ── Free video (no loop — freezes on last frame) ── */}
         <div
           className="absolute inset-0"
-          style={{ opacity: isFree ? 1 : 0, transition: "opacity 0.7s ease 0.5s" }}
+          style={{ opacity: isFree ? 1 : 0, transition: "opacity 0.7s ease 0.4s" }}
         >
           <video
             ref={freeVideoRef}
             src="/Video_Vapor_Removal_HVNV8Pd.mp4"
             className="absolute inset-0 w-full h-full object-cover"
-            loop
             muted
             playsInline
+            // No loop — freezes on last frame
           />
-          {/* Free gen overlay text */}
           <div
             className="absolute inset-x-0 bottom-0 pointer-events-none"
             style={{
-              background:
-                "linear-gradient(to top,rgba(0,0,0,0.68) 0%,transparent 60%)",
-              padding: "60px 28px 22px",
+              background: "linear-gradient(to top,rgba(0,0,0,0.68) 0%,transparent 60%)",
+              padding: "72px 28px 24px",
             }}
           >
             <p
-              className="text-3xl font-bold text-white leading-tight"
+              className="leading-snug"
               style={{
-                letterSpacing: "-0.025em",
+                fontFamily: "var(--font-playfair)",
+                fontSize: "clamp(1.3rem,3vw,1.9rem)",
+                fontWeight: 700,
+                fontStyle: "italic",
+                color: "#fff",
+                letterSpacing: "-0.01em",
                 opacity: isFree ? 1 : 0,
-                transition: "opacity 0.5s ease 0.7s",
+                transition: "opacity 0.5s ease 0.8s",
               }}
             >
               Создайте что угодно.
@@ -235,49 +302,33 @@ export function VideoAnnouncementBanner() {
         </div>
       </div>
 
-      {/* ── Controls below card ─────────────────────────────────── */}
-      <div
-        className="flex items-center justify-between mt-5 px-1"
-        style={{ width: `min(${isFree ? FREE_W : CARD_W}px, 92vw)` }}
-      >
-        {/* Phase dots */}
-        <div className="flex items-center gap-2">
-          {[false, true].map((fi) => (
-            <div
-              key={String(fi)}
-              className="rounded-full transition-all duration-700"
-              style={{
-                width: isFree === fi ? 24 : 8,
-                height: 8,
-                background:
-                  isFree === fi
-                    ? "rgba(255,255,255,0.9)"
-                    : "rgba(255,255,255,0.3)",
-              }}
-            />
-          ))}
-        </div>
-
-        <button
-          onClick={close}
-          className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all hover:opacity-80 active:scale-95"
-          style={{ background: "rgba(255,255,255,0.12)", color: "#fff", border: "1px solid rgba(255,255,255,0.18)" }}
-        >
-          Закрыть
-        </button>
+      {/* ── Section switcher ─────────────────────────────── */}
+      <div className="flex items-center gap-2.5 mt-5">
+        {[
+          { label: "Анимация карточек", active: !isFree, action: goToCard },
+          { label: "Свободная генерация", active: isFree, action: goToFree },
+        ].map(({ label, active, action }) => (
+          <button
+            key={label}
+            onClick={action}
+            className="rounded-full text-xs font-medium transition-all duration-300"
+            style={{
+              padding: "7px 16px",
+              background: active ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.05)",
+              color: active ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.38)",
+              border: active
+                ? "1px solid rgba(255,255,255,0.22)"
+                : "1px solid rgba(255,255,255,0.07)",
+              fontFamily: "var(--font-geist-sans)",
+              letterSpacing: "0.01em",
+              outline: "none",
+              cursor: "pointer",
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
-
-      {/* ── Absolute close X (top right of screen) ────────────── */}
-      <button
-        onClick={close}
-        className="absolute top-5 right-5 w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/10"
-        style={{ color: "rgba(255,255,255,0.6)" }}
-        aria-label="Закрыть"
-      >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        </svg>
-      </button>
     </div>
   );
 }
