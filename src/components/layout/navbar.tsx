@@ -27,8 +27,13 @@ export function Navbar() {
     setMounted(true)
   }, [])
 
-  // Show update badge when banner is closed
+  // Show update badge: on mount if banner was already seen, and when banner is closed
   React.useEffect(() => {
+    try {
+      if (localStorage.getItem("karto_video_announcement_seen_v3")) {
+        setShowUpdateBadge(true);
+      }
+    } catch {}
     const onClose = () => setShowUpdateBadge(true);
     window.addEventListener("karto:banner:closed", onClose);
     return () => window.removeEventListener("karto:banner:closed", onClose);
