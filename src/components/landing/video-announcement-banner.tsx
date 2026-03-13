@@ -6,10 +6,11 @@ const STORAGE_KEY = "karto_video_announcement_seen_v1";
 
 type Phase = "card-static" | "wipe" | "card-video" | "free-video";
 
-// 3:4 container for card, 9:16 for free gen
-const W = 320;
-const CARD_H = Math.round(W * (4 / 3)); // 427
-const FREE_H = Math.round(W * (16 / 9)); // 569
+// Card phase: portrait 3:4 — Free phase: landscape 16:9
+const CARD_W = 400;
+const CARD_H = Math.round(CARD_W * (4 / 3)); // 533
+const FREE_W = 680;
+const FREE_H = Math.round(FREE_W * (9 / 16)); // 383
 
 export function VideoAnnouncementBanner() {
   const [visible, setVisible] = useState(false);
@@ -20,10 +21,9 @@ export function VideoAnnouncementBanner() {
   const rafRef = useRef<number>(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  // TEST MODE: always show banner on every page load
   useEffect(() => {
-    try {
-      if (!localStorage.getItem(STORAGE_KEY)) setVisible(true);
-    } catch {}
+    setVisible(true);
   }, []);
 
   useEffect(() => {
@@ -87,13 +87,13 @@ export function VideoAnnouncementBanner() {
       style={{ background: "rgba(0,0,0,0.58)", backdropFilter: "blur(10px)" }}
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
     >
-      {/* Banner card — animates height 3:4 → 9:16 */}
+      {/* Banner card — morphs 3:4 portrait → 16:9 landscape */}
       <div
         className="relative overflow-hidden"
         style={{
-          width: `min(${W}px, 88vw)`,
-          height: isFree ? `min(${FREE_H}px, 86vh)` : `min(${CARD_H}px, 78vh)`,
-          transition: "height 1s cubic-bezier(0.4,0,0.2,1)",
+          width: isFree ? `min(${FREE_W}px, 94vw)` : `min(${CARD_W}px, 88vw)`,
+          height: isFree ? `min(${FREE_H}px, 55vh)` : `min(${CARD_H}px, 82vh)`,
+          transition: "width 1s cubic-bezier(0.4,0,0.2,1), height 1s cubic-bezier(0.4,0,0.2,1)",
           borderRadius: 28,
           background: "#e2e3e5",
           border: "1px solid rgba(0,0,0,0.1)",
@@ -189,9 +189,9 @@ export function VideoAnnouncementBanner() {
         >
           {/* "Готовьтесь." — teaser before wipe */}
           <h2
-            className="absolute bottom-5 left-5 right-14 text-[1.45rem] font-bold text-white leading-tight"
+            className="absolute bottom-5 left-5 right-14 text-[1.65rem] font-bold text-white leading-tight"
             style={{
-              letterSpacing: "-0.015em",
+              letterSpacing: "-0.02em",
               opacity: cardTitle ? 1 : 0,
               transition: "opacity 0.4s ease",
             }}
@@ -201,9 +201,9 @@ export function VideoAnnouncementBanner() {
 
           {/* "Ваши карточки. Теперь живые." — during + after wipe */}
           <h2
-            className="absolute bottom-5 left-5 right-14 text-[1.45rem] font-bold text-white leading-tight"
+            className="absolute bottom-5 left-5 right-14 text-[1.65rem] font-bold text-white leading-tight"
             style={{
-              letterSpacing: "-0.015em",
+              letterSpacing: "-0.02em",
               opacity: cardTitleAfter ? 1 : 0,
               transition: "opacity 0.5s ease 0.2s",
             }}
@@ -213,14 +213,14 @@ export function VideoAnnouncementBanner() {
 
           {/* "Создайте что угодно." — free phase */}
           <h2
-            className="text-[1.45rem] font-bold text-white leading-tight"
+            className="text-[1.65rem] font-bold text-white leading-tight"
             style={{
-              letterSpacing: "-0.015em",
+              letterSpacing: "-0.02em",
               opacity: isFree ? 1 : 0,
               transition: "opacity 0.5s ease 0.5s",
             }}
           >
-            Создайте<br />что угодно.
+            Создайте что угодно.
           </h2>
         </div>
       </div>
