@@ -7,6 +7,7 @@ import { AbortErrorSuppressor } from "@/components/ui/abort-error-suppressor";
 import { PreconnectLinks } from "@/components/ui/preconnect-links";
 import { YandexMetrika } from "@/components/analytics/yandex-metrika";
 import { CookieConsentBanner } from "@/components/analytics/cookie-consent-banner";
+import { VideoAnnouncementBanner } from "@/components/landing/video-announcement-banner";
 import { Suspense } from "react";
 import "./globals.css";
 
@@ -105,6 +106,7 @@ export default function RootLayout({
           <YandexMetrika />
         </Suspense>
         <CookieConsentBanner />
+        <VideoAnnouncementBanner />
         <ToastProvider>
           <AbortErrorSuppressor />
           <Navbar />
