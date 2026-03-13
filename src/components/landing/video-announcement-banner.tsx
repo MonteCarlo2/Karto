@@ -182,32 +182,31 @@ export function VideoAnnouncementBanner() {
         </svg>
       </button>
 
-      {/* ── Headline (flex-shrink-0 keeps it always visible) ── */}
+      {/* ── Headline ── */}
       <div
         className="flex flex-col items-center flex-shrink-0 pointer-events-none px-6"
         style={{
-          // Match width to media container
-          width: isFree ? "min(940px, 92vw)" : "min(600px, 88vw, calc((100vh - 170px) * 0.75))",
+          width: isFree ? "min(880px, 90vw)" : "min(520px, 72vw)",
           transition: "width 1.2s cubic-bezier(0.4,0,0.2,1)",
-          marginBottom: "clamp(8px,1.5vh,20px)",
+          marginBottom: "clamp(10px,1.8vh,22px)",
         }}
       >
         <p
-          className="text-[0.55rem] tracking-[0.3em] uppercase"
+          className="text-[0.58rem] tracking-[0.32em] uppercase"
           style={{
             color: "rgba(255,255,255,0.26)",
             fontFamily: "var(--font-geist-sans)",
-            marginBottom: "clamp(4px,0.8vh,10px)",
+            marginBottom: "clamp(6px,0.9vh,12px)",
           }}
         >
           Скоро в KARTO
         </p>
         <h1
-          className="text-center leading-[1.04]"
+          className="text-center leading-[1.06]"
           style={{
             fontFamily: "var(--font-playfair)",
-            // Responsive: driven by both vw and vh so it shrinks when screen is short
-            fontSize: "clamp(1.5rem, min(5.5vw, 4.5vh), 3.8rem)",
+            // Bigger text, but constrained by vh so it never pushes card off-screen
+            fontSize: "clamp(2rem, min(5.5vw, 5.2vh), 3.8rem)",
             fontWeight: 700,
             fontStyle: "italic",
             letterSpacing: "-0.022em",
@@ -231,8 +230,8 @@ export function VideoAnnouncementBanner() {
             color: "rgba(255,255,255,0.28)",
             fontFamily: "var(--font-geist-sans)",
             letterSpacing: "0.04em",
-            fontSize: "clamp(0.58rem, 1.1vw, 0.7rem)",
-            marginTop: "clamp(3px,0.6vh,8px)",
+            fontSize: "clamp(0.6rem, 1.2vw, 0.72rem)",
+            marginTop: "clamp(4px,0.7vh,10px)",
           }}
         >
           {isFree
@@ -242,20 +241,20 @@ export function VideoAnnouncementBanner() {
       </div>
 
       {/* ── Media container ──
-          Width uses min() to account for viewport height too:
-          card (3:4): width ≤ (vh-170px)*0.75  →  height ≤ vh-170px
-          free (16:9): width ≤ (vh-190px)*(16/9) → height ≤ vh-190px
-          Inset box-shadow blends edges into the overlay, removing visible rectangle.
+          Card (3:4): 72vw width → height = 72vw * 4/3 = 96vw.
+          Height is also hard-capped via calc so the full layout fits in 100vh.
+          Inset vignette blends edges into overlay (removes visible rectangle).
       ── */}
       <div
         className="relative overflow-hidden flex-shrink-0"
         style={{
+          // Card: cap at 72vw AND cap by height so headline+card+dots ≤ 100vh
+          // Free: cap at 90vw; 16:9 is naturally shorter so overflow isn't an issue
           width: isFree
-            ? "min(940px, 92vw, calc((100vh - 190px) * 1.778))"
-            : "min(600px, 88vw, calc((100vh - 170px) * 0.75))",
+            ? "min(880px, 90vw, calc((100vh - 195px) * 1.778))"
+            : "min(500px, 72vw, calc((100vh - 195px) * 0.75))",
           aspectRatio: isFree ? "16/9" : "3/4",
           transition: "width 1.2s cubic-bezier(0.4,0,0.2,1)",
-          // Soft inset vignette blends container edges into the dark overlay — removes the rectangular border effect
           boxShadow: "inset 0 0 60px 20px rgba(2,5,3,0.72)",
         }}
       >
