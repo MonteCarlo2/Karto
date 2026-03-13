@@ -1,55 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const STORAGE_KEY = "karto_video_announcement_seen_v1";
 
-type Slide = {
-  id: string;
-  type: "image" | "video";
-  src: string;
-  title: string;
-  subtitle: string;
-  duration: number;
-};
+type Phase = "card-static" | "wipe" | "card-video" | "free-video";
 
-const SLIDES: Slide[] = [
-  {
-    id: "card",
-    type: "image",
-    src: "/card-3.png",
-    title: "Карточки нового поколения",
-    subtitle: "Создавайте профессиональные карточки за секунды — с помощью AI",
-    duration: 4000,
-  },
-  {
-    id: "animated",
-    type: "video",
-    src: "/fed43aba167d0c1b1398a0b84feb5295_1773418511_8b66ag6q.mp4",
-    title: "А теперь они оживают",
-    subtitle: "Скоро каждую карточку товара можно будет анимировать",
-    duration: 7000,
-  },
-  {
-    id: "free",
-    type: "video",
-    src: "/Video_Vapor_Removal_HVNV8Pd.mp4",
-    title: "Любая идея — в видео",
-    subtitle: "Свободная видеогенерация уже в разработке",
-    duration: 7000,
-  },
-];
+// 3:4 container for card, 9:16 for free gen
+const W = 320;
+const CARD_H = Math.round(W * (4 / 3)); // 427
+const FREE_H = Math.round(W * (16 / 9)); // 569
 
 export function VideoAnnouncementBanner() {
   const [visible, setVisible] = useState(false);
-  const [active, setActive] = useState(0);
-  const [fading, setFading] = useState(false);
-  // progress 0..1 for the auto-advance bar
-  const [progress, setProgress] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const videoRefs = useRef<(HTMLVideoElement | null)[]>([null, null, null]);
-  const startedAt = useRef(0);
+  const [phase, setPhase] = useState<Phase>("card-static");
+  const [wipeX, setWipeX] = useState(100); // 100=hidden, 0=revealed
+  const cardVideoRef = useRef<HTMLVideoElement>(null);
+  const freeVideoRef = useRef<HTMLVideoElement>(null);
+  const rafRef = useRef<number>(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     try {
@@ -57,54 +26,47 @@ export function VideoAnnouncementBanner() {
     } catch {}
   }, []);
 
-  const goTo = useCallback((idx: number) => {
-    setFading(true);
-    setTimeout(() => {
-      setActive(idx);
-      setFading(false);
-      setProgress(0);
-    }, 280);
-  }, []);
-
-  // Progress bar + auto-advance
   useEffect(() => {
     if (!visible) return;
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (progressRef.current) clearInterval(progressRef.current);
+    clearTimeout(timerRef.current);
+    cancelAnimationFrame(rafRef.current);
 
-    const dur = SLIDES[active].duration;
-    startedAt.current = Date.now();
-    setProgress(0);
-
-    progressRef.current = setInterval(() => {
-      const elapsed = Date.now() - startedAt.current;
-      setProgress(Math.min(elapsed / dur, 1));
-    }, 40);
-
-    timerRef.current = setTimeout(() => {
-      clearInterval(progressRef.current!);
-      goTo((active + 1) % SLIDES.length);
-    }, dur);
+    if (phase === "card-static") {
+      timerRef.current = setTimeout(() => setPhase("wipe"), 2800);
+    } else if (phase === "wipe") {
+      const start = performance.now();
+      const dur = 1500;
+      const run = (now: number) => {
+        const t = Math.min((now - start) / dur, 1);
+        // ease-in-out cubic
+        const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        const x = Math.round(100 * (1 - e));
+        setWipeX(x);
+        if (t < 1) {
+          rafRef.current = requestAnimationFrame(run);
+        } else {
+          setWipeX(0);
+          cardVideoRef.current?.play().catch(() => {});
+          setPhase("card-video");
+        }
+      };
+      rafRef.current = requestAnimationFrame(run);
+      return () => cancelAnimationFrame(rafRef.current);
+    } else if (phase === "card-video") {
+      timerRef.current = setTimeout(() => {
+        freeVideoRef.current?.play().catch(() => {});
+        setPhase("free-video");
+      }, 5500);
+    } else if (phase === "free-video") {
+      timerRef.current = setTimeout(close, 9000);
+    }
 
     return () => {
-      clearTimeout(timerRef.current!);
-      clearInterval(progressRef.current!);
+      clearTimeout(timerRef.current);
+      cancelAnimationFrame(rafRef.current);
     };
-  }, [active, visible, goTo]);
-
-  // Play video of active slide, pause others
-  useEffect(() => {
-    if (!visible) return;
-    videoRefs.current.forEach((v, i) => {
-      if (!v) return;
-      if (i === active) {
-        v.currentTime = 0;
-        v.play().catch(() => {});
-      } else {
-        v.pause();
-      }
-    });
-  }, [active, visible]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, visible]);
 
   const close = () => {
     try { localStorage.setItem(STORAGE_KEY, "1"); } catch {}
@@ -113,123 +75,153 @@ export function VideoAnnouncementBanner() {
 
   if (!visible) return null;
 
-  const slide = SLIDES[active];
+  const isFree = phase === "free-video";
+
+  // Which card headline
+  const cardTitle = phase === "card-static" ? "Готовьтесь." : null;
+  const cardTitleAfter = phase !== "card-static" && !isFree;
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6"
-      style={{ background: "rgba(0,0,0,0.52)", backdropFilter: "blur(8px)" }}
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.58)", backdropFilter: "blur(10px)" }}
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
     >
-      {/* Card */}
+      {/* Banner card — animates height 3:4 → 9:16 */}
       <div
-        className="relative w-full max-w-xl rounded-3xl overflow-hidden"
+        className="relative overflow-hidden"
         style={{
-          background: "#f7f8f9",
-          border: "1px solid rgba(0,0,0,0.09)",
-          boxShadow: "0 24px 80px rgba(0,0,0,0.28)",
+          width: `min(${W}px, 88vw)`,
+          height: isFree ? `min(${FREE_H}px, 86vh)` : `min(${CARD_H}px, 78vh)`,
+          transition: "height 1s cubic-bezier(0.4,0,0.2,1)",
+          borderRadius: 28,
+          background: "#e2e3e5",
+          border: "1px solid rgba(0,0,0,0.1)",
+          boxShadow: "0 32px 80px rgba(0,0,0,0.45)",
         }}
       >
-        {/* Close */}
+        {/* Close button */}
         <button
           onClick={close}
-          className="absolute top-3.5 right-3.5 z-20 w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-black/8 transition-all"
+          className="absolute top-4 right-4 z-30 w-8 h-8 rounded-full flex items-center justify-center transition-all hover:bg-white/20"
+          style={{ background: "rgba(0,0,0,0.28)", color: "#fff" }}
           aria-label="Закрыть"
         >
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-            <path d="M1 1l11 11M12 1L1 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+            <path d="M1 1l9 9M10 1L1 10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
           </svg>
         </button>
 
-        {/* Media area */}
-        <div
-          className="relative overflow-hidden"
-          style={{ height: 340, background: "#ebebec" }}
-        >
-          {SLIDES.map((s, i) => (
+        {/* Phase pill indicator */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex gap-1.5 pointer-events-none">
+          {[false, true].map((isFreeIndicator) => (
             <div
-              key={s.id}
-              className="absolute inset-0 flex items-center justify-center"
+              key={String(isFreeIndicator)}
+              className="h-[3px] rounded-full transition-all duration-700"
               style={{
-                opacity: i === active && !fading ? 1 : 0,
-                transition: "opacity 0.28s ease",
-                pointerEvents: i === active ? "auto" : "none",
+                width: isFree === isFreeIndicator ? 22 : 8,
+                background: isFree === isFreeIndicator ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.35)",
               }}
-            >
-              {s.type === "image" ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={s.src}
-                  alt=""
-                  className="h-full w-full object-contain"
-                  draggable={false}
-                />
-              ) : (
-                <video
-                  ref={(el) => { videoRefs.current[i] = el; }}
-                  src={s.src}
-                  className="h-full w-full object-contain"
-                  loop
-                  muted
-                  playsInline
-                />
-              )}
-            </div>
-          ))}
-
-          {/* Progress bar (top of media) */}
-          <div className="absolute top-0 inset-x-0 h-[3px] bg-black/10">
-            <div
-              className="h-full bg-black/40 transition-none"
-              style={{ width: `${progress * 100}%` }}
             />
-          </div>
+          ))}
         </div>
 
-        {/* Text + controls */}
-        <div className="px-6 pt-5 pb-5">
-          {/* Text fades with slide */}
-          <div
+        {/* ── Card layers ─────────────────────────────────── */}
+        <div
+          className="absolute inset-0"
+          style={{ opacity: isFree ? 0 : 1, transition: "opacity 0.65s ease" }}
+        >
+          {/* Static card image (base layer) */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/card-3.png"
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+
+          {/* Animated card video — wipe reveal from left */}
+          <video
+            ref={cardVideoRef}
+            src="/fed43aba167d0c1b1398a0b84feb5295_1773418511_8b66ag6q.mp4"
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ clipPath: wipeX > 0 ? `inset(0 ${wipeX}% 0 0)` : "none" }}
+            loop
+            muted
+            playsInline
+          />
+
+          {/* Shimmer at wipe edge */}
+          {phase === "wipe" && wipeX > 2 && wipeX < 98 && (
+            <div
+              className="absolute inset-y-0 w-12 pointer-events-none"
+              style={{
+                left: `calc(${100 - wipeX}% - 24px)`,
+                background:
+                  "linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.5) 50%,transparent 100%)",
+              }}
+            />
+          )}
+        </div>
+
+        {/* ── Free generation video ────────────────────────── */}
+        <div
+          className="absolute inset-0"
+          style={{ opacity: isFree ? 1 : 0, transition: "opacity 0.65s ease 0.4s" }}
+        >
+          <video
+            ref={freeVideoRef}
+            src="/Video_Vapor_Removal_HVNV8Pd.mp4"
+            className="absolute inset-0 w-full h-full object-cover"
+            loop
+            muted
+            playsInline
+          />
+        </div>
+
+        {/* ── Bottom gradient + headline ────────────────────── */}
+        <div
+          className="absolute inset-x-0 bottom-0 pointer-events-none z-10"
+          style={{
+            background:
+              "linear-gradient(to top,rgba(0,0,0,0.72) 0%,rgba(0,0,0,0.18) 55%,transparent 100%)",
+            padding: "72px 22px 20px",
+          }}
+        >
+          {/* "Готовьтесь." — teaser before wipe */}
+          <h2
+            className="absolute bottom-5 left-5 right-14 text-[1.45rem] font-bold text-white leading-tight"
             style={{
-              opacity: fading ? 0 : 1,
-              transform: fading ? "translateY(5px)" : "translateY(0)",
-              transition: "opacity 0.28s ease, transform 0.28s ease",
+              letterSpacing: "-0.015em",
+              opacity: cardTitle ? 1 : 0,
+              transition: "opacity 0.4s ease",
             }}
           >
-            <h2 className="text-2xl sm:text-[1.65rem] font-bold text-gray-900 leading-snug">
-              {slide.title}
-            </h2>
-            <p className="mt-1.5 text-[0.9rem] text-gray-500 leading-relaxed">
-              {slide.subtitle}
-            </p>
-          </div>
+            {cardTitle ?? ""}
+          </h2>
 
-          <div className="mt-4 flex items-center justify-between">
-            {/* Dot indicators */}
-            <div className="flex items-center gap-2">
-              {SLIDES.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => goTo(i)}
-                  aria-label={`Слайд ${i + 1}`}
-                  className="rounded-full transition-all duration-300"
-                  style={{
-                    width: i === active ? 22 : 8,
-                    height: 8,
-                    background: i === active ? "#111827" : "#d1d5db",
-                  }}
-                />
-              ))}
-            </div>
+          {/* "Ваши карточки. Теперь живые." — during + after wipe */}
+          <h2
+            className="absolute bottom-5 left-5 right-14 text-[1.45rem] font-bold text-white leading-tight"
+            style={{
+              letterSpacing: "-0.015em",
+              opacity: cardTitleAfter ? 1 : 0,
+              transition: "opacity 0.5s ease 0.2s",
+            }}
+          >
+            Ваши карточки.<br />Теперь живые.
+          </h2>
 
-            <button
-              onClick={close}
-              className="rounded-xl px-5 py-2 text-sm font-semibold text-white transition-all hover:opacity-85 active:scale-95"
-              style={{ background: "#111827" }}
-            >
-              Понятно
-            </button>
-          </div>
+          {/* "Создайте что угодно." — free phase */}
+          <h2
+            className="text-[1.45rem] font-bold text-white leading-tight"
+            style={{
+              letterSpacing: "-0.015em",
+              opacity: isFree ? 1 : 0,
+              transition: "opacity 0.5s ease 0.5s",
+            }}
+          >
+            Создайте<br />что угодно.
+          </h2>
         </div>
       </div>
     </div>
