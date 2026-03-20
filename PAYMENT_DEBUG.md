@@ -64,4 +64,5 @@
 ## 6. 403 при `/api/generate-video-free` («не удалось списать»)
 
 1. Выполни миграцию **`20260322_video_token_rpc_grants_and_period_fix.sql`** (GRANT на RPC для `service_role` + починка истёкшего `period_start` при ненулевом балансе).  
-2. В логах приложения ищи `[generate-video-free] consumeVideoTokens failed:` — там текст ошибки PostgREST/Postgres.
+2. Если в логах **`user_subscriptions_plan_volume_check`** — в старой схеме было **`plan_volume > 0`**, а при списании остаток может стать **0**, плюс RPC вставляет заглушку с **0**. Выполни **`20260323_user_subscriptions_plan_volume_allow_zero.sql`**.  
+3. В логах приложения ищи `[video-tokens] consume rpc error:` или `[generate-video-free] consumeVideoTokens failed:` — там текст ошибки PostgREST/Postgres.

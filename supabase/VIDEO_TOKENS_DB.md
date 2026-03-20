@@ -17,6 +17,10 @@
    - **GRANT EXECUTE** на `consume_user_video_tokens` / `add_user_video_tokens` для **service_role** (иначе RPC с бэкенда может дать permission denied и 403 при генерации).  
    - Разовый **UPDATE** `period_start` для строк с балансом, у которых период уже истёк (после старых начислений).
 
+5. `migrations/20260323_user_subscriptions_plan_volume_allow_zero.sql`  
+   - Убирает старый **`plan_volume > 0`** (`user_subscriptions_plan_volume_check`), из‑за которого списание видео даёт *violates check constraint*.  
+   - Вместо него — **`plan_volume >= 0`**.
+
 Скопируй содержимое каждого файла и выполни целиком. После этого в Table Editor у `user_subscriptions` появятся нужные колонки.
 
 ## Где смотреть видео (не в строке `creative`)
