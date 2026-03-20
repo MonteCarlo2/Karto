@@ -9,11 +9,13 @@
 CREATE TABLE IF NOT EXISTS user_subscriptions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  plan_type TEXT NOT NULL CHECK (plan_type IN ('flow', 'creative')),
+  plan_type TEXT NOT NULL CHECK (plan_type IN ('flow', 'creative', 'video_tokens')),
   plan_volume INT NOT NULL DEFAULT 0,
   period_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   flows_used INT NOT NULL DEFAULT 0,
   creative_used INT NOT NULL DEFAULT 0,
+  video_tokens_spent BIGINT NOT NULL DEFAULT 0,
+  video_tokens_lifetime_purchased BIGINT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(user_id, plan_type)
 );

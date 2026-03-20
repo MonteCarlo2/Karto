@@ -3,6 +3,8 @@ import { createServerClient } from "@/lib/supabase/server";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
 import { creditSubscription } from "@/lib/payment-credit";
+import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
+import { addVideoTokens } from "@/lib/video-tokens";
 import { capturePayment } from "@/lib/yookassa-capture";
 
 const YOOKASSA_API = "https://api.yookassa.ru/v3/payments";
@@ -81,13 +83,14 @@ export async function POST(request: NextRequest) {
     const meta = payment.metadata || {};
     const userId = String(meta.user_id ?? meta.userId ?? "").trim();
     const mode = String(meta.mode) === "1" ? "1" : "0";
-    const tariffIndex = Math.min(2, Math.max(0, Number(meta.tariffIndex) ?? 0));
+    const rawTariff = Number(meta.tariffIndex);
+    const tariffIndex = Number.isFinite(rawTariff) ? rawTariff : 0;
+    const paymentKind =
+      String(meta.payment_kind ?? "").trim() || (mode === "0" ? "flow" : "creative");
 
     if (userId !== user.id || !userId) return NextResponse.json({ success: false, error: "Чужой платёж" }, { status: 200 });
 
-    const planType = mode === "0" ? "flow" : "creative";
-    const addVolume = mode === "0" ? FLOW_VOLUMES[tariffIndex] : CREATIVE_VOLUMES[tariffIndex];
-    console.log("[PAYMENT CONFIRM] crediting:", userId.slice(0, 8) + "...", planType, "+", addVolume);
+    console.log("[PAYMENT CONFIRM] crediting:", userId.slice(0, 8) + "...", paymentKind, "idx", tariffIndex);
 
     console.log("[PAYMENT CONFIRM] inserting payment_processed...");
     const { error: insErr } = await supabase.from("payment_processed").insert({ payment_id: paymentId });
@@ -99,7 +102,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Ошибка записи платежа" }, { status: 200 });
     }
     console.log("[PAYMENT CONFIRM] payment_processed ok, crediting...");
-    const result = await creditSubscription(supabase, userId, planType, addVolume);
+    let result: { ok: boolean; error?: string } = { ok: true };
+    if (paymentKind === "video_tokens") {
+      const idx = Math.min(
+        VIDEO_TOKEN_PACKAGES.length - 1,
+        Math.max(0, tariffIndex)
+      );
+      result = await addVideoTokens(supabase, userId, VIDEO_TOKEN_PACKAGES[idx].tokens);
+    } else if (paymentKind === "flow") {
+      const idx = Math.min(2, Math.max(0, tariffIndex));
+      result = await creditSubscription(supabase, userId, "flow", FLOW_VOLUMES[idx]);
+    } else {
+      const idx = Math.min(2, Math.max(0, tariffIndex));
+      result = await creditSubscription(supabase, userId, "creative", CREATIVE_VOLUMES[idx]);
+    }
     if (!result.ok) {
       console.error("[PAYMENT CONFIRM] credit:", result.error);
       return NextResponse.json({ success: false, error: "Ошибка начисления" }, { status: 200 });

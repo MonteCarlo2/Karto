@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
 import { creditSubscription } from "@/lib/payment-credit";
+import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
+import { addVideoTokens } from "@/lib/video-tokens";
 import { capturePayment } from "@/lib/yookassa-capture";
 
 /**
@@ -66,16 +68,17 @@ export async function POST(request: NextRequest) {
     const meta = paymentToProcess.metadata || {};
     const userId = String(meta.user_id ?? meta.userId ?? "").trim();
     const mode = String(meta.mode) === "1" ? "1" : "0";
-    const tariffIndex = Math.min(2, Math.max(0, Number(meta.tariffIndex) ?? 0));
+    const rawTariff = Number(meta.tariffIndex);
+    const tariffIndex = Number.isFinite(rawTariff) ? rawTariff : 0;
 
     if (userId.length < 30) {
       console.warn("[PAYMENT WEBHOOK] no user_id, payment:", paymentToProcess.id);
       return new NextResponse(null, { status: 200 });
     }
 
-    const planType = mode === "0" ? "flow" : "creative";
-    const addVolume = mode === "0" ? FLOW_VOLUMES[tariffIndex] : CREATIVE_VOLUMES[tariffIndex];
-    console.log("[PAYMENT WEBHOOK] credit:", userId.slice(0, 8) + "...", planType, "+", addVolume);
+    const paymentKind =
+      String(meta.payment_kind ?? "").trim() || (mode === "0" ? "flow" : "creative");
+    console.log("[PAYMENT WEBHOOK] credit:", userId.slice(0, 8) + "...", paymentKind, "idx", tariffIndex);
 
     let supabase;
     try {
@@ -102,7 +105,21 @@ export async function POST(request: NextRequest) {
       return new NextResponse(null, { status: 200 });
     }
     console.log("[PAYMENT WEBHOOK] payment_processed ok, crediting...");
-    const result = await creditSubscription(supabase, userId, planType, addVolume);
+    let result: { ok: boolean; error?: string } = { ok: true };
+    if (paymentKind === "video_tokens") {
+      const idx = Math.min(
+        VIDEO_TOKEN_PACKAGES.length - 1,
+        Math.max(0, tariffIndex)
+      );
+      const addTokens = VIDEO_TOKEN_PACKAGES[idx].tokens;
+      result = await addVideoTokens(supabase, userId, addTokens);
+    } else if (paymentKind === "flow") {
+      const idx = Math.min(2, Math.max(0, tariffIndex));
+      result = await creditSubscription(supabase, userId, "flow", FLOW_VOLUMES[idx]);
+    } else {
+      const idx = Math.min(2, Math.max(0, tariffIndex));
+      result = await creditSubscription(supabase, userId, "creative", CREATIVE_VOLUMES[idx]);
+    }
     if (!result.ok) console.error("[PAYMENT WEBHOOK] credit error:", result.error);
     else console.log("[PAYMENT WEBHOOK] credited ok:", paymentToProcess.id);
 

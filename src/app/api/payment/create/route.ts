@@ -8,6 +8,7 @@ import {
   FLOW_PRICES,
   CREATIVE_PRICES,
 } from "@/lib/subscription";
+import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
 
 const YOOKASSA_API = "https://api.yookassa.ru/v3/payments";
 /** ЮKassa требует ключ идемпотентности не длиннее допустимого (иначе "Idempotence key is too long"). */
@@ -15,8 +16,8 @@ const IDEMPOTENCE_KEY_MAX_LENGTH = 36;
 
 /**
  * POST: создание платежа в ЮKassa. Возвращает confirmation_url для редиректа.
- * Body: { mode: "0" | "1", tariffIndex: 0 | 1 | 2 }
- * mode 0 = Поток, 1 = Свободное творчество
+ * Body: { mode?: "0"|"1", tariffIndex?: number, paymentKind?: "flow"|"creative"|"video_tokens" }
+ * paymentKind приоритетнее mode; video_tokens — пакеты видео-кредитов (только видео).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -64,17 +65,44 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const mode = body?.mode === "1" ? "1" : "0";
-    const tariffIndex = Math.min(2, Math.max(0, Number(body?.tariffIndex) || 0));
+    const rawKind = String(body?.paymentKind ?? "").trim();
+    const paymentKind =
+      rawKind === "video_tokens"
+        ? "video_tokens"
+        : rawKind === "creative"
+          ? "creative"
+          : rawKind === "flow"
+            ? "flow"
+            : mode === "1"
+              ? "creative"
+              : "flow";
 
-    const amountRub = mode === "0"
-      ? FLOW_PRICES[tariffIndex]
-      : CREATIVE_PRICES[tariffIndex];
-    const planType = mode === "0" ? "flow" : "creative";
-    const planVolume = mode === "0" ? FLOW_VOLUMES[tariffIndex] : CREATIVE_VOLUMES[tariffIndex];
-    const description =
-      mode === "0"
-        ? `KARTO: Поток — ${planVolume} ${planVolume === 1 ? "поток" : planVolume < 5 ? "потока" : "потоков"}`
-        : `KARTO: Свободное творчество — ${planVolume} генераций`;
+    const tariffIndexCreativeOrFlow = Math.min(2, Math.max(0, Number(body?.tariffIndex) || 0));
+    const tariffIndexVideo = Math.min(
+      VIDEO_TOKEN_PACKAGES.length - 1,
+      Math.max(0, Number(body?.tariffIndex) || 0)
+    );
+
+    let amountRub: number;
+    let description: string;
+    let metadataTariffIndex: number;
+
+    if (paymentKind === "video_tokens") {
+      const pack = VIDEO_TOKEN_PACKAGES[tariffIndexVideo];
+      amountRub = pack.priceRub;
+      description = `KARTO: Видео-кредиты — ${pack.name} (${pack.tokens} ток.)`;
+      metadataTariffIndex = tariffIndexVideo;
+    } else if (paymentKind === "flow") {
+      amountRub = FLOW_PRICES[tariffIndexCreativeOrFlow];
+      const planVolume = FLOW_VOLUMES[tariffIndexCreativeOrFlow];
+      description = `KARTO: Поток — ${planVolume} ${planVolume === 1 ? "поток" : planVolume < 5 ? "потока" : "потоков"}`;
+      metadataTariffIndex = tariffIndexCreativeOrFlow;
+    } else {
+      amountRub = CREATIVE_PRICES[tariffIndexCreativeOrFlow];
+      const planVolume = CREATIVE_VOLUMES[tariffIndexCreativeOrFlow];
+      description = `KARTO: Свободное творчество — ${planVolume} генераций`;
+      metadataTariffIndex = tariffIndexCreativeOrFlow;
+    }
 
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
@@ -83,7 +111,7 @@ export async function POST(request: NextRequest) {
         : "https://karto.pro");
     const returnUrl = `${baseUrl.replace(/\/$/, "")}/profile?payment=success`;
 
-    const idempotenceRaw = `karto-${user.id}-${planType}-${tariffIndex}-${Date.now()}`;
+    const idempotenceRaw = `karto-${user.id}-${paymentKind}-${metadataTariffIndex}-${Date.now()}`;
     const idempotenceKey = createHash("sha256").update(idempotenceRaw).digest("hex").slice(0, IDEMPOTENCE_KEY_MAX_LENGTH);
     const yookassaBody = {
       amount: {
@@ -97,8 +125,9 @@ export async function POST(request: NextRequest) {
       description,
       metadata: {
         user_id: user.id,
-        mode,
-        tariffIndex: String(tariffIndex),
+        mode: paymentKind === "flow" ? "0" : paymentKind === "creative" ? "1" : "1",
+        payment_kind: paymentKind,
+        tariffIndex: String(metadataTariffIndex),
       },
     };
 

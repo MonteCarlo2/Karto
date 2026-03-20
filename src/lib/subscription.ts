@@ -11,7 +11,7 @@ export const CREATIVE_PRICES = [249, 590, 1490] as const;
 export const FREE_WELCOME_CREATIVE_LIMIT = 3;
 export const SUBSCRIPTION_PERIOD_DAYS = 30;
 
-export type PlanType = "flow" | "creative";
+export type PlanType = "flow" | "creative" | "video_tokens";
 
 export interface SubscriptionRow {
   id: string;
@@ -21,20 +21,49 @@ export interface SubscriptionRow {
   period_start: string;
   flows_used: number;
   creative_used: number;
+  /** Только plan_type = video_tokens: накопленно списано токенов */
+  video_tokens_spent?: number;
+  /** Только plan_type = video_tokens: сумма токенов, начисленных покупками за всё время */
+  video_tokens_lifetime_purchased?: number;
 }
 
 export interface SubscriptionState {
-  planType: PlanType;
+  /** Для объединённого состояния UI: всегда flow или creative (не video_tokens). */
+  planType: "flow" | "creative";
   planVolume: number;
   flowsUsed: number;
   flowsLimit: number;
   creativeUsed: number;
   creativeLimit: number;
+  /** Кредиты только на видео (пополнение отдельными пакетами). */
+  videoTokenBalance: number;
+  /** Всего списано видео-токенов (из строки user_subscriptions plan_type=video_tokens). */
+  videoTokensSpent: number;
+  /** Всего начислено покупками (lifetime) для video_tokens. */
+  videoTokensLifetimePurchased: number;
   periodStart?: string;
   expiresAt?: string;
 }
 
 export function subscriptionToState(row: SubscriptionRow): SubscriptionState {
+  if (row.plan_type === "video_tokens") {
+    return {
+      planType: "creative",
+      planVolume: 0,
+      flowsUsed: 0,
+      flowsLimit: 0,
+      creativeUsed: 0,
+      creativeLimit: 0,
+      videoTokenBalance: Math.max(0, Number(row.plan_volume) || 0),
+      videoTokensSpent: Math.max(0, Number(row.video_tokens_spent) || 0),
+      videoTokensLifetimePurchased: Math.max(
+        0,
+        Number(row.video_tokens_lifetime_purchased) || 0
+      ),
+      periodStart: row.period_start,
+      expiresAt: getSubscriptionExpiryIso(row),
+    };
+  }
   const flowsLimit = row.plan_type === "flow" ? row.plan_volume : 0;
   const creativeLimit = row.plan_type === "creative" ? row.plan_volume : 0;
   const periodStart = row.period_start;
@@ -46,20 +75,33 @@ export function subscriptionToState(row: SubscriptionRow): SubscriptionState {
     flowsLimit,
     creativeUsed: row.creative_used,
     creativeLimit,
+    videoTokenBalance: 0,
+    videoTokensSpent: 0,
+    videoTokensLifetimePurchased: 0,
     periodStart,
     expiresAt,
   };
 }
 
-/** Объединить несколько строк подписки (flow + creative) в одно состояние. */
+/** Объединить несколько строк подписки (flow + creative + video_tokens) в одно состояние. */
 export function mergeSubscriptionRows(rows: SubscriptionRow[]): SubscriptionState {
   const flowRow = rows.find((r) => r.plan_type === "flow");
   const creativeRow = rows.find((r) => r.plan_type === "creative");
+  const videoRow = rows.find((r) => r.plan_type === "video_tokens");
   const flowsLimit = flowRow ? flowRow.plan_volume : 0;
   const creativeLimit = creativeRow ? creativeRow.plan_volume : 0;
   const flowsUsed = flowRow ? flowRow.flows_used : 0;
   const creativeUsed = creativeRow ? creativeRow.creative_used : 0;
-  const periodStart = flowRow?.period_start ?? creativeRow?.period_start ?? new Date().toISOString();
+  const videoTokenBalance = videoRow ? Math.max(0, Number(videoRow.plan_volume) || 0) : 0;
+  const videoTokensSpent = videoRow ? Math.max(0, Number(videoRow.video_tokens_spent) || 0) : 0;
+  const videoTokensLifetimePurchased = videoRow
+    ? Math.max(0, Number(videoRow.video_tokens_lifetime_purchased) || 0)
+    : 0;
+  const periodStart =
+    flowRow?.period_start ??
+    creativeRow?.period_start ??
+    videoRow?.period_start ??
+    new Date().toISOString();
   return {
     planType: flowsLimit > 0 ? "flow" : "creative",
     planVolume: flowsLimit || creativeLimit,
@@ -67,8 +109,17 @@ export function mergeSubscriptionRows(rows: SubscriptionRow[]): SubscriptionStat
     flowsLimit,
     creativeUsed,
     creativeLimit,
+    videoTokenBalance,
+    videoTokensSpent,
+    videoTokensLifetimePurchased,
     periodStart,
-    expiresAt: flowRow ? getSubscriptionExpiryIso(flowRow) : creativeRow ? getSubscriptionExpiryIso(creativeRow) : undefined,
+    expiresAt: flowRow
+      ? getSubscriptionExpiryIso(flowRow)
+      : creativeRow
+        ? getSubscriptionExpiryIso(creativeRow)
+        : videoRow
+          ? getSubscriptionExpiryIso(videoRow)
+          : undefined,
   };
 }
 
@@ -78,10 +129,18 @@ export function getSubscriptionExpiryIso(row: Pick<SubscriptionRow, "period_star
   return new Date(startedAtMs + SUBSCRIPTION_PERIOD_DAYS * 24 * 60 * 60 * 1000).toISOString();
 }
 
-export function isSubscriptionExpired(row: Pick<SubscriptionRow, "period_start">, now = new Date()): boolean {
+export function isSubscriptionExpired(
+  row: Pick<SubscriptionRow, "period_start" | "plan_type">,
+  now = new Date()
+): boolean {
   const expiryMs = new Date(getSubscriptionExpiryIso(row)).getTime();
   if (!Number.isFinite(expiryMs)) return true;
   return now.getTime() >= expiryMs;
+}
+
+/** Активные строки: не истёк 30-дневный период с period_start (включая video_tokens). */
+export function filterActiveSubscriptionRows(rows: SubscriptionRow[]): SubscriptionRow[] {
+  return rows.filter((r) => !isSubscriptionExpired(r));
 }
 
 /** Получить подписку по user_id. Не удаляем строки по сроку — только выборка и объединение. */
@@ -93,7 +152,9 @@ export async function getSubscriptionByUserId(supabase: any, userId: string): Pr
   if (error) return null;
   const rows = (data ?? []) as SubscriptionRow[];
   if (rows.length === 0) return null;
-  return mergeSubscriptionRows(rows);
+  const active = filterActiveSubscriptionRows(rows);
+  if (active.length === 0) return null;
+  return mergeSubscriptionRows(active);
 }
 
 /** Получить сырые строки подписки по user_id (для списания потока/генераций). */
@@ -103,5 +164,5 @@ export async function getSubscriptionRowsByUserId(supabase: any, userId: string)
     .select("*")
     .eq("user_id", userId);
   if (error || !data) return [];
-  return (data as SubscriptionRow[]).filter((r) => !isSubscriptionExpired(r));
+  return filterActiveSubscriptionRows(data as SubscriptionRow[]);
 }

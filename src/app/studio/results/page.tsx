@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Check, Download, Copy } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { triggerDownloadFromRemoteUrl } from "@/lib/client/media-download";
 import type { PriceAnalysis } from "@/lib/services/price-analyzer";
 
 // Конвертация markdown в HTML для копирования
@@ -204,19 +205,16 @@ export default function ResultsPage() {
   const handleDownloadImage = async (imageUrl: string, index: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     try {
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `karto-visual-${index + 1}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      await triggerDownloadFromRemoteUrl({
+        url: imageUrl,
+        mediaType: "image",
+        filenameBase: `karto-visual-${index + 1}`,
+      });
     } catch (error) {
-      console.error("Ошибка скачивания:", error);
-      alert("Ошибка при скачивании изображения");
+      console.warn("Ошибка скачивания:", error);
+      alert(
+        error instanceof Error ? error.message : "Ошибка при скачивании изображения"
+      );
     }
   };
 

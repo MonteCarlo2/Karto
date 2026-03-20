@@ -4,9 +4,11 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createBrowserClient } from "@/lib/supabase/client"
 import { RainbowButton } from "@/components/ui/rainbow-button"
+import { VideoTokenPolicyModal } from "@/components/ui/video-token-policy-modal"
 import { TimelineContent } from "@/components/ui/timeline-animation"
 import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal"
 import { cn } from "@/lib/utils"
+import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing"
 import NumberFlow from "@number-flow/react"
 import { CheckCheck, Loader2, Check, X } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
@@ -15,29 +17,31 @@ import { useId, useRef, useState, useEffect } from "react"
 const PricingSwitch2 = ({
   button1,
   button2,
+  selectedKey,
   onSwitch,
   className,
   layoutId,
 }: {
   button1: string
   button2: string
+  /** "0" = первая кнопка, "1" = вторая */
+  selectedKey: string
   onSwitch: (value: string) => void
   className?: string
   layoutId?: string
 }) => {
-  const [selected, setSelected] = useState("0")
   const uniqueId = useId()
   const switchLayoutId = layoutId ?? `switch-${uniqueId}`
 
   const handleSwitch = (value: string) => {
-    setSelected(value)
     onSwitch(value)
   }
 
   return (
     <div
       className={cn(
-        "relative z-10 flex w-full rounded-full bg-neutral-200/80 border border-neutral-300/80 p-1.5 md:inline-flex md:w-auto",
+        /* inline-flex + self-start: в колонке flex не растягивается на всю ширину (как у «Формат») */
+        "relative z-10 inline-flex max-w-full self-start rounded-full bg-neutral-200/80 border border-neutral-300/80 p-1.5",
         className
       )}
     >
@@ -45,13 +49,13 @@ const PricingSwitch2 = ({
         type="button"
         onClick={() => handleSwitch("0")}
         className={cn(
-          "relative z-10 min-h-14 flex-shrink-0 rounded-full px-6 py-3 text-base font-semibold transition-colors touch-manipulation w-full md:w-auto",
-          selected === "0"
+          "relative z-10 min-h-14 flex-shrink-0 rounded-full px-6 py-3 text-base font-semibold transition-colors touch-manipulation",
+          selectedKey === "0"
             ? "text-white"
             : "text-neutral-600 hover:text-neutral-900"
         )}
       >
-        {selected === "0" && (
+        {selectedKey === "0" && (
           <motion.span
             layoutId={switchLayoutId}
             className="absolute inset-0 rounded-full bg-neutral-900 shadow-lg shadow-black/20"
@@ -64,13 +68,13 @@ const PricingSwitch2 = ({
         type="button"
         onClick={() => handleSwitch("1")}
         className={cn(
-          "relative z-10 min-h-14 flex-shrink-0 rounded-full px-6 py-3 text-base font-semibold transition-colors touch-manipulation w-full md:w-auto",
-          selected === "1"
+          "relative z-10 min-h-14 flex-shrink-0 rounded-full px-6 py-3 text-base font-semibold transition-colors touch-manipulation",
+          selectedKey === "1"
             ? "text-white"
             : "text-neutral-600 hover:text-neutral-900"
         )}
       >
-        {selected === "1" && (
+        {selectedKey === "1" && (
           <motion.span
             layoutId={switchLayoutId}
             className="absolute inset-0 rounded-full bg-neutral-900 shadow-lg shadow-black/20"
@@ -83,22 +87,25 @@ const PricingSwitch2 = ({
   )
 }
 
-const PricingSwitch3 = ({
+/** Одна строка сегментов (как «генерации изображений»): лайм #84CC16, активный текст белый. Поддерживает 3–4 и больше опций. */
+const PricingSwitchRow = ({
   options,
   value,
   onSwitch,
   className,
   layoutId,
 }: {
-  options: [string, string, string]
+  options: readonly string[]
   value: string
   onSwitch: (value: string) => void
   className?: string
   layoutId?: string
 }) => {
   const uniqueId = useId()
-  const switchLayoutId = layoutId ?? `switch3-${uniqueId}`
-  const index = value === "0" ? 0 : value === "1" ? 1 : 2
+  const switchLayoutId = layoutId ?? `switch-row-${uniqueId}`
+  const parsed = Number.parseInt(value, 10)
+  const index =
+    Number.isFinite(parsed) && parsed >= 0 && parsed < options.length ? parsed : 0
 
   return (
     <div
@@ -113,7 +120,7 @@ const PricingSwitch3 = ({
           type="button"
           onClick={() => onSwitch(String(i))}
           className={cn(
-            "relative z-10 flex-1 min-h-14 rounded-full px-2 py-3 text-sm font-semibold transition-colors touch-manipulation",
+            "relative z-10 flex-1 min-h-14 rounded-full px-1.5 py-3 text-sm font-semibold transition-colors touch-manipulation sm:px-2",
             index === i ? "text-white" : "text-neutral-600 hover:text-neutral-900"
           )}
         >
@@ -124,7 +131,7 @@ const PricingSwitch3 = ({
               transition={{ type: "spring", stiffness: 500, damping: 30 }}
             />
           )}
-          <span className="relative">{label}</span>
+          <span className="relative block text-center leading-tight">{label}</span>
         </button>
       ))}
     </div>
@@ -141,6 +148,7 @@ const FLOW_FEATURES = [
 
 const CREATIVE_FEATURES = [
   "Генерируйте что угодно по своим правилам",
+  "Изображения и видео в одной Мастерской — кадры и кредиты покупаются отдельными пакетами",
   "Любые стили и сцены — без ограничений",
   "Без привязки к карточке: чистая креативность",
   "Свой промпт — свой результат",
@@ -149,9 +157,18 @@ const CREATIVE_FEATURES = [
 
 const FLOW_OPTIONS: [string, string, string] = ["1 Поток", "5 Потоков", "15 Потоков"]
 const CREATIVE_OPTIONS: [string, string, string] = ["10 ген.", "30 ген.", "100 ген."]
+/** Пакеты видео-кредитов (токены только на видео) */
+const VIDEO_TOKEN_OPTIONS: [string, string, string, string] = [
+  "1 250 ток.",
+  "2 850 ток.",
+  "6 250 ток.",
+  "12 500 ток.",
+]
 
 const FLOW_PRICES = [299, 1190, 2990]
 const CREATIVE_PRICES = [249, 590, 1490]
+/** Цены видео-пакетов = VIDEO_TOKEN_PACKAGES (сейчас тест: 1 ₽). */
+const VIDEO_TOKEN_PRICES = VIDEO_TOKEN_PACKAGES.map((p) => p.priceRub)
 
 const FLOW_BONUS: (string | null)[] = [null, "Выгода 305 ₽", "199 ₽ за товар"]
 const CREATIVE_BONUS: (string | null)[] = [null, null, "14.9 ₽ за кадр"]
@@ -164,8 +181,13 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
   const router = useRouter()
   const [mode, setMode] = useState<"0" | "1">("0")
   const [tariff, setTariff] = useState("0")
+  /** Индекс пакета видео-кредитов (0–3) */
+  const [videoTariff, setVideoTariff] = useState("0")
+  /** В «Свободном творчестве»: "0" фото (генерации), "1" видео (токены) */
+  const [creativeMediaSub, setCreativeMediaSub] = useState<"0" | "1">("0")
   const [selecting, setSelecting] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [videoPolicyOpen, setVideoPolicyOpen] = useState(false)
   const pricingRef = useRef<HTMLDivElement>(null)
 
   const doSelectTariff = async () => {
@@ -176,10 +198,22 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
       const { data: { session } } = await supabase.auth.getSession()
       const headers: Record<string, string> = { "Content-Type": "application/json" }
       if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`
+      const isFlow = mode === "0"
+      const paymentKind =
+        isFlow ? "flow" : creativeMediaSub === "1" ? "video_tokens" : "creative"
+      const tariffIndex =
+        paymentKind === "video_tokens"
+          ? Number.parseInt(videoTariff, 10) || 0
+          : Number.parseInt(tariff, 10) || 0
+
       const res = await fetch("/api/payment/create", {
         method: "POST",
         headers,
-        body: JSON.stringify({ mode, tariffIndex: Number.parseInt(tariff, 10) || 0 }),
+        body: JSON.stringify({
+          mode,
+          paymentKind,
+          tariffIndex,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Ошибка создания платежа")
@@ -220,13 +254,17 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
   }, [confirmOpen])
 
   const isFlow = mode === "0"
+  const isCreativeVideo = !isFlow && creativeMediaSub === "1"
   const tariffIndex = Number.parseInt(tariff, 10) || 0
+  const videoTariffIndex = Number.parseInt(videoTariff, 10) || 0
   const features = isFlow ? FLOW_FEATURES : CREATIVE_FEATURES
-  const tariffOptions = isFlow ? FLOW_OPTIONS : CREATIVE_OPTIONS
-  const prices = isFlow ? FLOW_PRICES : CREATIVE_PRICES
   const bonuses = isFlow ? FLOW_BONUS : CREATIVE_BONUS
-  const currentPrice = prices[tariffIndex] ?? prices[0]
-  const bonusLabel = bonuses[tariffIndex]
+  const currentPrice = isFlow
+    ? FLOW_PRICES[tariffIndex] ?? FLOW_PRICES[0]
+    : isCreativeVideo
+      ? VIDEO_TOKEN_PRICES[videoTariffIndex] ?? VIDEO_TOKEN_PRICES[0]
+      : CREATIVE_PRICES[tariffIndex] ?? CREATIVE_PRICES[0]
+  const bonusLabel = isFlow || isCreativeVideo ? null : bonuses[tariffIndex]
 
   const revealVariants = {
     visible: (i: number) => ({
@@ -303,7 +341,7 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
           customVariants={revealVariants}
           className="mb-10 text-center text-sm text-neutral-500"
         >
-          Пакеты «Поток» и «Свободное творчество» не суммируются: покупка генераций не даёт доступа к Потоку и наоборот — выберите один формат.
+          Пакеты «Поток» и «Свободное творчество» не суммируются: покупка генераций не даёт доступа к Потоку и наоборот — выберите один формат. В свободном творчестве сначала выберите фото или видео: видео-кредиты (токены) только на видео и не тратят пакет кадров изображений.
         </TimelineContent>
 
         <div className="grid gap-14 md:grid-cols-[1fr_1.2fr] md:gap-16 lg:gap-20">
@@ -347,28 +385,85 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
               <PricingSwitch2
                 button1="Поток"
                 button2="Свободное творчество"
+                selectedKey={mode}
                 onSwitch={(v) => {
                   setMode(v as "0" | "1")
                   setTariff("0")
+                  setVideoTariff("0")
+                  setCreativeMediaSub("0")
                 }}
                 layoutId="karto-mode"
               />
             </TimelineContent>
+
+            {!isFlow && (
+              <>
+                <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
+                  Формат
+                </h4>
+                <PricingSwitch2
+                  button1="Фото"
+                  button2="Видео"
+                  selectedKey={creativeMediaSub}
+                  onSwitch={(v) => {
+                    setCreativeMediaSub(v as "0" | "1")
+                    setTariff("0")
+                    setVideoTariff("0")
+                  }}
+                  layoutId="karto-creative-media"
+                />
+              </>
+            )}
 
             <TimelineContent
               animationNum={5}
               timelineRef={pricingRef}
               customVariants={revealVariants}
             >
-              <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
-                {isFlow ? "Объём потоков" : "Количество генераций"}
-              </h4>
-              <PricingSwitch3
-                options={tariffOptions}
-                value={tariff}
-                onSwitch={setTariff}
-                layoutId="karto-tariff"
-              />
+              {isFlow ? (
+                <>
+                  <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
+                    Объём потоков
+                  </h4>
+                  <PricingSwitchRow
+                    options={FLOW_OPTIONS}
+                    value={tariff}
+                    onSwitch={setTariff}
+                    layoutId="karto-tariff"
+                  />
+                </>
+              ) : isCreativeVideo ? (
+                <>
+                  <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
+                    Видео-кредиты
+                  </h4>
+                  <PricingSwitchRow
+                    options={VIDEO_TOKEN_OPTIONS}
+                    value={videoTariff}
+                    onSwitch={setVideoTariff}
+                    layoutId="karto-video-tariff"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setVideoPolicyOpen(true)}
+                    className="mt-2 text-left text-[11px] font-medium text-[#2E5A43] underline-offset-2 hover:underline decoration-[#84CC16]/60"
+                  >
+                    Ценовая политика видео
+                  </button>
+                </>
+              ) : (
+                <>
+                  <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
+                    Генерации изображений
+                  </h4>
+                  <PricingSwitchRow
+                    options={CREATIVE_OPTIONS}
+                    value={tariff}
+                    onSwitch={setTariff}
+                    layoutId="karto-tariff"
+                  />
+                </>
+              )}
             </TimelineContent>
 
             <TimelineContent
@@ -418,12 +513,14 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                 )}
               </div>
               <p className="text-sm text-neutral-500">
-                Без скрытых платежей. По истечении месяца тарифы обнуляются
+                Без скрытых платежей. Пакеты действуют 30 дней с даты оплаты; неиспользованные остатки по истечении периода аннулируются.
               </p>
             </TimelineContent>
           </div>
         </div>
       </div>
+
+      <VideoTokenPolicyModal open={videoPolicyOpen} onClose={() => setVideoPolicyOpen(false)} />
 
       {/* Окно подтверждения тарифа */}
       <AnimatePresence>
@@ -472,10 +569,24 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                         {isFlow ? "Поток" : "Свободное творчество"}
                       </span>
                     </div>
+                    {!isFlow && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-neutral-500">Формат</span>
+                        <span className="font-medium text-neutral-900">
+                          {isCreativeVideo ? "Видео" : "Фото"}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
-                      <span className="text-neutral-500">Объём</span>
-                      <span className="font-medium text-neutral-900">
-                        {tariffOptions[tariffIndex]}
+                      <span className="text-neutral-500">
+                        {isCreativeVideo ? "Пакет" : "Объём"}
+                      </span>
+                      <span className="font-medium text-neutral-900 text-right max-w-[60%]">
+                        {isCreativeVideo
+                          ? VIDEO_TOKEN_OPTIONS[videoTariffIndex]
+                          : isFlow
+                            ? FLOW_OPTIONS[tariffIndex]
+                            : CREATIVE_OPTIONS[tariffIndex]}
                       </span>
                     </div>
                     <div className="flex justify-between items-baseline pt-1 border-t border-neutral-100">

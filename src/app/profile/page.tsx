@@ -130,14 +130,16 @@ function ProfileContent() {
         }
       } catch {}
     })();
-    const maxAttempts = 6;
+    // Не обрываем опрос по creative/flow: у большинства уже есть приветственные генерации,
+    // а видео-кредиты приходят отдельной строкой — иначе интервал закрывался сразу и баланс не обновлялся.
+    const maxAttempts = 12;
     const intervalMs = 2000;
     let attempts = 0;
     const t = setInterval(async () => {
       attempts++;
       const sub = await fetchSubscription();
       setSubscription(sub);
-      if (attempts >= maxAttempts || (sub && (sub.flowsLimit > 0 || sub.creativeLimit > 0))) {
+      if (attempts >= maxAttempts) {
         clearInterval(t);
         setPaymentSuccessPolling(false);
         if (typeof window !== "undefined") {
@@ -746,7 +748,12 @@ function ProfileContent() {
               )}
 
               {/* Ваши услуги */}
-              {subscription && (subscription.flowsLimit > 0 || subscription.creativeLimit > 0) && (
+              {subscription &&
+                (subscription.flowsLimit > 0 ||
+                  subscription.creativeLimit > 0 ||
+                  (subscription.videoTokenBalance ?? 0) > 0 ||
+                  (subscription.videoTokensSpent ?? 0) > 0 ||
+                  (subscription.videoTokensLifetimePurchased ?? 0) > 0) && (
                 <div className="mb-6 p-4 rounded-xl bg-[#F5F5F0] border border-[#2E5A43]/20">
                   <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <DollarSign className="w-4 h-4 text-[#2E5A43]" />
@@ -763,6 +770,29 @@ function ProfileContent() {
                         Свободное творчество: осталось <strong>{Math.max(0, subscription.creativeLimit - subscription.creativeUsed)}</strong> из {subscription.creativeLimit} генераций.
                       </p>
                     )}
+                    {(subscription.videoTokenBalance ?? 0) > 0 ||
+                    (subscription.videoTokensSpent ?? 0) > 0 ||
+                    (subscription.videoTokensLifetimePurchased ?? 0) > 0 ? (
+                      <p className="text-sm text-gray-800">
+                        Видео-кредиты: остаток{" "}
+                        <strong className="text-lime-700">{subscription.videoTokenBalance ?? 0}</strong> ток.
+                        {(subscription.videoTokensLifetimePurchased ?? 0) > 0 ? (
+                          <>
+                            {" "}
+                            · начислено покупками всего{" "}
+                            <strong>{subscription.videoTokensLifetimePurchased}</strong> ток.
+                          </>
+                        ) : null}
+                        {(subscription.videoTokensSpent ?? 0) > 0 ? (
+                          <>
+                            {" "}
+                            · списано всего{" "}
+                            <strong>{subscription.videoTokensSpent}</strong> ток.
+                          </>
+                        ) : null}
+                        <span className="text-gray-500"> (только видео-генерация)</span>
+                      </p>
+                    ) : null}
                   </div>
                   <Link href="/#pricing" className="text-xs text-[#2E5A43] hover:underline mt-1 inline-block">Сменить тариф</Link>
                 </div>

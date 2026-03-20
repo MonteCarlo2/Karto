@@ -10,6 +10,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       imageUrl,
+      videoUrl = null,          // URL видео (для media_type = "video")
+      mediaType = "image",      // "image" | "video"
       prompt,
       aspectRatio,
       generationMode = "free",
@@ -25,14 +27,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!imageUrl) {
+    // Для видео imageUrl опционален, для изображений — обязателен
+    if (mediaType !== "video" && !imageUrl) {
       return NextResponse.json(
         { success: false, error: "imageUrl обязателен" },
         { status: 400 }
       );
     }
 
-    if (!aspectRatio || !["3:4", "4:3", "9:16", "1:1"].includes(aspectRatio)) {
+    if (mediaType === "video" && !videoUrl && !imageUrl) {
+      return NextResponse.json(
+        { success: false, error: "videoUrl обязателен для видео" },
+        { status: 400 }
+      );
+    }
+
+    const VALID_ASPECT_RATIOS = ["3:4", "4:3", "9:16", "1:1", "16:9", "21:9"];
+    if (!aspectRatio || !VALID_ASPECT_RATIOS.includes(aspectRatio)) {
       return NextResponse.json(
         { success: false, error: "Некорректное соотношение сторон" },
         { status: 400 }
@@ -41,59 +52,79 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServerClient();
     
-    // Скачиваем изображение с временного URL и загружаем в Supabase Storage
-    let permanentImageUrl = imageUrl;
-    
-    try {
-      // Скачиваем изображение
-      const imageResponse = await fetch(imageUrl);
-      if (!imageResponse.ok) {
-        throw new Error(`Не удалось скачать изображение: ${imageResponse.statusText}`);
-      }
-      
-      const imageBlob = await imageResponse.blob();
-      
-      // Генерируем уникальное имя файла
-      const fileName = `generated-images/${userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
-      
-      // Загружаем в Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("generated-images")
-        .upload(fileName, imageBlob, {
-          contentType: "image/png",
-          upsert: false,
-        });
+    let permanentImageUrl = imageUrl || null;
+    let permanentVideoUrl = videoUrl || null;
 
-      if (uploadError) {
-        // Если bucket не существует, используем исходный URL (fallback)
-      } else {
-        // Получаем публичный URL из Storage
-        const { data: urlData } = supabase.storage
+    if (mediaType === "image" && imageUrl) {
+      // Скачиваем изображение с временного URL и сохраняем в Supabase Storage
+      try {
+        const imageResponse = await fetch(imageUrl);
+        if (!imageResponse.ok) throw new Error(`HTTP ${imageResponse.status}`);
+        
+        const imageBlob = await imageResponse.blob();
+        const fileName = `generated-images/${userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
+        
+        const { error: uploadError } = await supabase.storage
           .from("generated-images")
-          .getPublicUrl(fileName);
+          .upload(fileName, imageBlob, { contentType: "image/png", upsert: false });
 
-        if (urlData?.publicUrl) {
-          permanentImageUrl = urlData.publicUrl;
+        if (!uploadError) {
+          const { data: urlData } = supabase.storage
+            .from("generated-images")
+            .getPublicUrl(fileName);
+          if (urlData?.publicUrl) permanentImageUrl = urlData.publicUrl;
         }
+      } catch {
+        // fallback: используем исходный URL
       }
-    } catch (storageError: any) {
-      // Если ошибка при загрузке в Storage, используем исходный URL (fallback)
     }
-    
-    // Сохраняем в базу данных с постоянным URL
-    const { data, error } = await supabase
+
+    // Сохраняем в базу данных (с поддержкой видео, если колонки уже добавлены)
+    const insertPayload: Record<string, any> = {
+      user_id: userId,
+      image_url: permanentImageUrl,
+      prompt: prompt || null,
+      aspect_ratio: aspectRatio,
+      generation_mode: generationMode,
+      scenario: scenario || null,
+      is_favorite: isFavorite,
+    };
+
+    // Добавляем поля видео только если они переданы
+    if (mediaType === "video") {
+      insertPayload.media_type = "video";
+      insertPayload.video_url = permanentVideoUrl;
+      // image_url имеет NOT NULL constraint — кладём туда же видео-URL
+      // (при загрузке используем video_url, image_url служит fallback)
+      insertPayload.image_url = permanentVideoUrl;
+    }
+
+    let { data, error } = await supabase
       .from("free_generation_feed")
-      .insert({
+      .insert(insertPayload)
+      .select()
+      .single();
+
+    // Если INSERT не удался для видео — попробуем fallback без media_type/video_url.
+    // Это защищает от ситуации, когда миграции/ограничения отличаются между окружениями.
+    if (error && mediaType === "video") {
+      const fallbackPayload = {
         user_id: userId,
-        image_url: permanentImageUrl, // Используем постоянный URL из Storage
+        image_url: permanentVideoUrl || permanentImageUrl, // для видео храним URL в image_url
         prompt: prompt || null,
         aspect_ratio: aspectRatio,
         generation_mode: generationMode,
         scenario: scenario || null,
         is_favorite: isFavorite,
-      })
-      .select()
-      .single();
+      };
+      const fallback = await supabase
+        .from("free_generation_feed")
+        .insert(fallbackPayload)
+        .select()
+        .single();
+      data = fallback.data;
+      error = fallback.error;
+    }
 
     if (error) {
       return NextResponse.json(

@@ -23,7 +23,7 @@ const GALLERY_ITEMS = [
 
 export function FreeGenSection() {
   return (
-    <section className="relative min-h-[900px] w-full bg-[#F5F5F0] overflow-hidden pt-10 pb-20">
+    <section className="relative min-h-[900px] w-full bg-[#F5F5F0] overflow-hidden pt-10 pb-14 sm:pb-16">
       {/* Soft Green Glow - Magic MCP Style */}
       <div
         className="absolute inset-0 z-0"
@@ -92,8 +92,18 @@ export function FreeGenSection() {
           </h2>
 
           <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-muted-foreground md:text-xl">
-            Пространство для чистого творчества. Генерируйте любые изображения,
-            ищите вдохновение и создавайте уникальный стиль.
+            Пространство для чистого творчества. Генерируйте любые{" "}
+            <span className="font-extrabold tracking-tight text-[#84CC16]">
+              ИЗОБРАЖЕНИЯ
+            </span>{" "}
+            и{" "}
+            <span className="font-extrabold tracking-tight text-[#84CC16] inline-flex items-baseline gap-0">
+              ВИДЕО
+              <sup className="ml-px translate-y-[-0.02em] text-[0.55em] font-bold leading-none text-[#84CC16]">
+                *
+              </sup>
+            </span>
+            , ищите вдохновение и создавайте уникальный стиль.
           </p>
 
           <div className="mt-8 md:mt-10">
@@ -109,6 +119,22 @@ export function FreeGenSection() {
           </div>
         </div>
       </ArcGalleryHero>
+
+      {/* Сноска к * у «ВИДЕО» — левый нижний угол секции, вплотную к карусели маркетплейсов ниже */}
+      <div className="pointer-events-none absolute bottom-2 left-4 z-30 max-w-[min(100vw-2rem,26rem)] sm:bottom-3 sm:left-6 lg:left-8">
+        <p className="pointer-events-auto text-left text-[9px] leading-snug text-muted-foreground/90 sm:text-[10px]">
+          * Для генерации изображений и видео используются{" "}
+          <span className="font-semibold text-foreground/80">самые инновационные</span> модели.
+          Подробнее — после регистрации в разделе{" "}
+          <Link
+            href="/studio/free"
+            className="font-medium text-[#1F4E3D] underline decoration-[#1F4E3D]/30 underline-offset-2 hover:decoration-[#1F4E3D]"
+          >
+            Свободное творчество
+          </Link>
+          .
+        </p>
+      </div>
     </section>
   )
 }

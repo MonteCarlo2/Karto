@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { StageMenu } from "@/components/ui/stage-menu";
+import { triggerDownloadFromRemoteUrl } from "@/lib/client/media-download";
 import { 
   Upload, 
   Download, 
@@ -474,18 +475,13 @@ function ResultCard({
     e.stopPropagation(); // Предотвращаем открытие модального окна
     
     try {
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `karto-card-${Date.now()}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      await triggerDownloadFromRemoteUrl({
+        url: imageUrl,
+        mediaType: "image",
+        filenameBase: `karto-card-${Date.now()}`,
+      });
     } catch (error) {
-      console.error("Ошибка скачивания:", error);
+      console.warn("Ошибка скачивания:", error);
     }
   };
 
@@ -2221,18 +2217,13 @@ export default function VisualPage() {
                             onClick={async (e) => {
                               e.stopPropagation();
                               try {
-                                const response = await fetch(variantUrl);
-                                const blob = await response.blob();
-                                const url = window.URL.createObjectURL(blob);
-                                const a = document.createElement("a");
-                                a.href = url;
-                                a.download = `karto-slide-${Date.now()}.png`;
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                                window.URL.revokeObjectURL(url);
+                                await triggerDownloadFromRemoteUrl({
+                                  url: variantUrl,
+                                  mediaType: "image",
+                                  filenameBase: `karto-slide-${Date.now()}`,
+                                });
                               } catch (error) {
-                                console.error("Ошибка скачивания слайда:", error);
+                                console.warn("Ошибка скачивания слайда:", error);
                               }
                             }}
                             className="absolute top-3 left-3 p-2 bg-white/90 hover:bg-white rounded-lg shadow-lg transition-colors z-20"

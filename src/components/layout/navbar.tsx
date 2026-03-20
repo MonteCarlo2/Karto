@@ -87,17 +87,33 @@ export function Navbar() {
         if (!mounted) return;
         if (!res.ok) return;
         const data = await res.json();
-        if (!mounted || !data.subscription) return;
-        const s = data.subscription;
         if (!mounted) return;
+        const s = data.subscription as
+          | {
+              flowsLimit?: number;
+              flowsUsed?: number;
+              creativeLimit?: number;
+              creativeUsed?: number;
+              videoTokenBalance?: number;
+            }
+          | null
+          | undefined;
         const labels: string[] = [];
-        if (s.flowsLimit > 0) {
-          const left = Math.max(0, s.flowsLimit - s.flowsUsed);
+        if (s && s.flowsLimit && s.flowsLimit > 0) {
+          const left = Math.max(0, s.flowsLimit - (s.flowsUsed ?? 0));
           labels.push(left === 1 ? "1 поток" : `${left} потоков`);
         }
-        if (s.creativeLimit > 0) {
-          const left = Math.max(0, s.creativeLimit - s.creativeUsed);
+        if (s && s.creativeLimit && s.creativeLimit > 0) {
+          const left = Math.max(0, s.creativeLimit - (s.creativeUsed ?? 0));
           labels.push(left === 1 ? "1 ген." : `${left} ген.`);
+        }
+        const vt = Number(s?.videoTokenBalance ?? data.videoTokenBalance ?? 0);
+        if (vt > 0) {
+          labels.push(
+            vt >= 1000
+              ? `${(vt / 1000).toFixed(vt % 1000 === 0 ? 0 : 1)}k ток.`
+              : `${vt} ток.`
+          );
         }
         setSubscriptionLabels(labels);
       } catch {

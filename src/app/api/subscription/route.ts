@@ -75,11 +75,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         subscription: null,
+        videoTokenBalance: 0,
+        videoTokensSpent: 0,
+        videoTokensLifetimePurchased: 0,
       });
     }
 
     return NextResponse.json(
-      { success: true, subscription: row },
+      {
+        success: true,
+        subscription: row,
+        videoTokenBalance: row.videoTokenBalance,
+        videoTokensSpent: row.videoTokensSpent,
+        videoTokensLifetimePurchased: row.videoTokensLifetimePurchased,
+      },
       { headers: { "Cache-Control": "no-store, max-age=0" } }
     );
   } catch (err: unknown) {
