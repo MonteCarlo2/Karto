@@ -112,14 +112,19 @@ export async function POST(request: NextRequest) {
       tokenCost
     );
     if (!debited) {
+      const isRpcFail = Boolean(debitErr && debitErr !== "insufficient_balance");
+      console.error("[generate-video-product] consumeVideoTokens failed:", debitErr, "user:", user.id);
       return NextResponse.json(
         {
           success: false,
           error:
             debitErr === "insufficient_balance"
-              ? "Недостаточно видео-кредитов. Пополните баланс на главной странице."
-              : "Не удалось списать видео-кредиты.",
+              ? "Недостаточно видео-кредитов или истёк период пакета. Пополните баланс на главной."
+              : isRpcFail
+                ? "Не удалось списать кредиты (ошибка сервера БД). Обновите страницу."
+                : "Не удалось списать видео-кредиты.",
           code: "INSUFFICIENT_VIDEO_TOKENS",
+          debitDetails: isRpcFail ? debitErr : undefined,
         },
         { status: 403 }
       );

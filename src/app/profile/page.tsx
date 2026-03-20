@@ -774,23 +774,18 @@ function ProfileContent() {
                     (subscription.videoTokensSpent ?? 0) > 0 ||
                     (subscription.videoTokensLifetimePurchased ?? 0) > 0 ? (
                       <p className="text-sm text-gray-800">
-                        Видео-кредиты: остаток{" "}
-                        <strong className="text-lime-700">{subscription.videoTokenBalance ?? 0}</strong> ток.
-                        {(subscription.videoTokensLifetimePurchased ?? 0) > 0 ? (
-                          <>
-                            {" "}
-                            · начислено покупками всего{" "}
-                            <strong>{subscription.videoTokensLifetimePurchased}</strong> ток.
-                          </>
-                        ) : null}
-                        {(subscription.videoTokensSpent ?? 0) > 0 ? (
-                          <>
-                            {" "}
-                            · списано всего{" "}
-                            <strong>{subscription.videoTokensSpent}</strong> ток.
-                          </>
-                        ) : null}
-                        <span className="text-gray-500"> (только видео-генерация)</span>
+                        Видео-кредиты: осталось{" "}
+                        <strong className="text-lime-700">{subscription.videoTokenBalance ?? 0}</strong>
+                        {(() => {
+                          const lim = subscription.videoTokensLifetimePurchased ?? 0;
+                          const bal = subscription.videoTokenBalance ?? 0;
+                          const denom = lim > 0 ? lim : Math.max(bal, 0);
+                          return denom > 0 ? (
+                            <> из {denom} ток.</>
+                          ) : (
+                            <> ток.</>
+                          );
+                        })()}
                       </p>
                     ) : null}
                   </div>

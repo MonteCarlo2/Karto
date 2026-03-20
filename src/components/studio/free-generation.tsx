@@ -849,6 +849,8 @@ export default function FreeGeneration() {
   } | null>(null);
   /** Видео-токены (только списание на видео) */
   const [videoTokenBalance, setVideoTokenBalance] = useState<number>(0);
+  /** «Потолок» капсулы: сумма начисленных покупками токенов (как лимит у фото); для высоты fill */
+  const [videoTokenCap, setVideoTokenCap] = useState<number>(0);
   const [hasLoadedFeed, setHasLoadedFeed] = useState(false);
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const [isVideoGuideOpen, setIsVideoGuideOpen] = useState(false);
@@ -1136,6 +1138,9 @@ export default function FreeGeneration() {
           subscription?.videoTokenBalance ?? payload?.videoTokenBalance ?? 0
         );
         setVideoTokenBalance(Number.isFinite(vt) ? Math.max(0, vt) : 0);
+        const life = Number(subscription?.videoTokensLifetimePurchased ?? 0);
+        const capBase = Number.isFinite(life) && life > 0 ? life : Math.max(0, vt);
+        setVideoTokenCap(Math.max(1, capBase, vt));
 
         if (!subscription || subscription.creativeLimit <= 0) {
           setCreativeQuota({
@@ -1967,8 +1972,8 @@ export default function FreeGeneration() {
                   <div
                     className="absolute inset-x-0 bottom-0 transition-all duration-500"
                     style={{
-                      /* Визуализация относительно крупного пакета (12.5k), без привязки к «потолку» баланса */
-                      height: `${videoTokenBalance <= 0 ? 0 : Math.max(10, Math.min(100, (videoTokenBalance / 12500) * 100))}%`,
+                      /* Доля от «пакета» (lifetime / текущий баланс как максимум) — полная капсула при полном балансе */
+                      height: `${videoTokenBalance <= 0 ? 0 : Math.min(100, Math.round((videoTokenBalance / Math.max(1, videoTokenCap)) * 100))}%`,
                       background:
                         videoTokenBalance > 0
                           ? "linear-gradient(180deg, #D9F99D 0%, #84CC16 55%, #65A30D 100%)"
@@ -1986,7 +1991,7 @@ export default function FreeGeneration() {
                   </div>
                 </div>
                 <span className="text-[9px] font-semibold leading-none text-center max-w-[4.5rem]" style={{ color: "#4d7c0f", opacity: 0.95 }}>
-                  токены
+                  {videoTokenCap > 0 ? `из ${videoTokenCap > 999 ? `${Math.round(videoTokenCap / 100) / 10}k` : videoTokenCap}` : "токены"}
                 </span>
               </div>
             </div>

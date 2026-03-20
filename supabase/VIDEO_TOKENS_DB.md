@@ -13,6 +13,10 @@
 3. `migrations/20260321_video_tokens_monthly_period.sql`  
    - Видео-кредиты на **30 дней** с `period_start` (как поток/creative): при новой покупке пакета `period_start` обновляется; списание только пока период не истёк.
 
+4. `migrations/20260322_video_token_rpc_grants_and_period_fix.sql`  
+   - **GRANT EXECUTE** на `consume_user_video_tokens` / `add_user_video_tokens` для **service_role** (иначе RPC с бэкенда может дать permission denied и 403 при генерации).  
+   - Разовый **UPDATE** `period_start` для строк с балансом, у которых период уже истёк (после старых начислений).
+
 Скопируй содержимое каждого файла и выполни целиком. После этого в Table Editor у `user_subscriptions` появятся нужные колонки.
 
 ## Где смотреть видео (не в строке `creative`)

@@ -60,3 +60,8 @@
 ## 5. Ошибка CORS `redmarket.online` в консоли
 
 Запросы к **redmarket.online** из кода KARTO **нет** — это почти всегда **расширение браузера**, вредоносный скрипт или сторонняя вставка. Отключи расширения / проверь другой профиль Chrome или режим инкогнито: предупреждение можно игнорировать для отладки оплаты.
+
+## 6. 403 при `/api/generate-video-free` («не удалось списать»)
+
+1. Выполни миграцию **`20260322_video_token_rpc_grants_and_period_fix.sql`** (GRANT на RPC для `service_role` + починка истёкшего `period_start` при ненулевом балансе).  
+2. В логах приложения ищи `[generate-video-free] consumeVideoTokens failed:` — там текст ошибки PostgREST/Postgres.
