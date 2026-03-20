@@ -1986,12 +1986,16 @@ export default function FreeGeneration() {
                       className="text-[10px] font-bold leading-none text-center"
                       style={{ color: videoTokenBalance > 0 ? "#14532d" : "#7f1d1d" }}
                     >
-                      {videoTokenBalance > 999 ? `${Math.round(videoTokenBalance / 100) / 10}k` : videoTokenBalance}
+                      {videoTokenBalance > 9999
+                        ? `${Math.round(videoTokenBalance / 100) / 10}k`
+                        : videoTokenBalance}
                     </span>
                   </div>
                 </div>
                 <span className="text-[9px] font-semibold leading-none text-center max-w-[4.5rem]" style={{ color: "#4d7c0f", opacity: 0.95 }}>
-                  {videoTokenCap > 0 ? `из ${videoTokenCap > 999 ? `${Math.round(videoTokenCap / 100) / 10}k` : videoTokenCap}` : "токены"}
+                  {videoTokenCap > 0
+                    ? `из ${videoTokenCap > 9999 ? `${Math.round(videoTokenCap / 100) / 10}k` : videoTokenCap}`
+                    : "токены"}
                 </span>
               </div>
             </div>
