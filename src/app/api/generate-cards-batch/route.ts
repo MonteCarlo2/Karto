@@ -5,7 +5,9 @@ import { createServerClient } from "@/lib/supabase/server";
 import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 
-const CARD_GENERATE_TIMEOUT_MS = 100_000; // 100 сек на одну карточку
+// 4K через KIE часто >100s; короткий таймаут давал массовый Abort → несколько «failed» сразу
+// и повтор запускал столько же лишних generate-card (двойной расход токенов KIE).
+const CARD_GENERATE_TIMEOUT_MS = Number(process.env.KIE_BATCH_CARD_TIMEOUT_MS) || 300_000; // 5 мин на карточку
 
 /** Сессии, для которых уже выполняется батч — не запускаем второй параллельный батч. */
 const batchLockBySession = new Set<string>();
@@ -242,12 +244,15 @@ export async function POST(request: NextRequest) {
       concepts.slice(0, cardsToGenerate).map((_, index) => generateOne(index))
     );
 
-    // Повторная попытка для упавших (один раз)
+    // Ровно один повторный раунд — только для слотов, где по-прежнему null (не дублируем успешные).
     const failedIndices = cardUrls
       .map((url, i) => (url === null ? i : -1))
       .filter((i) => i >= 0);
     if (failedIndices.length > 0) {
-      console.log(`🔄 [BATCH] Повторная попытка для ${failedIndices.length} карточек:`, failedIndices.map((i) => i + 1));
+      console.log(
+        `🔄 [BATCH] Повтор только для ${failedIndices.length} слот(ов) без результата:`,
+        failedIndices.map((i) => i + 1)
+      );
       const retries = await Promise.all(failedIndices.map((index) => generateOne(index)));
       failedIndices.forEach((origIndex, i) => {
         if (retries[i] !== null) cardUrls[origIndex] = retries[i];
@@ -255,6 +260,11 @@ export async function POST(request: NextRequest) {
     }
 
     const successfulCards = cardUrls.filter((url): url is string => url !== null);
+
+    // UI всегда 4 слота вариантов — дополняем null, если квота/концепций меньше четырёх.
+    while (cardUrls.length < 4) {
+      cardUrls.push(null);
+    }
 
     if (successfulCards.length === 0) {
       return NextResponse.json({
@@ -278,7 +288,8 @@ export async function POST(request: NextRequest) {
       const existingState = (existingVisualRow?.visual_state || {}) as Record<string, unknown>;
       const nextState = {
         ...existingState,
-        generatedCards: successfulCards,
+        // Фиксированные слоты 0..cardsToGenerate-1 (null = нет картинки) — UI и ретраи по индексу варианта.
+        generatedCards: cardUrls,
         selectedCardIndex: null,
         isSeriesMode: false,
         generation_used: quotaAfter.used,
@@ -303,7 +314,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      imageUrls: successfulCards,
+      // Параллельно с слотами вариантов (1..4); не сжимаем — иначе сетка путает «Вариант 4» с пустым слотом.
+      imageUrls: cardUrls,
       concepts: concepts.slice(0, cardsToGenerate).map(c => ({
         style: c.style,
         composition: c.composition,

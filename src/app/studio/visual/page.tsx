@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { StageMenu } from "@/components/ui/stage-menu";
 import { triggerDownloadFromRemoteUrl } from "@/lib/client/media-download";
@@ -42,6 +42,21 @@ import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { BugReportModal } from "@/components/ui/bug-report-modal";
 import { useToast } from "@/components/ui/toast";
+
+/** 4 слота вариантов; null = нет картинки (ожидание / сбой). Старые сохранения без null дополняем. */
+function normalizeVisualCardSlots(raw: unknown): (string | null)[] {
+  if (!Array.isArray(raw)) return [null, null, null, null];
+  const out: (string | null)[] = [null, null, null, null];
+  for (let i = 0; i < 4; i++) {
+    const v = raw[i];
+    out[i] = typeof v === "string" && v.trim() !== "" ? v : null;
+  }
+  return out;
+}
+
+function countFilledCardSlots(slots: (string | null)[]): number {
+  return slots.filter((x): x is string => typeof x === "string" && x.length > 0).length;
+}
 
 // Стили карточек (wireframe макеты)
 const CARD_STYLES = [
@@ -566,7 +581,8 @@ export default function VisualPage() {
   
   // Состояние интерфейса
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedCards, setGeneratedCards] = useState<string[]>([]);
+  const [generatedCards, setGeneratedCards] = useState<(string | null)[]>([]);
+  const filledCardCount = useMemo(() => countFilledCardSlots(generatedCards), [generatedCards]);
   const [selectedCardForModal, setSelectedCardForModal] = useState<string | null>(null);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedCardIndex, setSelectedCardIndex] = useState<number | null>(null);
@@ -773,9 +789,10 @@ export default function VisualPage() {
             });
           }
           
-          // Восстанавливаем generatedCards
-          if (state.generatedCards && Array.isArray(state.generatedCards) && state.generatedCards.length > 0) {
-            setGeneratedCards(state.generatedCards);
+          // Восстанавливаем generatedCards (4 слота; старый формат без null — нормализуем)
+          if (state.generatedCards && Array.isArray(state.generatedCards)) {
+            const norm = normalizeVisualCardSlots(state.generatedCards);
+            if (norm.some(Boolean)) setGeneratedCards(norm);
           }
           
           // Восстанавливаем selectedCardIndex
@@ -834,7 +851,7 @@ export default function VisualPage() {
 
   // Сохраняем промежуточное состояние визуала (generatedCards, selectedCardIndex, isSeriesMode)
   useEffect(() => {
-    if (sessionId && (generatedCards.length > 0 || isSeriesMode || selectedCardIndex !== null)) {
+    if (sessionId && (filledCardCount > 0 || generatedCards.length > 0 || isSeriesMode || selectedCardIndex !== null)) {
       const visualState = {
         generatedCards: generatedCards,
         selectedCardIndex: selectedCardIndex,
@@ -855,11 +872,14 @@ export default function VisualPage() {
         console.warn("Не удалось сохранить состояние визуала в Supabase:", error);
       });
     }
-  }, [generatedCards, selectedCardIndex, isSeriesMode, sessionId, visualQuota.used, visualQuota.limit]);
+  }, [generatedCards, filledCardCount, selectedCardIndex, isSeriesMode, sessionId, visualQuota.used, visualQuota.limit]);
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  const pollForGeneratedCards = async (sid: string, maxWaitMs: number = 360_000): Promise<string[] | null> => {
+  const pollForGeneratedCards = async (
+    sid: string,
+    maxWaitMs: number = 360_000
+  ): Promise<(string | null)[] | null> => {
     const startedAt = Date.now();
     while (Date.now() - startedAt < maxWaitMs) {
       try {
@@ -871,17 +891,20 @@ export default function VisualPage() {
         const data = await res.json().catch(() => ({} as any));
         const state = data?.visual_state;
         const cards = state?.generatedCards;
-        if (Array.isArray(cards) && cards.length > 0) {
-          if (typeof state.generation_used === "number" || typeof state.generation_limit === "number") {
-            const limit = Math.max(1, Number(state.generation_limit || 12));
-            const used = Math.max(0, Number(state.generation_used || 0));
-            setVisualQuota({
-              used,
-              limit,
-              remaining: Math.max(0, limit - used),
-            });
+        if (Array.isArray(cards)) {
+          const norm = normalizeVisualCardSlots(cards);
+          if (norm.some(Boolean)) {
+            if (typeof state.generation_used === "number" || typeof state.generation_limit === "number") {
+              const limit = Math.max(1, Number(state.generation_limit || 12));
+              const used = Math.max(0, Number(state.generation_used || 0));
+              setVisualQuota({
+                used,
+                limit,
+                remaining: Math.max(0, limit - used),
+              });
+            }
+            return norm;
           }
-          return cards;
         }
       } catch (_) {
         // ignore and retry
@@ -989,8 +1012,8 @@ export default function VisualPage() {
             message: "Сервер уже генерирует карточки. Ожидаем результат…",
           });
           const cards = await pollForGeneratedCards(sessionId, 360_000);
-          if (cards && cards.length > 0) {
-            setGeneratedCards(cards);
+          if (cards && cards.some(Boolean)) {
+            setGeneratedCards(normalizeVisualCardSlots(cards));
             return;
           }
           setGenerationError({
@@ -1034,9 +1057,9 @@ export default function VisualPage() {
         throw new Error(data.error || data.details || "Ошибка генерации");
       }
 
-      // Сохраняем все сгенерированные карточки (до 4)
-      if (data.imageUrls && data.imageUrls.length > 0) {
-        setGeneratedCards(data.imageUrls);
+      // Сохраняем слоты 1..4 (с null для неготовых вариантов)
+      if (data.imageUrls && Array.isArray(data.imageUrls) && data.imageUrls.some(Boolean)) {
+        setGeneratedCards(normalizeVisualCardSlots(data.imageUrls));
         if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
           const limit = Math.max(1, Number(data.generationLimit || 12));
           const used = Math.max(0, Number(data.generationUsed || 0));
@@ -1046,7 +1069,9 @@ export default function VisualPage() {
             remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
           });
         }
-        console.log(`✅ [FRONTEND] Сгенерировано ${data.imageUrls.length} карточек с уникальными концепциями`);
+        console.log(
+          `✅ [FRONTEND] Сгенерировано ${countFilledCardSlots(normalizeVisualCardSlots(data.imageUrls))} карточек с уникальными концепциями`
+        );
         
         if (data.concepts && data.concepts.length > 0) {
           console.log("📋 [FRONTEND] Использованные концепции:");
@@ -1088,8 +1113,8 @@ export default function VisualPage() {
           message: "Сервер мог продолжить генерацию. Пытаемся восстановить результат…",
         });
         const cards = sessionId ? await pollForGeneratedCards(sessionId, 360_000) : null;
-        if (cards && cards.length > 0) {
-          setGeneratedCards(cards);
+        if (cards && cards.some(Boolean)) {
+          setGeneratedCards(normalizeVisualCardSlots(cards));
           return;
         }
         setGenerationError({
@@ -1561,7 +1586,7 @@ export default function VisualPage() {
             ) : (
               <>
                 <SparklesIcon className="w-5 h-5" />
-                <span>{generatedCards.length > 0 ? "Перегенерировать" : "Сгенерировать"}</span>
+                <span>{filledCardCount > 0 ? "Перегенерировать" : "Сгенерировать"}</span>
               </>
             )}
           </motion.button>
@@ -1576,7 +1601,7 @@ export default function VisualPage() {
       <div className="fixed top-0 right-0 bottom-0 left-[420px] flex flex-col bg-transparent z-0 overflow-y-auto" suppressHydrationWarning>
         <div className="flex-1 flex items-start justify-center p-6 min-h-full" suppressHydrationWarning>
           <AnimatePresence mode="wait">
-            {!isGenerating && generatedCards.length === 0 ? (
+            {!isGenerating && filledCardCount === 0 && generatedCards.length === 0 ? (
               // Состояние 1: Пустое
               <motion.div
                 key="empty"
@@ -1616,31 +1641,29 @@ export default function VisualPage() {
                 className={`w-full grid grid-cols-2 gap-4 ${aspectRatio === "1:1" ? "max-w-3xl" : "max-w-2xl"}`}
                 suppressHydrationWarning
               >
-                {/* Показываем сгенерированные карточки */}
-                {generatedCards.map((imageUrl, index) => (
-                  <ResultCard 
-                    key={index} 
-                    imageUrl={imageUrl} 
-                    aspectRatio={aspectRatio}
-                    onOpenModal={() => setSelectedCardForModal(imageUrl)}
-                    isSelectionMode={isSelectionMode}
-                    isSelected={selectedCardIndex === index}
-                    onSelect={() => {
-                      if (isSelectionMode) {
-                        console.log("Выбрана карточка с индексом:", index);
-                        setSelectedCardIndex(index);
-                      }
-                    }}
-                  />
-                ))}
-                {/* Показываем заглушки для оставшихся слотов (до 4 всего) */}
-                {Array.from({ length: Math.max(0, 4 - generatedCards.length) }).map((_, index) => (
-                  <CardSlot 
-                    key={`slot-${index}`} 
-                    index={generatedCards.length + index} 
-                    aspectRatio={aspectRatio} 
-                  />
-                ))}
+                {/* Ровно 4 слота: индекс = номер варианта (не сжимаем массив URL) */}
+                {[0, 1, 2, 3].map((index) => {
+                  const imageUrl = generatedCards[index];
+                  if (typeof imageUrl === "string" && imageUrl.length > 0) {
+                    return (
+                      <ResultCard
+                        key={index}
+                        imageUrl={imageUrl}
+                        aspectRatio={aspectRatio}
+                        onOpenModal={() => setSelectedCardForModal(imageUrl)}
+                        isSelectionMode={isSelectionMode}
+                        isSelected={selectedCardIndex === index}
+                        onSelect={() => {
+                          if (isSelectionMode) {
+                            console.log("Выбрана карточка с индексом:", index);
+                            setSelectedCardIndex(index);
+                          }
+                        }}
+                      />
+                    );
+                  }
+                  return <CardSlot key={`slot-${index}`} index={index} aspectRatio={aspectRatio} />;
+                })}
               </motion.div>
             )}
           </AnimatePresence>
@@ -1672,11 +1695,11 @@ export default function VisualPage() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => {
-                  if (generatedCards.length > 0) {
+                  if (filledCardCount > 0) {
                     setIsSelectionMode(true);
                   }
                 }}
-                disabled={generatedCards.length === 0}
+                disabled={filledCardCount === 0}
                 className="px-6 py-3 bg-[#1F4E3D] text-white rounded-xl font-bold text-base flex items-center gap-2 shadow-xl shadow-black/20 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <CheckCircle2 className="w-5 h-5" />
@@ -1704,7 +1727,8 @@ export default function VisualPage() {
                     if (selectedCardIndex !== null) {
                       console.log("Выбрана карточка:", selectedCardIndex);
                       // Сохраняем оригинальное изображение перед редактированием
-                      setOriginalCardImage(generatedCards[selectedCardIndex]);
+                      const picked = generatedCards[selectedCardIndex];
+                      setOriginalCardImage(typeof picked === "string" ? picked : null);
                       setIsSelectionMode(false);
                       setIsEditMode(true);
                     }
@@ -1752,9 +1776,10 @@ export default function VisualPage() {
                   onClick={() => {
                     if (originalCardImage && selectedCardIndex !== null) {
                       // Сохраняем текущее изображение как последнее отредактированное перед возвратом
-                      setLastEditedImage(generatedCards[selectedCardIndex]);
+                      const cur = generatedCards[selectedCardIndex];
+                      setLastEditedImage(typeof cur === "string" ? cur : null);
                       // Восстанавливаем оригинальное изображение
-                      const newCards = [...generatedCards];
+                      const newCards = normalizeVisualCardSlots([...generatedCards]);
                       newCards[selectedCardIndex] = originalCardImage;
                       setGeneratedCards(newCards);
                     }
@@ -1786,7 +1811,7 @@ export default function VisualPage() {
                   onClick={() => {
                     if (lastEditedImage && selectedCardIndex !== null) {
                       // Возвращаемся к последнему отредактированному варианту
-                      const newCards = [...generatedCards];
+                      const newCards = normalizeVisualCardSlots([...generatedCards]);
                       newCards[selectedCardIndex] = lastEditedImage;
                       setGeneratedCards(newCards);
                     }
@@ -1833,11 +1858,13 @@ export default function VisualPage() {
             >
               <div className="w-full max-w-5xl flex flex-col items-center gap-6">
                 {/* Крупная карточка - уменьшенная для лучшей видимости */}
-                {selectedCardIndex !== null && generatedCards.length > 0 && generatedCards[selectedCardIndex] ? (
+                {selectedCardIndex !== null &&
+                typeof generatedCards[selectedCardIndex] === "string" &&
+                generatedCards[selectedCardIndex]!.length > 0 ? (
                   <div className="flex justify-center w-full">
                     <div className="relative w-full max-w-xl bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: aspectRatio === "3:4" ? "3 / 4" : "1 / 1" }}>
                       <img
-                        src={generatedCards[selectedCardIndex]}
+                        src={generatedCards[selectedCardIndex]!}
                         alt="Выбранная карточка"
                         className="w-full h-full object-contain"
                         onError={(e) => {
@@ -1848,7 +1875,7 @@ export default function VisualPage() {
                   </div>
                 ) : (
                   <div className="flex justify-center items-center w-full max-w-xl bg-gray-100 rounded-lg" style={{ aspectRatio: aspectRatio === "3:4" ? "3 / 4" : "1 / 1" }}>
-                    <p className="text-gray-400">Изображение не найдено (индекс: {selectedCardIndex}, всего карточек: {generatedCards.length})</p>
+                    <p className="text-gray-400">Изображение не найдено (индекс: {selectedCardIndex}, слотов: {generatedCards.length})</p>
                   </div>
                 )}
                 
@@ -1878,13 +1905,15 @@ export default function VisualPage() {
                         whileTap={{ scale: 0.9 }}
                         onClick={async () => {
                           if (editRequest.trim() && !isEditing && selectedCardIndex !== null) {
+                            const srcUrl = generatedCards[selectedCardIndex];
+                            if (typeof srcUrl !== "string" || !srcUrl) return;
                             setIsEditing(true);
                             try {
                               const response = await fetch("/api/edit-card", {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
-                                  imageUrl: generatedCards[selectedCardIndex],
+                                  imageUrl: srcUrl,
                                   editRequest: editRequest.trim(),
                                   productName,
                                   aspectRatio,
@@ -1904,12 +1933,12 @@ export default function VisualPage() {
                                   });
                                 }
                                 if (!originalCardImage && selectedCardIndex !== null) {
-                                  setOriginalCardImage(generatedCards[selectedCardIndex]);
+                                  setOriginalCardImage(srcUrl);
                                 }
                                 if (selectedCardIndex !== null) {
-                                  setLastEditedImage(generatedCards[selectedCardIndex]);
+                                  setLastEditedImage(srcUrl);
                                 }
-                                const newCards = [...generatedCards];
+                                const newCards = normalizeVisualCardSlots([...generatedCards]);
                                 newCards[selectedCardIndex] = data.imageUrl;
                                 setGeneratedCards(newCards);
                                 setEditRequest("");
@@ -1948,11 +1977,11 @@ export default function VisualPage() {
                   whileTap={{ scale: 0.95 }}
                   onClick={() => {
                     // Переходим в режим серии карточек
-                    if (selectedCardIndex !== null && generatedCards[selectedCardIndex]) {
+                    if (selectedCardIndex !== null && typeof generatedCards[selectedCardIndex] === "string") {
                       // Создаем первый слайд с выбранной карточкой
                       const firstSlide = {
                         id: 1,
-                        imageUrl: generatedCards[selectedCardIndex],
+                        imageUrl: generatedCards[selectedCardIndex]!,
                         variants: [] as string[],
                         prompt: "",
                         scenario: null,
