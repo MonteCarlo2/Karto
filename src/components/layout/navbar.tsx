@@ -16,7 +16,6 @@ export function Navbar() {
   const [showStudioMenu, setShowStudioMenu] = React.useState(false)
   const [mounted, setMounted] = React.useState(false)
   const [subscriptionLabels, setSubscriptionLabels] = React.useState<string[]>([])
-  const [showUpdateBadge, setShowUpdateBadge] = React.useState(false)
   const pathname = usePathname()
   const router = useRouter()
   const isHome = pathname === "/"
@@ -26,18 +25,6 @@ export function Navbar() {
   React.useEffect(() => {
     setMounted(true)
   }, [])
-
-  // Show update badge: on mount if banner was already seen, and when banner is closed
-  React.useEffect(() => {
-    try {
-      if (localStorage.getItem("karto_video_announcement_seen_v3")) {
-        setShowUpdateBadge(true);
-      }
-    } catch {}
-    const onClose = () => setShowUpdateBadge(true);
-    window.addEventListener("karto:banner:closed", onClose);
-    return () => window.removeEventListener("karto:banner:closed", onClose);
-  }, []);
 
   // Проверка авторизации
   React.useEffect(() => {
@@ -206,28 +193,6 @@ export function Navbar() {
 
           {/* CTA Buttons */}
           <div className="hidden md:flex items-center gap-4" suppressHydrationWarning>
-            {/* Грядущее обновление badge — appears after banner is closed */}
-            {showUpdateBadge && (
-              <button
-                onClick={() => {
-                  setShowUpdateBadge(false);
-                  window.dispatchEvent(new CustomEvent("karto:banner:reopen"));
-                }}
-                className="flex items-center gap-1.5 rounded-full text-xs font-semibold transition-all hover:scale-105 active:scale-95"
-                style={{
-                  padding: "5px 12px 5px 8px",
-                  background: "linear-gradient(135deg,rgba(46,90,67,0.15),rgba(61,122,90,0.1))",
-                  border: "1px solid rgba(46,90,67,0.35)",
-                  color: "#2E5A43",
-                }}
-              >
-                <span
-                  className="inline-block w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ background: "#2E5A43" }}
-                />
-                Скоро: видео
-              </button>
-            )}
             <div className="relative studio-menu-container" suppressHydrationWarning>
               <Button 
                 variant="ghost" 
