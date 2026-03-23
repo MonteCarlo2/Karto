@@ -188,7 +188,7 @@ async function getTaskResult(taskId: string, maxWaitTime: number = 300000): Prom
 export type GenerateWithKieAiResult = { imageUrl: string; referenceUsed: boolean };
 
 /**
- * Генерация изображения через KIE AI (nano-banana-2)
+ * Генерация изображения через KIE AI (nano-banana-2), resolution 4K (свободное творчество, поток, товар, правки).
  */
 export async function generateWithKieAi(
   prompt: string,
@@ -214,7 +214,7 @@ export async function generateWithKieAi(
       prompt: prompt.trim(),
       aspectRatio,
       outputFormat,
-      resolution: "2K",
+      resolution: "4K",
       imageInput: imageArray,
     });
 
