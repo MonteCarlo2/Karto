@@ -5,9 +5,10 @@ import { createServerClient } from "@/lib/supabase/server";
 import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 
-// 4K через KIE часто >100s; короткий таймаут давал массовый Abort → несколько «failed» сразу
+// 4K через KIE часто >100s; 100s давали массовый Abort → несколько слотов «упали» сразу
 // и повтор запускал столько же лишних generate-card (двойной расход токенов KIE).
-const CARD_GENERATE_TIMEOUT_MS = Number(process.env.KIE_BATCH_CARD_TIMEOUT_MS) || 300_000; // 5 мин на карточку
+// По умолчанию 2.5 мин; переопределение: KIE_BATCH_CARD_TIMEOUT_MS (миллисекунды).
+const CARD_GENERATE_TIMEOUT_MS = Number(process.env.KIE_BATCH_CARD_TIMEOUT_MS) || 150_000; // 2.5 мин на карточку
 
 /** Сессии, для которых уже выполняется батч — не запускаем второй параллельный батч. */
 const batchLockBySession = new Set<string>();
