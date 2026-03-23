@@ -878,7 +878,7 @@ export default function VisualPage() {
 
   const pollForGeneratedCards = async (
     sid: string,
-    maxWaitMs: number = 360_000
+    maxWaitMs: number = 480_000
   ): Promise<(string | null)[] | null> => {
     const startedAt = Date.now();
     while (Date.now() - startedAt < maxWaitMs) {
@@ -950,8 +950,8 @@ export default function VisualPage() {
     setGeneratedCards([]);
     setGenerationError({ show: false });
 
-    // Таймаут запроса 5 минут (часто обрыв — из‑за прокси/хостинга, не из‑за браузера)
-    const FETCH_TIMEOUT_MS = 300_000;
+    // Батч: 4 слота до 3 мин параллельно + при необходимости второй раунн только по пустым слотам (ещё до 3 мин) — не обрывать раньше сервера
+    const FETCH_TIMEOUT_MS = 420_000;
     const LONG_WAIT_NOTIFY_MS = 120_000; // через 2 мин — уведомление пользователю
 
     if (longWaitTimerRef.current) clearTimeout(longWaitTimerRef.current);
@@ -1011,7 +1011,7 @@ export default function VisualPage() {
             title: "Генерация уже идёт",
             message: "Сервер уже генерирует карточки. Ожидаем результат…",
           });
-          const cards = await pollForGeneratedCards(sessionId, 360_000);
+          const cards = await pollForGeneratedCards(sessionId, 480_000);
           if (cards && cards.some(Boolean)) {
             setGeneratedCards(normalizeVisualCardSlots(cards));
             return;
@@ -1098,7 +1098,7 @@ export default function VisualPage() {
       if (error instanceof Error && error.name === "AbortError") {
         setGenerationError({
           show: true,
-          message: "Время ожидания истекло (генерация заняла более 5 минут). Попробуйте ещё раз.",
+          message: "Время ожидания истекло (генерация заняла более 7 минут). Попробуйте ещё раз.",
           canRetry: true,
         });
         return;
@@ -1112,7 +1112,7 @@ export default function VisualPage() {
           title: "Соединение прервалось",
           message: "Сервер мог продолжить генерацию. Пытаемся восстановить результат…",
         });
-        const cards = sessionId ? await pollForGeneratedCards(sessionId, 360_000) : null;
+        const cards = sessionId ? await pollForGeneratedCards(sessionId, 480_000) : null;
         if (cards && cards.some(Boolean)) {
           setGeneratedCards(normalizeVisualCardSlots(cards));
           return;
