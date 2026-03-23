@@ -48,7 +48,7 @@ async function createTask(params: {
   const apiKey = getKieAiApiKey();
   
   const requestBody: any = {
-    model: "nano-banana-pro",
+    model: "nano-banana-2",
     input: {
       prompt: params.prompt,
     },
@@ -188,7 +188,7 @@ async function getTaskResult(taskId: string, maxWaitTime: number = 300000): Prom
 export type GenerateWithKieAiResult = { imageUrl: string; referenceUsed: boolean };
 
 /**
- * Генерация изображения через KIE AI (nano-banana-pro)
+ * Генерация изображения через KIE AI (nano-banana-2)
  */
 export async function generateWithKieAi(
   prompt: string,
