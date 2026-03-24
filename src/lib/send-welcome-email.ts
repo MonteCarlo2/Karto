@@ -3,6 +3,8 @@
  * Использует Resend (нужен RESEND_API_KEY в .env).
  */
 
+import { FREE_WELCOME_VIDEO_TOKENS } from "@/lib/subscription";
+
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const FROM_EMAIL = process.env.WELCOME_EMAIL_FROM || process.env.RESEND_FROM_EMAIL || "KARTO <onboarding@resend.dev>";
 const FROM_NAME = process.env.WELCOME_EMAIL_FROM_NAME || "KARTO";
@@ -57,7 +59,7 @@ export async function sendWelcomeEmail(options: SendWelcomeEmailOptions): Promis
             <td style="padding: 0 32px 32px;">
               <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #374151;">Привет, ${firstName}!</p>
               <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #374151;">Спасибо за регистрацию. Мы рады, что ты теперь часть нашего сервиса KARTO.</p>
-              <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #374151;">У тебя уже есть <strong>3 бесплатные генерации</strong> в разделе «Свободное творчество». Давай сделаем твою первую карточку!</p>
+              <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #374151;">У тебя уже есть <strong>3 бесплатные генерации изображений</strong> в «Свободное творчество» и <strong>${FREE_WELCOME_VIDEO_TOKENS} бесплатных видео-токенов</strong> для генерации видео в студии. Давай сделаем твою первую карточку!</p>
               <p style="margin: 0 0 24px; text-align: center;">
                 <a href="${APP_URL}" style="display: inline-block; padding: 14px 28px; background-color: #1F4E3D; color: #ffffff !important; text-decoration: none; font-weight: 600; font-size: 16px; border-radius: 12px;">Перейти на KARTO</a>
               </p>

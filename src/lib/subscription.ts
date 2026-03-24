@@ -1,6 +1,6 @@
 /**
  * Константы тарифов: Поток (1, 5, 15) и Свободное творчество (10, 30, 100)
- * Новым пользователям при первом запросе подписки выдаётся приветственный лимит — 3 бесплатные генерации.
+ * Новым пользователям при первом запросе подписки: 3 бесплатные фото-генерации + 100 видео-токенов.
  */
 export const FLOW_VOLUMES = [1, 5, 15] as const;
 export const CREATIVE_VOLUMES = [10, 30, 100] as const;
@@ -9,6 +9,8 @@ export const FLOW_PRICES = [299, 1190, 2990] as const;
 export const CREATIVE_PRICES = [249, 590, 1490] as const;
 /** Количество бесплатных генераций «Свободное творчество» для новых пользователей после регистрации */
 export const FREE_WELCOME_CREATIVE_LIMIT = 3;
+/** Бесплатные видео-токены при первом запросе подписки (вместе с приветственными фото) */
+export const FREE_WELCOME_VIDEO_TOKENS = 100;
 export const SUBSCRIPTION_PERIOD_DAYS = 30;
 
 export type PlanType = "flow" | "creative" | "video_tokens";

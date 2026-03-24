@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
-import { getSubscriptionByUserId, FREE_WELCOME_CREATIVE_LIMIT } from "@/lib/subscription";
+import {
+  getSubscriptionByUserId,
+  FREE_WELCOME_CREATIVE_LIMIT,
+  FREE_WELCOME_VIDEO_TOKENS,
+} from "@/lib/subscription";
+import { addVideoTokens } from "@/lib/video-tokens";
 import { sendWelcomeEmail } from "@/lib/send-welcome-email";
 
 /**
  * GET: текущая подписка пользователя (по Authorization: Bearer <token>).
- * Если у пользователя ещё нет подписки — создаём приветственную: 3 бесплатные генерации «Свободное творчество» и отправляем приветственное письмо.
+ * Если у пользователя ещё нет активной подписки — создаём приветственную: 3 фото в «Свободное творчество», 100 видео-токенов (RPC), письмо на почту.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -63,6 +68,17 @@ export async function GET(request: NextRequest) {
           });
         }
       } else {
+        const { ok: videoOk, error: videoGrantErr } = await addVideoTokens(
+          supabase as any,
+          user.id,
+          FREE_WELCOME_VIDEO_TOKENS
+        );
+        if (!videoOk) {
+          console.error(
+            "❌ [SUBSCRIPTION] Не удалось начислить приветственные видео-токены:",
+            videoGrantErr
+          );
+        }
         row = await getSubscriptionByUserId(supabase as any, user.id) ?? null;
         sendWelcomeEmail({
           to: user.email ?? "",
