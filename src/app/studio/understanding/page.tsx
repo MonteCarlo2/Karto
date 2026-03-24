@@ -311,6 +311,56 @@ export default function UnderstandingPage() {
     }
   };
 
+  /** Сохранение этапа «Понимание» и переход к описанию (список ИИ или своё название). */
+  const saveUnderstandingAndContinue = async (finalProductName: string) => {
+    const trimmed = finalProductName.trim();
+    if (!trimmed) return;
+
+    const currentSessionId = localStorage.getItem("karto_session_id");
+
+    try {
+      const { data: { session } } = await createBrowserClient().auth.getSession();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+      const response = await fetch("/api/supabase/save-understanding", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          session_id: currentSessionId,
+          product_name: trimmed,
+          photo_url: photoDataUrl,
+          selected_method: selectedMethod,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Неизвестная ошибка сервера" }));
+        showNotification(errorData.error || `Ошибка сервера: ${response.status}`, "error");
+        return;
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        console.log("✅ Данные этапа 'Понимание' сохранены:", data);
+        if (data.session_id) {
+          localStorage.setItem("karto_session_id", data.session_id);
+        }
+        setProductName(trimmed);
+        router.push("/studio/description");
+      } else {
+        showNotification(data.error || "Ошибка сохранения данных. Попробуйте еще раз.", "error");
+      }
+    } catch (error: unknown) {
+      const err = error as { message?: string; name?: string };
+      let errorMessage = "Ошибка соединения. Проверьте подключение к интернету.";
+      if (err?.message) errorMessage = err.message;
+      else if (err?.name === "TypeError" && err.message?.includes("fetch")) {
+        errorMessage = "Ошибка соединения с сервером. Проверьте подключение к интернету.";
+      }
+      showNotification(errorMessage, "error");
+    }
+  };
+
   const handleAnalyzeProduct = async () => {
     let fileToUse = photoFile;
     
@@ -871,66 +921,9 @@ export default function UnderstandingPage() {
                                         <button
                                           onClick={async () => {
                                             if (selectedNameIndex === null || !analysisResult) return;
-                                            
                                             const finalProductName = analysisResult.names[selectedNameIndex];
                                             if (!finalProductName) return;
-
-                                            // Важно: session_id должен создаваться сервером.
-                                            // Если локально его нет, отправляем null, чтобы сервер
-                                            // корректно создал новую сессию и списал 1 поток.
-                                            const currentSessionId = localStorage.getItem("karto_session_id");
-
-                                            try {
-                                              const { data: { session } } = await createBrowserClient().auth.getSession();
-                                              const headers: Record<string, string> = { "Content-Type": "application/json" };
-                                              if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
-                                              const response = await fetch("/api/supabase/save-understanding", {
-                                                method: "POST",
-                                                headers,
-                                                body: JSON.stringify({
-                                                  session_id: currentSessionId,
-                                                  product_name: finalProductName,
-                                                  photo_url: photoDataUrl,
-                                                  selected_method: selectedMethod,
-                                                }),
-                                              });
-
-                                              // Для ожидаемых бизнес-ошибок не бросаем exception,
-                                              // чтобы не провоцировать dev-overlay в браузере.
-                                              if (!response.ok) {
-                                                const errorData = await response.json().catch(() => ({ error: "Неизвестная ошибка сервера" }));
-                                                showNotification(
-                                                  errorData.error || `Ошибка сервера: ${response.status}`,
-                                                  "error"
-                                                );
-                                                return;
-                                              }
-
-                                              const data = await response.json();
-                                              if (data.success) {
-                                                console.log("✅ Данные этапа 'Понимание' сохранены:", data);
-                                                // Сохраняем session_id если он был создан
-                                                if (data.session_id) {
-                                                  localStorage.setItem("karto_session_id", data.session_id);
-                                                }
-                                                router.push("/studio/description");
-                                              } else {
-                                                showNotification(
-                                                  data.error || "Ошибка сохранения данных. Попробуйте еще раз.",
-                                                  "error"
-                                                );
-                                              }
-                                            } catch (error: any) {
-                                              let errorMessage = "Ошибка соединения. Проверьте подключение к интернету.";
-                                              
-                                              if (error.message) {
-                                                errorMessage = error.message;
-                                              } else if (error.name === "TypeError" && error.message?.includes("fetch")) {
-                                                errorMessage = "Ошибка соединения с сервером. Проверьте подключение к интернету.";
-                                              }
-                                              
-                                              showNotification(errorMessage, "error");
-                                            }
+                                            await saveUnderstandingAndContinue(finalProductName);
                                           }}
                                           className="w-full py-3 px-5 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all"
                                           style={{
@@ -1016,11 +1009,12 @@ export default function UnderstandingPage() {
                                             autoFocus
                                           />
                                           <button
-                                            onClick={() => {
-                                              if (customName.trim()) {
-                                                console.log("Использовано кастомное название:", customName);
-                                                // Здесь можно добавить логику использования кастомного названия
-                                              }
+                                            onClick={async () => {
+                                              const name = customName.trim();
+                                              if (!name) return;
+                                              setShowCustomInput(false);
+                                              setSelectedNameIndex(null);
+                                              await saveUnderstandingAndContinue(name);
                                             }}
                                             disabled={!customName.trim()}
                                             className="w-full py-2.5 px-4 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
