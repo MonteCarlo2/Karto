@@ -37,6 +37,11 @@ export async function sendHtmlEmailSmtp(options: {
       user: process.env.SMTP_USER!.trim(),
       pass: process.env.SMTP_PASSWORD!.trim(),
     },
+    // На хостингах (Timeweb и др.) исходящий SMTP часто фильтруется — без таймаутов
+    // nodemailer может висеть минутами, клиент ловит AbortError, а пользователь уже в Supabase.
+    connectionTimeout: 12_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 22_000,
   });
 
   const from =
@@ -45,13 +50,30 @@ export async function sendHtmlEmailSmtp(options: {
     process.env.WELCOME_EMAIL_FROM?.trim() ||
     process.env.SMTP_USER!.trim();
 
+  const mail = {
+    from: from.includes("<") ? from : `KARTO <${from}>`,
+    to,
+    subject,
+    html,
+  };
+
+  const SEND_DEADLINE_MS = 28_000;
+
   try {
-    await transporter.sendMail({
-      from: from.includes("<") ? from : `KARTO <${from}>`,
-      to,
-      subject,
-      html,
-    });
+    await Promise.race([
+      transporter.sendMail(mail),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                "Почтовый сервер не ответил вовремя. На Timeweb часто блокируют исходящий SMTP — откройте порт к smtp.mail.ru или используйте SMTP самого хостинга."
+              )
+            ),
+          SEND_DEADLINE_MS
+        )
+      ),
+    ]);
     return { ok: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
