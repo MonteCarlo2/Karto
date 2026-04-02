@@ -9,7 +9,7 @@ import { createBrowserClient } from "@/lib/supabase/client";
 import Image from "next/image";
 import { useNotification } from "@/components/ui/notification";
 
-const AUTH_API_TIMEOUT_MS = 45_000;
+const AUTH_API_TIMEOUT_MS = 90_000;
 
 async function fetchAuthApi(url: string, body: object): Promise<Response> {
   const controller = new AbortController();
@@ -360,7 +360,6 @@ function LoginContent() {
       setConsentPersonalData(false);
       setPassword("");
     } catch (err: unknown) {
-      console.error("Ошибка входа/регистрации:", err);
       const isAbort =
         (err instanceof DOMException && err.name === "AbortError") ||
         (err instanceof Error && err.name === "AbortError");
@@ -370,6 +369,7 @@ function LoginContent() {
         );
         return;
       }
+      console.error("Ошибка входа/регистрации:", err);
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("Failed to fetch") || msg.includes("network") || msg.includes("ERR_NAME_NOT_RESOLVED")) {
         setError("Ошибка подключения к серверу. Проверьте интернет и попробуйте снова.");

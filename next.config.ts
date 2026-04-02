@@ -12,8 +12,10 @@ const nextConfig: NextConfig = {
     ];
   },
 
-  // Разрешаем внешние изображения для отображения результатов
+  // Без оптимизации на лету: в standalone на Timeweb/Docker нет прав на запись в
+  // .next/cache/images → EACCES, SIGTERM, «вечная загрузка» и таймауты API.
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "https",
