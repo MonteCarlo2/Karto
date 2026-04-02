@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getYandexRedirectUri } from "@/lib/auth/yandex-redirect-uri";
 
 /**
  * Базовый URL сайта. На сервере всегда должен быть продакшен-URL, не localhost.
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
   }
 
   const baseUrl = getBaseUrl(request);
-  const redirectUri = `${baseUrl}/api/auth/yandex/callback`;
+  const redirectUri = getYandexRedirectUri(baseUrl);
   const state = baseUrl;
   const scope = "login:email login:info";
 

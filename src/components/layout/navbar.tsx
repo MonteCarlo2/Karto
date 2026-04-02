@@ -289,8 +289,14 @@ export function Navbar() {
                 </AnimatePresence>
               </div>
             ) : mounted ? (
-              <Button asChild size="default" className="text-base font-medium bg-[#2E5A43] hover:bg-[#1e3d2d] text-white" suppressHydrationWarning>
-                <Link href="/login">Попробовать</Link>
+              <Button
+                asChild
+                variant="ghost"
+                size="default"
+                className="border border-[#84CC16]/45 bg-[#ECF7DB] text-base font-semibold tracking-tight text-neutral-900 antialiased shadow-none transition-colors hover:bg-[#dff3c4] hover:text-neutral-900"
+                suppressHydrationWarning
+              >
+                <Link href="/login">Вход / Регистрация</Link>
               </Button>
             ) : (
               <div className="w-24 h-10" suppressHydrationWarning />
@@ -392,9 +398,14 @@ export function Navbar() {
                   Выйти
                 </Button>
               ) : mounted ? (
-                <Button asChild className="w-full mt-2" suppressHydrationWarning>
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="mt-2 w-full border border-[#84CC16]/45 bg-[#ECF7DB] text-base font-semibold tracking-tight text-neutral-900 antialiased shadow-none transition-colors hover:bg-[#dff3c4] hover:text-neutral-900"
+                  suppressHydrationWarning
+                >
                   <Link href="/login" onClick={() => setIsOpen(false)}>
-                    Попробовать
+                    Вход / Регистрация
                   </Link>
                 </Button>
               ) : null}

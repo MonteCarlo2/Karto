@@ -6,8 +6,8 @@
     "dev": "next dev",
     "prebuild": "node scripts/generate-favicon-ico.js",
     "build": "next build && node scripts/copy-standalone.js",
-    "start": "node .next/standalone/server.js",
-    "start:prod": "node .next/standalone/server.js",
+    "start": "node -e \"const path=require('path'); process.env.NEXT_CACHE_DIR = process.env.NEXT_CACHE_DIR ?? (process.platform === 'win32' ? path.join(process.cwd(), '.next-cache') : '/tmp'); require('./.next/standalone/server.js');\"",
+    "start:prod": "node -e \"const path=require('path'); process.env.NEXT_CACHE_DIR = process.env.NEXT_CACHE_DIR ?? (process.platform === 'win32' ? path.join(process.cwd(), '.next-cache') : '/tmp'); require('./.next/standalone/server.js');\"",
     "lint": "eslint"
   },
   "dependencies": {
@@ -30,6 +30,7 @@
     "lottie-react": "^2.4.1",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
+    "nodemailer": "^8.0.4",
     "ogl": "^1.0.11",
     "openai": "^6.16.0",
     "react": "19.2.3",
@@ -47,6 +48,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/nodemailer": "^7.0.11",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

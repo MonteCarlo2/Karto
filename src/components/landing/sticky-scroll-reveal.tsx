@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import Image from "next/image"
 import { 
   motion, 
   useMotionValue, 
@@ -49,25 +48,56 @@ const STEPS = [
 export function StickyScrollReveal() {
   const containerRef = React.useRef<HTMLDivElement>(null)
   const inView = useInView(containerRef, { amount: 0.3, once: true })
-  
+  const controlsRef = React.useRef<{ stop: () => void } | null>(null)
+
   const time = useMotionValue(0)
   const [activeStep, setActiveStep] = React.useState(0)
 
-  React.useEffect(() => {
-    if (!inView) return
-    // Более спокойный и равномерный цикл
+  const startLoopFromZero = React.useCallback(() => {
+    controlsRef.current?.stop()
+    time.set(0)
     const controls = animate(time, 1, {
       duration: 28,
       repeat: Infinity,
       ease: "linear",
-      repeatDelay: 0 
+      repeatDelay: 0,
     })
-    return () => controls.stop()
-  }, [inView, time])
+    controlsRef.current = controls
+  }, [time])
+
+  /** Переход к выбранному шагу: таймлайн прыгает в нужный квартал и дальше играет как обычно. */
+  const jumpToStep = React.useCallback(
+    (stepIndex: number) => {
+      controlsRef.current?.stop()
+      const t0 = Math.min(0.97, stepIndex / 4 + 0.02)
+      time.set(t0)
+      setActiveStep(stepIndex)
+      const remaining = 1 - t0
+      const duration = Math.max(0.2, 28 * remaining)
+      const controls = animate(time, 1, {
+        duration,
+        ease: "linear",
+        onComplete: () => {
+          time.set(0)
+          startLoopFromZero()
+        },
+      })
+      controlsRef.current = controls
+    },
+    [time, startLoopFromZero]
+  )
+
+  React.useEffect(() => {
+    if (!inView) return
+    startLoopFromZero()
+    return () => {
+      controlsRef.current?.stop()
+      controlsRef.current = null
+    }
+  }, [inView, startLoopFromZero])
 
   useMotionValueEvent(time, "change", (v) => {
-    const step = Math.min(3, Math.floor(v * 4))
-    if (step !== activeStep) setActiveStep(step)
+    setActiveStep(Math.min(3, Math.floor(v * 4)))
   })
 
   // --- ЛОГИКА ТАЙМИНГОВ ---
@@ -159,9 +189,12 @@ export function StickyScrollReveal() {
             {STEPS.map((step, i) => {
               const isActive = i === activeStep
               return (
-                <div 
+                <button
                   key={step.id}
-                  className={`pl-6 transition-all duration-500 relative cursor-default group`}
+                  type="button"
+                  onClick={() => jumpToStep(i)}
+                  className="pl-6 transition-all duration-500 relative cursor-pointer group text-left w-full rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1F4E3D]/40 focus-visible:ring-offset-2"
+                  aria-current={isActive ? "step" : undefined}
                 >
                   {/* Индикатор слева */}
                   <div className={`absolute left-0 top-0 bottom-0 w-[2px] transition-all duration-500 rounded-full ${isActive ? 'bg-[#1F4E3D]' : 'bg-gray-200 group-hover:bg-gray-300'}`} 
@@ -194,7 +227,7 @@ export function StickyScrollReveal() {
                       {step.description}
                     </p>
                   </div>
-                </div>
+                </button>
               )
             })}
             

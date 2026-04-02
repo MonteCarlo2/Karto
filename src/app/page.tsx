@@ -42,6 +42,16 @@ const FAQSectionKarto = dynamic(
   { loading: () => <section className="min-h-[30vh] bg-background" aria-hidden /> }
 )
 
+/** Не трогаем hash/query, пока Supabase забирает сессию из URL (иначе ломается вход после magic link / OAuth). */
+function urlHasPendingSupabaseAuth(): boolean {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hash;
+  if (h.includes("access_token") || h.includes("refresh_token")) return true;
+  const q = new URLSearchParams(window.location.search);
+  if (q.has("code")) return true;
+  return false;
+}
+
 function HomeContent() {
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -49,28 +59,32 @@ function HomeContent() {
   const { showToast } = useToast();
 
   useEffect(() => {
+    let cancelled = false;
     const checkUser = async () => {
       try {
         const supabase = createBrowserClient();
         const { data: { session } } = await supabase.auth.getSession();
+        if (cancelled) return;
         setUser(session?.user || null);
+        if (searchParams.get("welcome_back") === "1") {
+          if (session) {
+            showToast({
+              type: "success",
+              message: "С возвращением! Вы вошли в свой аккаунт.",
+            });
+          }
+          const u = new URL(window.location.href);
+          u.searchParams.delete("welcome_back");
+          window.history.replaceState({}, "", u.pathname + u.search + u.hash);
+        }
       } catch (error) {
         console.warn("Ошибка проверки сессии:", error);
       }
     };
     checkUser();
-  }, []);
-
-  // Сообщение при входе по уже привязанному Яндекс-аккаунту (аккаунт уже был зарегистрирован)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (searchParams.get("welcome_back") === "1") {
-      showToast({
-        type: "success",
-        message: "С возвращением! Вы вошли в свой аккаунт.",
-      });
-      window.history.replaceState({}, "", window.location.pathname + window.location.hash || "");
-    }
+    return () => {
+      cancelled = true;
+    };
   }, [searchParams, showToast]);
 
   // Обновление URL при прокрутке по секциям (как это работает, цена, вопросы), чтобы при повторном клике «Цена» происходил переход
@@ -79,6 +93,7 @@ function HomeContent() {
     const sectionIds = ["hero", "how-it-works", "pricing", "faq"];
     let ticking = false;
     const updateHash = () => {
+      if (urlHasPendingSupabaseAuth()) return;
       const y = window.scrollY + window.innerHeight * 0.35;
       let current = "";
       for (let i = sectionIds.length - 1; i >= 0; i--) {

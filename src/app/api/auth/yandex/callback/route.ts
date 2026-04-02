@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { getYandexRedirectUri } from "@/lib/auth/yandex-redirect-uri";
 
 const YANDEX_TOKEN_URL = "https://oauth.yandex.ru/token";
 const YANDEX_USER_INFO_URL = "https://login.yandex.ru/info?format=json";
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const redirectUri = `${baseUrl}/api/auth/yandex/callback`;
+  const redirectUri = getYandexRedirectUri(baseUrl);
 
   if (error) {
     const desc = searchParams.get("error_description") || error;

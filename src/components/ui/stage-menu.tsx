@@ -1,5 +1,18 @@
 "use client";
 
+import Link from "next/link";
+import { Fragment } from "react";
+
+const STUDIO_HREF: Record<
+  "understanding" | "description" | "visual" | "price",
+  string
+> = {
+  understanding: "/studio/understanding",
+  description: "/studio/description",
+  visual: "/studio/visual",
+  price: "/studio/price",
+};
+
 interface StageMenuProps {
   currentStage: "understanding" | "description" | "visual" | "price";
   position?: "left" | "right"; // Позиция: left для visual, right для остальных
@@ -12,10 +25,10 @@ interface StageMenuProps {
 
 export function StageMenu({ currentStage, position = "right", visualQuota = null }: StageMenuProps) {
   const stages = [
-    { id: "understanding", label: "Понимание" },
-    { id: "description", label: "Описание" },
-    { id: "visual", label: "Визуал" },
-    { id: "price", label: "Цена" },
+    { id: "understanding" as const, label: "Понимание" },
+    { id: "description" as const, label: "Описание" },
+    { id: "visual" as const, label: "Визуал" },
+    { id: "price" as const, label: "Цена" },
   ];
 
   const positionClass = position === "left" ? "left-8" : "right-8";
@@ -33,37 +46,52 @@ export function StageMenu({ currentStage, position = "right", visualQuota = null
           border: "1px solid rgba(0, 0, 0, 0.1)",
           boxShadow: "0 4px 16px rgba(0, 0, 0, 0.1)",
         }}>
-          {stages.map((stage, index) => (
-            <div key={stage.id} className="flex items-center gap-2" suppressHydrationWarning>
-              <div
-                className="w-2 h-2 rounded-full transition-all"
-                suppressHydrationWarning
-                style={{
-                  backgroundColor: currentStage === stage.id
-                    ? "#2E5A43"
-                    : "rgba(0, 0, 0, 0.2)",
-                  boxShadow: currentStage === stage.id
-                    ? "0 0 8px rgba(46, 90, 67, 0.4)"
-                    : "none",
-                }}
-              />
-              <span
-                className="text-sm font-medium transition-all"
-                suppressHydrationWarning
-                style={{
-                  color: currentStage === stage.id
-                    ? "#2E5A43"
-                    : "rgba(0, 0, 0, 0.6)",
-                  fontSize: currentStage === stage.id ? "15px" : "14px",
-                }}
-              >
-                {stage.label}
-              </span>
-              {index < stages.length - 1 && (
-                <div className="w-8 h-px mx-2" suppressHydrationWarning style={{ backgroundColor: "rgba(0, 0, 0, 0.1)" }} />
-              )}
-            </div>
-          ))}
+          {stages.map((stage, index) => {
+            const isActive = currentStage === stage.id;
+            return (
+              <Fragment key={stage.id}>
+                <Link
+                  href={STUDIO_HREF[stage.id]}
+                  className="flex items-center gap-2 rounded-full px-1.5 py-0.5 -mx-0.5 transition-colors outline-none hover:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-[#2E5A43]/35 focus-visible:ring-offset-1"
+                  aria-current={isActive ? "step" : undefined}
+                  suppressHydrationWarning
+                >
+                  <div
+                    className="w-2 h-2 rounded-full transition-all shrink-0"
+                    suppressHydrationWarning
+                    style={{
+                      backgroundColor: isActive
+                        ? "#2E5A43"
+                        : "rgba(0, 0, 0, 0.2)",
+                      boxShadow: isActive
+                        ? "0 0 8px rgba(46, 90, 67, 0.4)"
+                        : "none",
+                    }}
+                  />
+                  <span
+                    className="text-sm font-medium transition-all whitespace-nowrap"
+                    suppressHydrationWarning
+                    style={{
+                      color: isActive
+                        ? "#2E5A43"
+                        : "rgba(0, 0, 0, 0.6)",
+                      fontSize: isActive ? "15px" : "14px",
+                    }}
+                  >
+                    {stage.label}
+                  </span>
+                </Link>
+                {index < stages.length - 1 && (
+                  <div
+                    className="w-8 h-px mx-2 shrink-0"
+                    suppressHydrationWarning
+                    style={{ backgroundColor: "rgba(0, 0, 0, 0.1)" }}
+                    aria-hidden
+                  />
+                )}
+              </Fragment>
+            );
+          })}
         </div>
         {visualQuota && currentStage === "visual" && (
           <div

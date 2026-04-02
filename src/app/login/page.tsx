@@ -29,6 +29,26 @@ function LoginContent() {
   const [isSendingReset, setIsSendingReset] = useState(false);
   const [consentPersonalData, setConsentPersonalData] = useState(false);
 
+  /** Подтверждение email 4-значным кодом после регистрации */
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [pendingPassword, setPendingPassword] = useState("");
+  const [verifyCode, setVerifyCode] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendClicksUsed, setResendClicksUsed] = useState(0);
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [resendBusy, setResendBusy] = useState(false);
+  const [verifyModalError, setVerifyModalError] = useState<string | null>(null);
+  const maxResendClicks = 2;
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setInterval(() => {
+      setResendCooldown((s) => (s <= 1 ? 0 : s - 1));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [resendCooldown]);
+
   // Функции валидации пароля
   const checkPasswordRequirements = (pwd: string) => {
     return {
@@ -210,135 +230,225 @@ function LoginContent() {
       const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
       if (!supabaseUrl || !supabaseAnonKey) {
-        throw new Error("Supabase не настроен. Пожалуйста, добавьте NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY в .env.local");
+        setError(
+          "Supabase не настроен. Добавьте NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY в .env.local"
+        );
+        return;
       }
 
       const supabase = createBrowserClient();
-      
+
       if (isLogin) {
-        // Вход
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { data, error: signInErr } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
-        if (error) throw error;
+        if (signInErr) {
+          const code = (signInErr as { code?: string }).code;
+          const msg = (signInErr.message || "").toLowerCase();
+          if (
+            code === "email_not_confirmed" ||
+            msg.includes("email not confirmed") ||
+            msg.includes("email address not confirmed")
+          ) {
+            setError(null);
+            showNotification(
+              "Этот email ещё не подтверждён. Откройте вкладку «Регистрация», введите тот же email и пароль — мы отправим код на почту; после ввода кода вы войдёте в аккаунт.",
+              "info"
+            );
+            return;
+          }
+          if (msg.includes("invalid login") || msg.includes("invalid credentials")) {
+            setError("Неверный email или пароль");
+            return;
+          }
+          setError(signInErr.message || "Не удалось войти");
+          return;
+        }
+
         if (data.user) {
           router.push("/");
         }
-      } else {
-        // Регистрация
-        // Валидация email
-        if (!isValidEmail(email)) {
-          throw new Error("Введите корректный email адрес");
-        }
-
-        // Валидация пароля
-        const requirements = checkPasswordRequirements(password);
-        if (!requirements.minLength) {
-          throw new Error("Пароль должен содержать минимум 8 символов");
-        }
-        if (!requirements.maxLength) {
-          throw new Error("Пароль не должен превышать 128 символов");
-        }
-        if (!requirements.onlyEnglish) {
-          throw new Error("Пароль должен содержать только английские буквы");
-        }
-        if (!requirements.noSpaces) {
-          throw new Error("Пароль не должен содержать пробелы");
-        }
-        if (!requirements.hasUpperCase) {
-          throw new Error("Пароль должен содержать заглавную букву");
-        }
-        if (!requirements.hasDigit) {
-          throw new Error("Пароль должен содержать цифру");
-        }
-
-        if (password !== confirmPassword) {
-          throw new Error("Пароли не совпадают");
-        }
-        
-        // Регистрируем пользователя
-        // Supabase автоматически отправит письмо подтверждения через стандартный SMTP
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              name: name,
-              consent_personal_data: true,
-              consent_personal_data_at: new Date().toISOString(),
-            },
-            emailRedirectTo: `${window.location.origin}/`,
-          },
-        });
-
-        // Если пользователь создан, Supabase автоматически отправил письмо
-        if (data.user) {
-          // Supabase при существующем email может вернуть user без error, но identities пустой
-          const identities = (data.user as { identities?: unknown[] }).identities;
-          if (!identities || identities.length === 0) {
-            setError("Пользователь с таким email уже зарегистрирован. Войдите в аккаунт или восстановите пароль.");
-            return;
-          }
-          setError(null);
-          showNotification(
-            "Регистрация успешна! Пожалуйста, проверьте вашу почту и подтвердите email адрес.",
-            "success"
-          );
-
-          setName("");
-          setEmail("");
-          setPassword("");
-          setConfirmPassword("");
-          setConsentPersonalData(false);
-          setIsLogin(true);
-        } else if (error) {
-          throw error;
-        }
+        return;
       }
-    } catch (err: any) {
-      // Более понятные сообщения об ошибках
-      console.error("Ошибка регистрации:", err);
-      
-      if (err.message?.includes("Failed to fetch") || err.message?.includes("network") || err.message?.includes("ERR_NAME_NOT_RESOLVED")) {
-        setError("Ошибка подключения. Проверьте настройки Supabase в .env.local");
-      } else if (err.message?.includes("Invalid login credentials") || err.message?.includes("Invalid credentials")) {
-        setError("Неверный email или пароль");
-      } else if (
-        err.message?.includes("User already registered") ||
-        err.message?.includes("already registered") ||
-        err.message?.includes("already exists") ||
-        err.message?.toLowerCase().includes("user with this email")
-      ) {
-        setError("Пользователь с таким email уже зарегистрирован. Войдите в аккаунт или восстановите пароль.");
-      } else if (err.message?.includes("Error sending confirmation email") || 
-                 err.message?.includes("email") || 
-                 err.code === "email_not_confirmed" ||
-                 err.message?.includes("confirmation") ||
-                 err.status === 500 ||
-                 err.status === 504 ||
-                 err.message?.includes("504") ||
-                 err.message?.includes("Gateway Timeout") ||
-                 err.message?.includes("timeout") ||
-                 err.message?.includes("AuthRetryableFetchError")) {
-        // Ошибка отправки письма - возможно проблема с SMTP (504 = таймаут)
-        setError("Ошибка отправки письма подтверждения. SMTP сервер не отвечает (таймаут). Проверьте настройки SMTP в Supabase Dashboard или временно отключите Custom SMTP.");
-        showNotification(
-          "Не удалось отправить письмо подтверждения. SMTP сервер не отвечает. Проверьте настройки SMTP или временно отключите Custom SMTP в Supabase.",
-          "error"
-        );
-      } else if (err.message?.includes("Supabase не настроен")) {
-        setError("Supabase не настроен. Пожалуйста, добавьте NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY в .env.local");
-      } else if (err.message?.includes("Invalid API key")) {
-        setError("Неверный или отсутствующий ключ Supabase. В настройках хостинга (Timeweb → переменные) добавьте NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY из проекта Supabase и пересоберите приложение.");
-        showNotification("Проверьте переменные Supabase на хостинге (NEXT_PUBLIC_SUPABASE_*)", "error");
+
+      // Регистрация
+      if (!isValidEmail(email)) {
+        setError("Введите корректный email адрес");
+        return;
+      }
+
+      const requirements = checkPasswordRequirements(password);
+      if (!requirements.minLength) {
+        setError("Пароль должен содержать минимум 8 символов");
+        return;
+      }
+      if (!requirements.maxLength) {
+        setError("Пароль не должен превышать 128 символов");
+        return;
+      }
+      if (!requirements.onlyEnglish) {
+        setError("Пароль должен содержать только английские буквы");
+        return;
+      }
+      if (!requirements.noSpaces) {
+        setError("Пароль не должен содержать пробелы");
+        return;
+      }
+      if (!requirements.hasUpperCase) {
+        setError("Пароль должен содержать заглавную букву");
+        return;
+      }
+      if (!requirements.hasDigit) {
+        setError("Пароль должен содержать цифру");
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setError("Пароли не совпадают");
+        return;
+      }
+
+      const regRes = await fetch("/api/auth/register-send-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          name: name.trim(),
+        }),
+      });
+      const regData = await regRes.json().catch(() => ({}));
+      if (!regRes.ok) {
+        const apiMsg =
+          typeof regData.error === "string" ? regData.error : "Не удалось зарегистрироваться";
+        setError(apiMsg);
+        if (regRes.status >= 500) {
+          showNotification(apiMsg, "error");
+        }
+        return;
+      }
+
+      setPendingEmail(email.trim().toLowerCase());
+      setPendingPassword(password);
+      setVerifyCode("");
+      setResendClicksUsed(0);
+      setResendCooldown(0);
+      setShowVerifyModal(true);
+      setError(null);
+      setVerifyModalError(null);
+      showNotification(
+        "На вашу почту отправлен 4-значный код. Введите его в окне ниже.",
+        "success"
+      );
+      setName("");
+      setConfirmPassword("");
+      setConsentPersonalData(false);
+      setPassword("");
+    } catch (err: unknown) {
+      console.error("Ошибка входа/регистрации:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("Failed to fetch") || msg.includes("network") || msg.includes("ERR_NAME_NOT_RESOLVED")) {
+        setError("Ошибка подключения к серверу. Проверьте интернет и попробуйте снова.");
       } else {
-        setError(err.message || "Произошла ошибка при входе");
+        setError(msg || "Произошла ошибка");
       }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleVerifySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const digits = verifyCode.replace(/\D/g, "").slice(0, 4);
+    if (digits.length !== 4) {
+      setVerifyModalError("Введите все 4 цифры кода");
+      return;
+    }
+    setVerifyBusy(true);
+    setVerifyModalError(null);
+    try {
+      const res = await fetch("/api/auth/verify-signup-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: pendingEmail,
+          password: pendingPassword,
+          code: digits,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setVerifyModalError(
+          typeof data.error === "string" ? data.error : "Не удалось подтвердить код"
+        );
+        return;
+      }
+      const supabase = createBrowserClient();
+      const { error: signErr } = await supabase.auth.signInWithPassword({
+        email: pendingEmail,
+        password: pendingPassword,
+      });
+      if (signErr) {
+        setVerifyModalError(signErr.message || "Не удалось войти");
+        return;
+      }
+      setShowVerifyModal(false);
+      setPendingPassword("");
+      setVerifyCode("");
+      showNotification("Добро пожаловать в KARTO!", "success");
+      router.push("/");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Ошибка входа";
+      setVerifyModalError(msg);
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
+  const handleResendSignupCode = async () => {
+    if (resendClicksUsed >= maxResendClicks || resendCooldown > 0 || resendBusy) return;
+    setResendBusy(true);
+    setVerifyModalError(null);
+    try {
+      const res = await fetch("/api/auth/resend-signup-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: pendingEmail,
+          password: pendingPassword,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data.code === "COOLDOWN" && typeof data.error === "string") {
+          setVerifyModalError(data.error);
+        } else {
+          setVerifyModalError(
+            typeof data.error === "string" ? data.error : "Не удалось отправить код"
+          );
+        }
+        return;
+      }
+      setResendClicksUsed((n) => n + 1);
+      setResendCooldown(60);
+      showNotification("Код отправлен повторно. Проверьте почту.", "success");
+    } catch (err: unknown) {
+      setVerifyModalError(err instanceof Error ? err.message : "Ошибка отправки");
+    } finally {
+      setResendBusy(false);
+    }
+  };
+
+  const closeVerifyModal = () => {
+    setShowVerifyModal(false);
+    setPendingPassword("");
+    setVerifyCode("");
+    setResendCooldown(0);
+    setResendClicksUsed(0);
+    setVerifyModalError(null);
+    setIsLogin(true);
   };
 
   const handleYandexLogin = () => {
@@ -391,6 +501,96 @@ function LoginContent() {
     <div className="min-h-screen relative overflow-hidden" style={{ backgroundColor: "#f5f3ef" }} suppressHydrationWarning>
       {/* Уведомление */}
       {NotificationComponent}
+
+      <AnimatePresence>
+        {showVerifyModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/45 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="verify-email-title"
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.96, opacity: 0 }}
+              className="w-full max-w-md rounded-3xl border border-white/60 bg-white/95 p-8 shadow-2xl"
+            >
+              <h2 id="verify-email-title" className="text-xl font-bold text-gray-900 text-center mb-2">
+                Подтвердите email
+              </h2>
+              <p className="text-sm text-gray-600 text-center mb-6 leading-relaxed">
+                На <span className="font-medium text-gray-800">{pendingEmail}</span> отправлен{" "}
+                <strong>4-значный код</strong>. Введите его ниже — после подтверждения вы сразу войдёте в аккаунт.
+              </p>
+              <form onSubmit={handleVerifySubmit} className="space-y-5">
+                <div>
+                  <label htmlFor="signup-verify-code" className="sr-only">
+                    Код из письма
+                  </label>
+                  <input
+                    id="signup-verify-code"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={4}
+                    value={verifyCode}
+                    onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    className="w-full text-center text-3xl font-bold tracking-[0.5em] py-4 rounded-2xl border-2 border-gray-200 focus:border-[#1F4E3D] focus:ring-2 focus:ring-[#1F4E3D]/20 outline-none font-mono text-gray-900"
+                    placeholder="••••"
+                    autoFocus
+                  />
+                </div>
+                {verifyModalError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                    {verifyModalError}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={verifyBusy || verifyCode.replace(/\D/g, "").length !== 4}
+                  className="w-full bg-[#D1F85A] text-gray-900 py-3 h-12 rounded-2xl font-semibold text-base hover:bg-[#C5E84F] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-md"
+                >
+                  {verifyBusy ? (
+                    <div className="w-5 h-5 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    "Подтвердить и войти"
+                  )}
+                </button>
+              </form>
+              <div className="mt-6 flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={handleResendSignupCode}
+                  disabled={
+                    resendBusy ||
+                    verifyBusy ||
+                    resendCooldown > 0 ||
+                    resendClicksUsed >= maxResendClicks
+                  }
+                  className="w-full py-2.5 rounded-xl text-sm font-medium text-[#1F4E3D] border border-[#1F4E3D]/30 hover:bg-[#1F4E3D]/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {resendCooldown > 0
+                    ? `Отправить ещё раз через ${resendCooldown} с`
+                    : resendClicksUsed >= maxResendClicks
+                      ? "Повторные отправки исчерпаны"
+                      : `Отправить код ещё раз (осталось ${maxResendClicks - resendClicksUsed})`}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeVerifyModal}
+                  className="w-full py-2 text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Закрыть и войти позже
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {/* Фон с эффектом птиц */}
       <div ref={vantaRef} className="absolute inset-0 w-full h-full" suppressHydrationWarning />
@@ -777,7 +977,7 @@ function LoginContent() {
             )}
 
             {/* Ошибка */}
-            {error && (
+            {error && !showVerifyModal && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
                 {error}
               </div>

@@ -13,6 +13,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const KIE_TASK_BASE_URL = "https://api.kie.ai";
 const KIE_UPLOAD_BASE_URLS = [
   process.env.KIE_UPLOAD_BASE_URL,
@@ -124,19 +134,21 @@ async function createTask(params: {
 async function getTaskResult(taskId: string, maxWaitTime: number = 300000): Promise<string> {
   const apiKey = getKieAiApiKey();
   const startTime = Date.now();
-  const pollInterval = 1000; // Опрашиваем каждую секунду — быстрее узнаём о готовности (было 2 с)
+  const pollInterval = parseInt(process.env.KIE_POLL_INTERVAL_MS ?? "1000", 10); // опрос реже/чаще без правки кода
+  const recordInfoTimeoutMs = parseInt(process.env.KIE_RECORDINFO_TIMEOUT_MS ?? "15000", 10); // таймаут именно на HTTP запрос к recordInfo
 
   console.log("⏳ [KIE AI] Ожидаем результат задачи:", taskId);
 
   while (Date.now() - startTime < maxWaitTime) {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${KIE_TASK_BASE_URL}/api/v1/jobs/recordInfo?taskId=${taskId}`,
       {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
         },
-      }
+      },
+      recordInfoTimeoutMs
     );
 
     if (!response.ok) {
@@ -204,44 +216,71 @@ export async function generateWithKieAi(
     console.log(`🖼️ Референсное изображение: добавлено (${count} шт.)`);
   }
 
-  try {
-    let imageArray: string[] | undefined;
-    if (imageInput) {
-      imageArray = Array.isArray(imageInput) ? imageInput : [imageInput];
+  const maxWaitTimeMs = parseInt(process.env.KIE_TASK_MAX_WAIT_MS ?? "300000", 10);
+  const maxAttempts = parseInt(process.env.KIE_GENERATION_ATTEMPTS ?? "2", 10);
+  const retryBackoffMs = parseInt(process.env.KIE_GENERATION_RETRY_BACKOFF_MS ?? "2500", 10);
+
+  // ВАЖНО: если пользователь дал референсы — используем их во ВСЕХ попытках.
+  // Никогда не "урезаем" референсы ради успеха: либо успешно с референсом, либо ошибка.
+  const imageArray = imageInput
+    ? (Array.isArray(imageInput) ? imageInput : [imageInput])
+    : undefined;
+
+  let lastError: any = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const { taskId, referenceCount } = await createTask({
+        prompt: prompt.trim(),
+        aspectRatio,
+        outputFormat,
+        resolution: "4K",
+        imageInput: imageArray,
+      });
+
+      const imageUrl = await getTaskResult(taskId, maxWaitTimeMs);
+
+      console.log("✅ [KIE AI] Генерация завершена успешно (attempt", attempt + 1, "/", maxAttempts, ")");
+      return { imageUrl, referenceUsed: referenceCount > 0 };
+    } catch (error: any) {
+      lastError = error;
+
+      console.error("❌ [KIE AI] Ошибка (attempt", attempt + 1, "/", maxAttempts, "):", error);
+      console.error("📋 Детали ошибки:", {
+        message: error?.message,
+        stack: error?.stack?.substring?.(0, 500),
+      });
+
+      const errorMessage = error?.message || String(error);
+
+      // Эти ошибки не ретраим — они требуют внешнего вмешательства/другой стратегии.
+      if (errorMessage.includes("401") || errorMessage.includes("access")) {
+        throw new Error("Ошибка авторизации KIE AI. Проверьте KIE_AI_API_KEY в .env.local");
+      }
+      if (errorMessage.includes("429") || errorMessage.includes("rate limit")) {
+        throw new Error("Превышен лимит запросов KIE AI. Подождите немного и попробуйте снова.");
+      }
+
+      const isRetryable =
+        errorMessage.includes("Internal Error") ||
+        errorMessage.includes("Please try again later") ||
+        errorMessage.includes("превышено время ожидания") ||
+        errorMessage.includes("Превышено время ожидания") ||
+        errorMessage.toLowerCase().includes("timeout") ||
+        errorMessage.toLowerCase().includes("timed out");
+
+      if (!isRetryable || attempt >= maxAttempts - 1) {
+        throw new Error(`KIE AI ошибка: ${errorMessage}`);
+      }
+
+      // Временная просадка: ждём и пробуем заново (с упрощением референсов в следующих попытках)
+      const backoff = retryBackoffMs * (attempt + 1);
+      console.warn(`⚠️ [KIE AI] Ретраим генерации через ${backoff}ms (attempt ${attempt + 2}/${maxAttempts})`);
+      await sleep(backoff);
     }
-
-    const { taskId, referenceCount } = await createTask({
-      prompt: prompt.trim(),
-      aspectRatio,
-      outputFormat,
-      resolution: "4K",
-      imageInput: imageArray,
-    });
-
-    const imageUrl = await getTaskResult(taskId);
-
-    console.log("✅ [KIE AI] Генерация завершена успешно");
-    return { imageUrl, referenceUsed: referenceCount > 0 };
-
-  } catch (error: any) {
-    console.error("❌ [KIE AI] Ошибка:", error);
-    console.error("📋 Детали ошибки:", {
-      message: error.message,
-      stack: error.stack?.substring(0, 500),
-    });
-
-    // Более информативная ошибка
-    const errorMessage = error.message || String(error);
-    if (errorMessage.includes("401") || errorMessage.includes("access")) {
-      throw new Error("Ошибка авторизации KIE AI. Проверьте KIE_AI_API_KEY в .env.local");
-    }
-    
-    if (errorMessage.includes("429") || errorMessage.includes("rate limit")) {
-      throw new Error("Превышен лимит запросов KIE AI. Подождите немного и попробуйте снова.");
-    }
-
-    throw new Error(`KIE AI ошибка: ${errorMessage}`);
   }
+
+  throw new Error(`KIE AI ошибка: ${lastError?.message || String(lastError)}`);
 }
 
 /** Загружает буфер в Supabase Storage и возвращает публичный URL (KIE сможет скачать по нему). */
