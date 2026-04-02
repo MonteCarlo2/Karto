@@ -9,6 +9,23 @@ import { createBrowserClient } from "@/lib/supabase/client";
 import Image from "next/image";
 import { useNotification } from "@/components/ui/notification";
 
+const AUTH_API_TIMEOUT_MS = 45_000;
+
+async function fetchAuthApi(url: string, body: object): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AUTH_API_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -310,14 +327,10 @@ function LoginContent() {
         return;
       }
 
-      const regRes = await fetch("/api/auth/register-send-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-          name: name.trim(),
-        }),
+      const regRes = await fetchAuthApi("/api/auth/register-send-code", {
+        email: email.trim(),
+        password,
+        name: name.trim(),
       });
       const regData = await regRes.json().catch(() => ({}));
       if (!regRes.ok) {
@@ -348,6 +361,15 @@ function LoginContent() {
       setPassword("");
     } catch (err: unknown) {
       console.error("Ошибка входа/регистрации:", err);
+      const isAbort =
+        (err instanceof DOMException && err.name === "AbortError") ||
+        (err instanceof Error && err.name === "AbortError");
+      if (isAbort) {
+        setError(
+          "Сервер не ответил вовремя. Проверьте связь или попробуйте позже. Если проблема повторяется — напишите в поддержку."
+        );
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("Failed to fetch") || msg.includes("network") || msg.includes("ERR_NAME_NOT_RESOLVED")) {
         setError("Ошибка подключения к серверу. Проверьте интернет и попробуйте снова.");
@@ -369,14 +391,10 @@ function LoginContent() {
     setVerifyBusy(true);
     setVerifyModalError(null);
     try {
-      const res = await fetch("/api/auth/verify-signup-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: pendingEmail,
-          password: pendingPassword,
-          code: digits,
-        }),
+      const res = await fetchAuthApi("/api/auth/verify-signup-code", {
+        email: pendingEmail,
+        password: pendingPassword,
+        code: digits,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -400,8 +418,16 @@ function LoginContent() {
       showNotification("Добро пожаловать в KARTO!", "success");
       router.push("/");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Ошибка входа";
-      setVerifyModalError(msg);
+      const isAbort =
+        (err instanceof DOMException && err.name === "AbortError") ||
+        (err instanceof Error && err.name === "AbortError");
+      setVerifyModalError(
+        isAbort
+          ? "Таймаут запроса. Попробуйте ещё раз."
+          : err instanceof Error
+            ? err.message
+            : "Ошибка входа"
+      );
     } finally {
       setVerifyBusy(false);
     }
@@ -412,13 +438,9 @@ function LoginContent() {
     setResendBusy(true);
     setVerifyModalError(null);
     try {
-      const res = await fetch("/api/auth/resend-signup-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: pendingEmail,
-          password: pendingPassword,
-        }),
+      const res = await fetchAuthApi("/api/auth/resend-signup-code", {
+        email: pendingEmail,
+        password: pendingPassword,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -435,7 +457,10 @@ function LoginContent() {
       setResendCooldown(60);
       showNotification("Код отправлен повторно. Проверьте почту.", "success");
     } catch (err: unknown) {
-      setVerifyModalError(err instanceof Error ? err.message : "Ошибка отправки");
+      const isAbort =
+        (err instanceof DOMException && err.name === "AbortError") ||
+        (err instanceof Error && err.name === "AbortError");
+      setVerifyModalError(isAbort ? "Таймаут запроса. Попробуйте ещё раз." : err instanceof Error ? err.message : "Ошибка отправки");
     } finally {
       setResendBusy(false);
     }

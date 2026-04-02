@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { findAuthUserByEmail } from "@/lib/auth/find-auth-user-by-email";
 import {
   generateFourDigitCode,
   hashSignupCode,
@@ -7,28 +8,6 @@ import {
   SIGNUP_CODE_TTL_MS,
 } from "@/lib/auth/signup-verification";
 import { sendSignupVerificationEmail } from "@/lib/send-signup-verification-email";
-
-async function findUserByEmail(
-  admin: ReturnType<typeof createServerClient>,
-  email: string
-): Promise<{
-  id: string;
-  email?: string;
-  email_confirmed_at?: string | null;
-} | null> {
-  const lower = email.trim().toLowerCase();
-  let page = 1;
-  const perPage = 1000;
-  while (page <= 20) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-    if (error) throw error;
-    const u = data.users.find((x) => x.email?.toLowerCase() === lower);
-    if (u) return u;
-    if (data.users.length < perPage) break;
-    page++;
-  }
-  return null;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -79,7 +58,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const existing = await findUserByEmail(supabase, email);
+      const existing = await findAuthUserByEmail(supabase, email);
       if (!existing) {
         return NextResponse.json(
           { success: false, error: "Пользователь с таким email уже зарегистрирован. Войдите или восстановите пароль." },

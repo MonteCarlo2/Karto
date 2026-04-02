@@ -1,32 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAnonServerClient } from "@/lib/supabase/anon-server";
+import { findAuthUserByEmail } from "@/lib/auth/find-auth-user-by-email";
 import {
   hashSignupCode,
   MAX_SIGNUP_CODE_ATTEMPTS,
 } from "@/lib/auth/signup-verification";
-
-async function findUserByEmail(
-  admin: ReturnType<typeof createServerClient>,
-  email: string
-): Promise<{
-  id: string;
-  email?: string;
-  email_confirmed_at?: string | null;
-} | null> {
-  const lower = email.trim().toLowerCase();
-  let page = 1;
-  const perPage = 1000;
-  while (page <= 20) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-    if (error) throw error;
-    const u = data.users.find((x) => x.email?.toLowerCase() === lower);
-    if (u) return u;
-    if (data.users.length < perPage) break;
-    page++;
-  }
-  return null;
-}
 
 function isUnconfirmedLoginError(err: { message?: string } | null): boolean {
   const m = (err?.message || "").toLowerCase();
@@ -74,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createServerClient();
-    const user = await findUserByEmail(supabase, email);
+    const user = await findAuthUserByEmail(supabase, email);
     if (!user) {
       return NextResponse.json({ success: false, error: "Пользователь не найден" }, { status: 404 });
     }

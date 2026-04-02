@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { createAnonServerClient } from "@/lib/supabase/anon-server";
+import { findAuthUserByEmail } from "@/lib/auth/find-auth-user-by-email";
 import {
   generateFourDigitCode,
   hashSignupCode,
@@ -9,28 +10,6 @@ import {
   SIGNUP_CODE_TTL_MS,
 } from "@/lib/auth/signup-verification";
 import { sendSignupVerificationEmail } from "@/lib/send-signup-verification-email";
-
-async function findUserByEmail(
-  admin: ReturnType<typeof createServerClient>,
-  email: string
-): Promise<{
-  id: string;
-  email?: string;
-  email_confirmed_at?: string | null;
-} | null> {
-  const lower = email.trim().toLowerCase();
-  let page = 1;
-  const perPage = 1000;
-  while (page <= 20) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-    if (error) throw error;
-    const u = data.users.find((x) => x.email?.toLowerCase() === lower);
-    if (u) return u;
-    if (data.users.length < perPage) break;
-    page++;
-  }
-  return null;
-}
 
 function isUnconfirmedLoginError(err: { message?: string } | null): boolean {
   const m = (err?.message || "").toLowerCase();
@@ -74,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createServerClient();
-    const user = await findUserByEmail(supabase, email);
+    const user = await findAuthUserByEmail(supabase, email);
     if (!user || user.email_confirmed_at) {
       return NextResponse.json(
         { success: false, error: "Не удалось отправить код. Проверьте email и пароль." },
@@ -142,11 +121,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Ошибка сохранения кода" }, { status: 500 });
     }
 
-    const meta = user as { user_metadata?: { name?: string } };
+    const { data: adminUser } = await supabase.auth.admin.getUserById(user.id);
+    const nameFromMeta = adminUser?.user?.user_metadata?.name as string | undefined;
     const sent = await sendSignupVerificationEmail({
       to: email,
       code: plainCode,
-      name: meta?.user_metadata?.name,
+      name: nameFromMeta,
     });
     if (!sent.ok) {
       return NextResponse.json(
