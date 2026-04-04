@@ -894,6 +894,25 @@ export default function FreeGeneration() {
     setPhotoGuidePointerDismissed(true);
   };
 
+  /** Только dev: в консоли вызовите `__kartoResetGuideHints()` чтобы снова увидеть стрелку к инструкции. */
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    const w = window as Window & { __kartoResetGuideHints?: () => void };
+    w.__kartoResetGuideHints = () => {
+      try {
+        localStorage.removeItem(LS_VIDEO_GUIDE_POINTER);
+        localStorage.removeItem(LS_PHOTO_GUIDE_POINTER);
+      } catch {
+        /* ignore */
+      }
+      setVideoGuidePointerDismissed(false);
+      setPhotoGuidePointerDismissed(false);
+    };
+    return () => {
+      delete w.__kartoResetGuideHints;
+    };
+  }, []);
+
   const feedStorageKey = user?.id ? `karto-feed-${user.id}` : "karto-feed-anon";
   const hasLoadedFeedRef = useRef(false);
   const videoMenuRef = useRef<HTMLDivElement | null>(null);
