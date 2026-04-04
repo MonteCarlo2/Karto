@@ -1,11 +1,12 @@
 "use client";
 
+import { ArrowUpFromLine } from "lucide-react";
+
 /**
- * Подсказка под кнопкой «инструкция»: плавная стрелка вверх + текст на фоне сетки.
- * Закрытие только через открытие инструкции (обработчик на кнопке в родителе).
+ * Подсказка под кнопкой «инструкция»: готовая иконка Lucide (ровный штрих) + текст.
+ * Скрывается при открытии инструкции в родителе.
  */
 export function GuidePointerOverlay({
-  /** Необязательная короткая строчка мельче основного текста */
   subtitle,
 }: {
   subtitle?: string;
@@ -16,29 +17,12 @@ export function GuidePointerOverlay({
       aria-live="polite"
     >
       <div className="relative flex flex-col items-center">
-        <div className="-mb-0.5 -mt-4 text-[#1F4E3D]/72" aria-hidden>
-          <svg
-            width="56"
-            height="88"
-            viewBox="0 0 56 88"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="overflow-visible"
-          >
-            {/* Плавная S-линия вверх, один непрерывный контур без «ломаных» сегментов */}
-            <path
-              d="M 28 88 C 10 82 4 56 20 42 C 36 28 44 32 28 18"
-              stroke="currentColor"
-              strokeWidth="5.75"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
-            <path
-              d="M 28 2.5 L 16.25 18 L 39.75 18 Z"
-              fill="currentColor"
-            />
-          </svg>
+        <div className="-mb-1 -mt-3 text-[#1F4E3D]/75" aria-hidden>
+          <ArrowUpFromLine
+            className="h-[4.85rem] w-11"
+            strokeWidth={2.75}
+            absoluteStrokeWidth
+          />
         </div>
 
         <p
