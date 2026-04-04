@@ -169,10 +169,6 @@ export default function AdminNotificationsPage() {
     return (
       <div className="min-h-screen bg-[#f5f3ef] flex flex-col items-center justify-center px-4">
         <p className="text-[#374151] mb-4 text-center max-w-lg whitespace-pre-wrap">{gateNotice}</p>
-        <p className="text-sm text-[#6b7280] mb-4 text-center max-w-md">
-          Без настройки <code className="bg-white px-1 rounded text-xs">ADMIN_STATS_EMAILS</code> или{" "}
-          <code className="bg-white px-1 rounded text-xs">ADMIN_STATS_SECRET</code> форма отправки недоступна.
-        </p>
         <Link href="/" className="text-[#1F4E3D] font-medium underline">
           На главную
         </Link>

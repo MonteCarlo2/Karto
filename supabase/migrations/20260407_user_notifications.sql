@@ -27,6 +27,9 @@ COMMENT ON TABLE public.user_notifications IS 'Уведомления польз
 
 ALTER TABLE public.user_notifications ENABLE ROW LEVEL SECURITY;
 
+-- Повторный запуск скрипта в SQL Editor: политика уже может существовать
+DROP POLICY IF EXISTS "user_notifications_select_own" ON public.user_notifications;
+
 CREATE POLICY "user_notifications_select_own"
   ON public.user_notifications
   FOR SELECT
