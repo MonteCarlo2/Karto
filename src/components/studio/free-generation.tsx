@@ -36,6 +36,11 @@ import {
   VideoGenerationGuideModal,
   VideoGenerationGuideTrigger,
 } from "@/components/studio/video-generation-guide-modal";
+import {
+  PhotoGenerationGuideModal,
+  PhotoGenerationGuideTrigger,
+} from "@/components/studio/photo-generation-guide-modal";
+import { GuidePointerOverlay } from "@/components/studio/guide-pointer-overlay";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import {
   computeFreeVideoTokenCost,
@@ -48,6 +53,9 @@ function galleryImageUrl(url: string): string {
   const sep = url.includes("?") ? "&" : "?";
   return `${url}${sep}w=400`;
 }
+
+const LS_VIDEO_GUIDE_POINTER = "karto_dismiss_video_guide_pointer_v1";
+const LS_PHOTO_GUIDE_POINTER = "karto_dismiss_photo_guide_pointer_v1";
 
 /** Анимация генерации — органические пятна как краска (без мерцания) */
 function VideoGeneratingCard({
@@ -854,6 +862,38 @@ export default function FreeGeneration() {
   const [hasLoadedFeed, setHasLoadedFeed] = useState(false);
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const [isVideoGuideOpen, setIsVideoGuideOpen] = useState(false);
+  const [isPhotoGuideOpen, setIsPhotoGuideOpen] = useState(false);
+  /** null — до чтения localStorage (не показываем подсказку, чтобы не мигать для вернувшихся пользователей). */
+  const [videoGuidePointerDismissed, setVideoGuidePointerDismissed] = useState<boolean | null>(null);
+  const [photoGuidePointerDismissed, setPhotoGuidePointerDismissed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    try {
+      setVideoGuidePointerDismissed(localStorage.getItem(LS_VIDEO_GUIDE_POINTER) === "1");
+      setPhotoGuidePointerDismissed(localStorage.getItem(LS_PHOTO_GUIDE_POINTER) === "1");
+    } catch {
+      setVideoGuidePointerDismissed(false);
+      setPhotoGuidePointerDismissed(false);
+    }
+  }, []);
+
+  const dismissVideoGuidePointer = () => {
+    try {
+      localStorage.setItem(LS_VIDEO_GUIDE_POINTER, "1");
+    } catch {
+      /* ignore */
+    }
+    setVideoGuidePointerDismissed(true);
+  };
+  const dismissPhotoGuidePointer = () => {
+    try {
+      localStorage.setItem(LS_PHOTO_GUIDE_POINTER, "1");
+    } catch {
+      /* ignore */
+    }
+    setPhotoGuidePointerDismissed(true);
+  };
+
   const feedStorageKey = user?.id ? `karto-feed-${user.id}` : "karto-feed-anon";
   const hasLoadedFeedRef = useRef(false);
   const videoMenuRef = useRef<HTMLDivElement | null>(null);
@@ -2000,8 +2040,37 @@ export default function FreeGeneration() {
               </div>
             </div>
           </div>
-          {generationMode === "free" && mediaMode === "video" && (
-            <VideoGenerationGuideTrigger onOpen={() => setIsVideoGuideOpen(true)} />
+          {mediaMode === "video" && (
+            <div className="relative">
+              {videoGuidePointerDismissed === false && (
+                <GuidePointerOverlay
+                  message="Ознакомьтесь с инструкцией — так результат будет предсказуемее."
+                  onDismiss={dismissVideoGuidePointer}
+                />
+              )}
+              <VideoGenerationGuideTrigger
+                onOpen={() => {
+                  dismissVideoGuidePointer();
+                  setIsVideoGuideOpen(true);
+                }}
+              />
+            </div>
+          )}
+          {mediaMode === "photo" && (
+            <div className="relative">
+              {photoGuidePointerDismissed === false && (
+                <GuidePointerOverlay
+                  message="Рекомендуем прочитать про фото-режим и ограничения модели."
+                  onDismiss={dismissPhotoGuidePointer}
+                />
+              )}
+              <PhotoGenerationGuideTrigger
+                onOpen={() => {
+                  dismissPhotoGuidePointer();
+                  setIsPhotoGuideOpen(true);
+                }}
+              />
+            </div>
           )}
         </div>
       ) : (
@@ -4075,6 +4144,13 @@ export default function FreeGeneration() {
       <VideoGenerationGuideModal
         isOpen={isVideoGuideOpen}
         onClose={() => setIsVideoGuideOpen(false)}
+        contextLabel={
+          generationMode === "for-product" ? "Для товара · Видео" : "Свободное творчество · Видео"
+        }
+      />
+      <PhotoGenerationGuideModal
+        isOpen={isPhotoGuideOpen}
+        onClose={() => setIsPhotoGuideOpen(false)}
       />
     </div>
   );

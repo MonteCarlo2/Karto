@@ -106,11 +106,14 @@ function GuideExampleSlot({
 interface VideoGenerationGuideModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Подзаголовок в шапке (например «Свободное творчество» vs «Для товара»). */
+  contextLabel?: string;
 }
 
 export function VideoGenerationGuideModal({
   isOpen,
   onClose,
+  contextLabel = "Свободное творчество · Видео",
 }: VideoGenerationGuideModalProps) {
   useEffect(() => {
     if (!isOpen) return;
@@ -160,7 +163,7 @@ export function VideoGenerationGuideModal({
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#1F4E3D]/75">
-                      Свободное творчество · Видео
+                      {contextLabel}
                     </p>
                     <h2
                       id="video-guide-title"
