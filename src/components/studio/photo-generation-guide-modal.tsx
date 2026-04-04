@@ -196,15 +196,41 @@ export function PhotoGenerationGuideModal({ isOpen, onClose }: PhotoGenerationGu
   );
 }
 
-export function PhotoGenerationGuideTrigger({ onOpen }: { onOpen: () => void }) {
+export function PhotoGenerationGuideTrigger({
+  onOpen,
+  highlight = false,
+}: {
+  onOpen: () => void;
+  highlight?: boolean;
+}) {
   return (
     <motion.button
       type="button"
       onClick={onOpen}
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
-      className="group flex max-w-[11rem] flex-col items-center gap-1.5 rounded-2xl border-2 border-[#1F4E3D]/20 bg-white px-3 py-2.5 text-center shadow-md shadow-[#1F4E3D]/10 transition-colors hover:border-[#1F4E3D]/40 hover:bg-[#F0FDF4]/80"
+      animate={
+        highlight
+          ? {
+              boxShadow: [
+                "0 8px 18px rgba(31,78,61,0.12)",
+                "0 10px 24px rgba(132,204,22,0.28)",
+                "0 8px 18px rgba(31,78,61,0.12)",
+              ],
+              borderColor: [
+                "rgba(31,78,61,0.2)",
+                "rgba(132,204,22,0.62)",
+                "rgba(31,78,61,0.2)",
+              ],
+            }
+          : undefined
+      }
+      transition={highlight ? { duration: 2.1, repeat: Infinity, ease: "easeInOut" } : undefined}
+      className="group relative flex max-w-[11rem] flex-col items-center gap-1.5 rounded-2xl border-2 border-[#1F4E3D]/20 bg-white px-3 py-2.5 text-center shadow-md shadow-[#1F4E3D]/10 transition-colors hover:border-[#1F4E3D]/40 hover:bg-[#F0FDF4]/80"
     >
+      {highlight && (
+        <span className="absolute -top-1.5 -right-1.5 inline-flex h-2.5 w-2.5 rounded-full bg-[#A3E635] ring-2 ring-white" />
+      )}
       <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1F4E3D] text-white shadow-inner ring-2 ring-[#84CC16]/30">
         <ImageIcon className="h-4 w-4" />
       </span>
@@ -214,6 +240,11 @@ export function PhotoGenerationGuideTrigger({ onOpen }: { onOpen: () => void }) 
       <span className="text-[9px] font-semibold leading-snug text-gray-500 group-hover:text-gray-700">
         Инструкция по фото
       </span>
+      {highlight && (
+        <span className="text-[8px] font-semibold leading-none tracking-wide text-[#4d7c0f]">
+          Рекомендуем перед первым запуском
+        </span>
+      )}
     </motion.button>
   );
 }

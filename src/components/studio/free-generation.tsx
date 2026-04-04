@@ -40,7 +40,6 @@ import {
   PhotoGenerationGuideModal,
   PhotoGenerationGuideTrigger,
 } from "@/components/studio/photo-generation-guide-modal";
-import { GuidePointerOverlay } from "@/components/studio/guide-pointer-overlay";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import {
   computeFreeVideoTokenCost,
@@ -54,8 +53,8 @@ function galleryImageUrl(url: string): string {
   return `${url}${sep}w=400`;
 }
 
-const LS_VIDEO_GUIDE_POINTER = "karto_dismiss_video_guide_pointer_v1";
-const LS_PHOTO_GUIDE_POINTER = "karto_dismiss_photo_guide_pointer_v1";
+const LS_VIDEO_GUIDE_OPENED = "karto_seen_video_guide_v1";
+const LS_PHOTO_GUIDE_OPENED = "karto_seen_photo_guide_v1";
 
 /** Анимация генерации — органические пятна как краска (без мерцания) */
 function VideoGeneratingCard({
@@ -863,55 +862,38 @@ export default function FreeGeneration() {
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const [isVideoGuideOpen, setIsVideoGuideOpen] = useState(false);
   const [isPhotoGuideOpen, setIsPhotoGuideOpen] = useState(false);
-  /** null — до чтения localStorage (не показываем подсказку, чтобы не мигать для вернувшихся пользователей). */
-  const [videoGuidePointerDismissed, setVideoGuidePointerDismissed] = useState<boolean | null>(null);
-  const [photoGuidePointerDismissed, setPhotoGuidePointerDismissed] = useState<boolean | null>(null);
+  const [shouldHighlightVideoGuide, setShouldHighlightVideoGuide] = useState(false);
+  const [shouldHighlightPhotoGuide, setShouldHighlightPhotoGuide] = useState(false);
 
   useEffect(() => {
     try {
-      setVideoGuidePointerDismissed(localStorage.getItem(LS_VIDEO_GUIDE_POINTER) === "1");
-      setPhotoGuidePointerDismissed(localStorage.getItem(LS_PHOTO_GUIDE_POINTER) === "1");
+      setShouldHighlightVideoGuide(localStorage.getItem(LS_VIDEO_GUIDE_OPENED) !== "1");
+      setShouldHighlightPhotoGuide(localStorage.getItem(LS_PHOTO_GUIDE_OPENED) !== "1");
     } catch {
-      setVideoGuidePointerDismissed(false);
-      setPhotoGuidePointerDismissed(false);
+      setShouldHighlightVideoGuide(true);
+      setShouldHighlightPhotoGuide(true);
     }
   }, []);
 
-  const dismissVideoGuidePointer = () => {
+  const handleOpenVideoGuide = () => {
     try {
-      localStorage.setItem(LS_VIDEO_GUIDE_POINTER, "1");
+      localStorage.setItem(LS_VIDEO_GUIDE_OPENED, "1");
     } catch {
       /* ignore */
     }
-    setVideoGuidePointerDismissed(true);
-  };
-  const dismissPhotoGuidePointer = () => {
-    try {
-      localStorage.setItem(LS_PHOTO_GUIDE_POINTER, "1");
-    } catch {
-      /* ignore */
-    }
-    setPhotoGuidePointerDismissed(true);
+    setShouldHighlightVideoGuide(false);
+    setIsVideoGuideOpen(true);
   };
 
-  /** Только dev: в консоли вызовите `__kartoResetGuideHints()` чтобы снова увидеть стрелку к инструкции. */
-  useEffect(() => {
-    if (process.env.NODE_ENV !== "development") return;
-    const w = window as Window & { __kartoResetGuideHints?: () => void };
-    w.__kartoResetGuideHints = () => {
-      try {
-        localStorage.removeItem(LS_VIDEO_GUIDE_POINTER);
-        localStorage.removeItem(LS_PHOTO_GUIDE_POINTER);
-      } catch {
-        /* ignore */
-      }
-      setVideoGuidePointerDismissed(false);
-      setPhotoGuidePointerDismissed(false);
-    };
-    return () => {
-      delete w.__kartoResetGuideHints;
-    };
-  }, []);
+  const handleOpenPhotoGuide = () => {
+    try {
+      localStorage.setItem(LS_PHOTO_GUIDE_OPENED, "1");
+    } catch {
+      /* ignore */
+    }
+    setShouldHighlightPhotoGuide(false);
+    setIsPhotoGuideOpen(true);
+  };
 
   const feedStorageKey = user?.id ? `karto-feed-${user.id}` : "karto-feed-anon";
   const hasLoadedFeedRef = useRef(false);
@@ -2060,26 +2042,16 @@ export default function FreeGeneration() {
             </div>
           </div>
           {mediaMode === "video" && (
-            <div className="relative flex flex-col items-center">
-              <VideoGenerationGuideTrigger
-                onOpen={() => {
-                  dismissVideoGuidePointer();
-                  setIsVideoGuideOpen(true);
-                }}
-              />
-              {videoGuidePointerDismissed === false && <GuidePointerOverlay />}
-            </div>
+            <VideoGenerationGuideTrigger
+              onOpen={handleOpenVideoGuide}
+              highlight={shouldHighlightVideoGuide}
+            />
           )}
           {mediaMode === "photo" && (
-            <div className="relative flex flex-col items-center">
-              <PhotoGenerationGuideTrigger
-                onOpen={() => {
-                  dismissPhotoGuidePointer();
-                  setIsPhotoGuideOpen(true);
-                }}
-              />
-              {photoGuidePointerDismissed === false && <GuidePointerOverlay />}
-            </div>
+            <PhotoGenerationGuideTrigger
+              onOpen={handleOpenPhotoGuide}
+              highlight={shouldHighlightPhotoGuide}
+            />
           )}
         </div>
       ) : (
