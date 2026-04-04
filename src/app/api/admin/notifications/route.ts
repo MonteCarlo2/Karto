@@ -6,6 +6,7 @@ import {
   isAdminStatsEmail,
   isAdminStatsSecretProvided,
 } from "@/lib/admin/stats-access";
+import { isNotificationBodyEmpty } from "@/lib/sanitize-notification-html";
 
 type Category = "message" | "reply" | "news" | "promo";
 
@@ -75,8 +76,11 @@ export async function POST(request: NextRequest) {
   if (!title || title.length > 300) {
     return NextResponse.json({ error: "Заголовок обязателен (до 300 символов)" }, { status: 400 });
   }
-  if (!text || text.length > 20000) {
-    return NextResponse.json({ error: "Текст обязателен (до 20000 символов)" }, { status: 400 });
+  if (!text || isNotificationBodyEmpty(text) || text.length > 200_000) {
+    return NextResponse.json(
+      { error: "Текст обязателен (до 200 000 символов с HTML)" },
+      { status: 400 }
+    );
   }
 
   const category = CATEGORIES.includes(body.category as Category)

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { Bell, CheckCheck, ChevronDown, ExternalLink, MessageCircleReply, Send } from "lucide-react";
+import { NotificationRichBody } from "@/components/layout/notification-rich-body";
 import { AnimatePresence, motion } from "framer-motion";
 
 const LIME = "#84CC16";
@@ -334,9 +335,7 @@ export function UserNotificationBell() {
                         >
                           <div className="min-h-0 overflow-hidden">
                             <div className="ml-6 rounded-xl border border-[#2E5A43]/10 bg-[#f9fdf9]/95 px-4 pb-4 pt-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
-                              <p className="whitespace-pre-wrap text-[15px] leading-[1.58] text-neutral-800">
-                                {n.body}
-                              </p>
+                              <NotificationRichBody body={n.body} />
 
                               {n.image_urls && n.image_urls.length > 0 && (
                                 <div className="mt-4 space-y-3">

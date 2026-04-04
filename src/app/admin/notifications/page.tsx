@@ -1,9 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { ArrowLeft, ImagePlus, Send, Trash2, Upload } from "lucide-react";
+import { isNotificationBodyEmpty } from "@/lib/sanitize-notification-html";
+import { NotificationRichBody } from "@/components/layout/notification-rich-body";
+
+const NotificationBodyEditor = dynamic(
+  () =>
+    import("@/components/admin/notification-body-editor").then((m) => m.NotificationBodyEditor),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="min-h-[320px] animate-pulse rounded-lg border border-[#e5e7eb] bg-[#f9fafb]" />
+    ),
+  }
+);
 
 const MAX_IMAGES = 12;
 
@@ -20,7 +34,7 @@ export default function AdminNotificationsPage() {
   const [allowReplies, setAllowReplies] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
+  const [body, setBody] = useState("<p></p>");
   const [linkUrl, setLinkUrl] = useState("");
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const imageUrlsRef = useRef<string[]>([]);
@@ -226,6 +240,10 @@ export default function AdminNotificationsPage() {
 
   const submit = useCallback(async () => {
     setResult(null);
+    if (body.length > 200_000) {
+      setResult("Текст слишком длинный (максимум 200 000 символов с учётом HTML).");
+      return;
+    }
     setLoading(true);
     try {
       const supabase = createBrowserClient();
@@ -267,7 +285,7 @@ export default function AdminNotificationsPage() {
       }
       if (!broadcast) {
         setTitle("");
-        setBody("");
+        setBody("<p></p>");
         setLinkUrl("");
         setImageUrls([]);
       }
@@ -332,7 +350,7 @@ export default function AdminNotificationsPage() {
 
   return (
     <div className="min-h-screen bg-[#f5f3ef] text-[#111827]">
-      <div className="max-w-xl mx-auto px-4 py-10">
+      <div className="max-w-3xl mx-auto px-4 py-10">
         <div className="flex items-center gap-3 mb-8">
           <Link
             href="/admin/stats"
@@ -400,12 +418,11 @@ export default function AdminNotificationsPage() {
 
           <div>
             <label className="block text-xs font-medium text-[#6b7280] mb-1">Текст</label>
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={14}
-              className="w-full rounded-lg border border-[#e5e7eb] px-3 py-3 text-base leading-relaxed resize-y min-h-[320px]"
-            />
+            <p className="text-xs text-[#6b7280] mb-2 leading-relaxed">
+              Редактор с форматированием: вставка из Word и Google Docs сохраняет жирный, курсив,
+              размер и цвет. Дополнительно можно выбрать размер и цвет на панели.
+            </p>
+            <NotificationBodyEditor value={body} onChange={setBody} />
           </div>
 
           <div>
@@ -483,7 +500,12 @@ export default function AdminNotificationsPage() {
 
           <button
             type="button"
-            disabled={loading || !title.trim() || !body.trim() || (!broadcast && !userEmail.trim())}
+            disabled={
+              loading ||
+              !title.trim() ||
+              isNotificationBodyEmpty(body) ||
+              (!broadcast && !userEmail.trim())
+            }
             onClick={() => void submit()}
             className="inline-flex items-center justify-center gap-2 w-full rounded-xl bg-[#1F4E3D] text-white py-3 text-sm font-medium disabled:opacity-40"
           >
@@ -541,6 +563,15 @@ export default function AdminNotificationsPage() {
                     )}
                   </p>
                   <p className="mt-2 font-semibold text-[#111827]">{r.title}</p>
+                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">
+                    Текст уведомления
+                  </p>
+                  <div className="mt-1 rounded-lg border border-[#e5e7eb] bg-white p-3">
+                    <NotificationRichBody body={r.body} className="text-[13px]" />
+                  </div>
+                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-[#4d7c0f]">
+                    Ответ пользователя
+                  </p>
                   <p className="mt-1 whitespace-pre-wrap text-[#374151] text-[13px] leading-relaxed">
                     {r.user_reply_text}
                   </p>
