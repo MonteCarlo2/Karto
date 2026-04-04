@@ -16,6 +16,8 @@ export default function AdminNotificationsPage() {
   const [gateLoading, setGateLoading] = useState(true);
   const [loginRequired, setLoginRequired] = useState(false);
   const [forbidden, setForbidden] = useState(false);
+  const [allowed, setAllowed] = useState(false);
+  const [gateNotice, setGateNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [broadcast, setBroadcast] = useState(false);
@@ -39,11 +41,32 @@ export default function AdminNotificationsPage() {
         setGateLoading(false);
         return;
       }
-      const res = await fetch("/api/admin/user-stats?days=1", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
+      let res: Response;
+      try {
+        res = await fetch("/api/admin/user-stats?days=1", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+      } catch {
+        if (cancelled) return;
+        setGateNotice("Не удалось проверить доступ. Проверьте сеть.");
+        setGateLoading(false);
+        return;
+      }
       if (cancelled) return;
-      if (res.status === 403) setForbidden(true);
+      if (res.status === 200) {
+        setAllowed(true);
+      } else if (res.status === 403) {
+        setForbidden(true);
+      } else {
+        let msg = `Сервис недоступен (${res.status}).`;
+        try {
+          const j = (await res.json()) as { error?: string };
+          if (j?.error && typeof j.error === "string") msg = j.error;
+        } catch {
+          /* use default */
+        }
+        setGateNotice(msg);
+      }
       setGateLoading(false);
     })();
     return () => {
@@ -142,6 +165,29 @@ export default function AdminNotificationsPage() {
     );
   }
 
+  if (!allowed && gateNotice) {
+    return (
+      <div className="min-h-screen bg-[#f5f3ef] flex flex-col items-center justify-center px-4">
+        <p className="text-[#374151] mb-4 text-center max-w-lg whitespace-pre-wrap">{gateNotice}</p>
+        <p className="text-sm text-[#6b7280] mb-4 text-center max-w-md">
+          Без настройки <code className="bg-white px-1 rounded text-xs">ADMIN_STATS_EMAILS</code> или{" "}
+          <code className="bg-white px-1 rounded text-xs">ADMIN_STATS_SECRET</code> форма отправки недоступна.
+        </p>
+        <Link href="/" className="text-[#1F4E3D] font-medium underline">
+          На главную
+        </Link>
+      </div>
+    );
+  }
+
+  if (!allowed) {
+    return (
+      <div className="min-h-screen bg-[#f5f3ef] flex items-center justify-center text-[#6b7280] text-sm">
+        Нет доступа.
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f5f3ef] text-[#111827]">
       <div className="max-w-xl mx-auto px-4 py-10">
@@ -157,7 +203,7 @@ export default function AdminNotificationsPage() {
         <h1 className="text-2xl font-bold mb-2">Уведомления пользователям</h1>
         <p className="text-sm text-[#6b7280] mb-6">
           Те же права, что у страницы статистики (<code className="text-xs bg-white px-1 rounded">ADMIN_STATS_EMAILS</code>
-          ). Сообщения видны в разделе «Сообщения» у пользователя.
+          ). У пользователей уведомления открываются по иконке колокольчика в шапке.
         </p>
 
         <div className="space-y-4 bg-white rounded-2xl border border-[#e5e7eb] p-6 shadow-sm">
