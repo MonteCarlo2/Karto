@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  decodeNotificationEntities,
+  normalizeNotificationBodySource,
   notificationBodyLooksLikeHtml,
   sanitizeNotificationHtml,
 } from "@/lib/sanitize-notification-html";
@@ -12,17 +14,20 @@ export function NotificationRichBody({
   body: string;
   className?: string;
 }) {
-  if (!body) return null;
+  if (body == null || body === "") return null;
 
-  if (!notificationBodyLooksLikeHtml(body)) {
+  const raw = typeof body === "string" ? body : String(body);
+  const normalized = normalizeNotificationBodySource(decodeNotificationEntities(raw));
+
+  if (!notificationBodyLooksLikeHtml(normalized)) {
     return (
       <p className={`whitespace-pre-wrap text-[15px] leading-[1.58] text-neutral-800 ${className}`}>
-        {body}
+        {normalized}
       </p>
     );
   }
 
-  const html = sanitizeNotificationHtml(body);
+  const html = sanitizeNotificationHtml(normalized);
   return (
     <div
       className={[

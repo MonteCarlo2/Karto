@@ -384,9 +384,9 @@ export function UserNotificationBell() {
                                       <p className="text-[11px] font-semibold uppercase tracking-wide text-[#4d7c0f]">
                                         Ваш ответ отправлен
                                       </p>
-                                      <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-neutral-800">
-                                        {n.user_reply_text}
-                                      </p>
+                                      <div className="mt-1 text-[13px] leading-relaxed text-neutral-800">
+                                        <NotificationRichBody body={n.user_reply_text} />
+                                      </div>
                                     </div>
                                   ) : (
                                     <>

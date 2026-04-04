@@ -65,24 +65,55 @@ function installHooksOnce() {
 /** Безопасный HTML для тела уведомления (сохраняем инлайн-стили: размер, цвет, жирный и т.д.). */
 export function sanitizeNotificationHtml(dirty: string): string {
   if (!dirty || typeof dirty !== "string") return "";
+  const cleaned = normalizeNotificationBodySource(decodeNotificationEntities(dirty));
   installHooksOnce();
-  return DOMPurify.sanitize(dirty, {
+  return DOMPurify.sanitize(cleaned, {
     ALLOWED_TAGS,
     ALLOWED_ATTR: ["style", "href", "target", "rel", "colspan", "rowspan"],
     ALLOW_DATA_ATTR: false,
   });
 }
 
-/** Старые уведомления без тегов — показываем как обычный текст. */
+/** Убираем BOM / zero-width, чтобы детектор HTML не ломался после вставки из Word. */
+export function normalizeNotificationBodySource(s: string): string {
+  return s
+    .replace(/^\uFEFF+/, "")
+    .replace(/\u200B/g, "")
+    .replace(/\u200C/g, "")
+    .replace(/\u200D/g, "")
+    .trim();
+}
+
+/** Декодируем типичные сущности, если тело пришло экранированным (&lt;p&gt;…). */
+export function decodeNotificationEntities(s: string): string {
+  if (!/&(?:#(?:\d+|x[0-9a-fA-F]+)|lt|gt|quot|nbsp|amp);/.test(s)) return s;
+  let out = s;
+  for (let i = 0; i < 6; i++) {
+    const next = out
+      .replace(/&nbsp;/gi, "\u00a0")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+      .replace(/&amp;/gi, "&");
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+/** Есть ли в строке разметка (сырая или после decode). */
 export function notificationBodyLooksLikeHtml(s: string): boolean {
-  const t = s.trim();
+  const t = normalizeNotificationBodySource(s);
   if (!t) return false;
-  return /<[a-z][\s\S]*>/i.test(t);
+  if (/&lt;\/?[a-zA-Z]/i.test(t)) return true;
+  return /<\/?[a-zA-Z][\w:-]*(?:\s[^>]*)?>/.test(t);
 }
 
 /** Пустой документ редактора или только пробелы / &nbsp; */
 export function isNotificationBodyEmpty(html: string): boolean {
-  const plain = html
+  const plain = normalizeNotificationBodySource(decodeNotificationEntities(html))
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/\u00a0/g, " ")
