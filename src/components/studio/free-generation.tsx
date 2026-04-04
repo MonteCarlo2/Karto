@@ -3860,11 +3860,19 @@ export default function FreeGeneration() {
                   }
                 } catch (error: unknown) {
                   if (error instanceof Error && error.name === "AbortError") return;
+                  let message =
+                    "Не удалось сгенерировать изображение. Пожалуйста, попробуйте ещё раз чуть позже.";
+                  if (error instanceof Error && error.message?.trim()) {
+                    message = error.message;
+                  }
+                  const contentFilter =
+                    message.includes("фильтром безопасности") ||
+                    message.includes("отклонён фильтром");
                   showToast({
                     type: "error",
-                    title: "Ошибка генерации",
-                    message:
-                      "Не удалось сгенерировать изображение. Пожалуйста, попробуйте ещё раз чуть позже.",
+                    title: contentFilter ? "Запрос не прошёл проверку" : "Ошибка генерации",
+                    message,
+                    ...(contentFilter ? { durationMs: 7000 } : {}),
                   });
                   setSlidePrompt("");
                   setTimeout(() => {

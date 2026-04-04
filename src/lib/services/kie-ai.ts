@@ -1,6 +1,7 @@
 import sharp from "sharp";
 import https from "https";
 import { createClient } from "@supabase/supabase-js";
+import { KieAiContentFilteredError, isKieContentPolicyError } from "./kie-ai-errors";
 
 /**
  * KIE AI API Service
@@ -252,6 +253,10 @@ export async function generateWithKieAi(
       });
 
       const errorMessage = error?.message || String(error);
+
+      if (isKieContentPolicyError(errorMessage)) {
+        throw new KieAiContentFilteredError();
+      }
 
       // Эти ошибки не ретраим — они требуют внешнего вмешательства/другой стратегии.
       if (errorMessage.includes("401") || errorMessage.includes("access")) {

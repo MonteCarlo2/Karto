@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { generateWithKieAi } from "@/lib/services/kie-ai";
+import { kieErrorToClient } from "@/lib/services/kie-ai-errors";
 import { getSubscriptionByUserId, getSubscriptionRowsByUserId } from "@/lib/subscription";
 import { getPublicUrl, saveBase64Image } from "@/lib/services/image-processing";
 
@@ -176,16 +177,15 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error("[generate-for-product] Ошибка:", error);
-
-    // Для пользователя вернём мягкое сообщение, детали оставим в логах
+    const { message, code } = kieErrorToClient(error);
+    const status = code === "CONTENT_FILTER" ? 422 : 500;
     return NextResponse.json(
       {
         success: false,
-        error:
-          "Ошибка генерации изображения. Пожалуйста, попробуйте ещё раз чуть позже.",
-        details: String(error),
+        error: message,
+        ...(code ? { code } : {}),
       },
-      { status: 500 }
+      { status }
     );
   }
 }

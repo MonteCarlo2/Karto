@@ -1,11 +1,10 @@
 import { isSmtpConfigured, sendHtmlEmailSmtp } from "@/lib/email/smtp";
 
 /**
- * Письмо с 4-значным кодом подтверждения email.
- * Отправка только через SMTP (переменные SMTP_*), без Resend.
+ * Письмо с 4-значным кодом подтверждения email — только SMTP (переменные SMTP_*).
  *
- * Локально (NODE_ENV=development): если SMTP не задан, код пишется в консоль сервера —
- * чтобы можно было тестировать без почты; в продакшене SMTP обязателен.
+ * Локально (NODE_ENV=development): если SMTP не задан, код пишется в консоль сервера.
+ * В продакшене нужен рабочий SMTP из среды, где крутится Node (не путать с почтой в Supabase).
  */
 
 export async function sendSignupVerificationEmail(options: {
@@ -90,6 +89,6 @@ export async function sendSignupVerificationEmail(options: {
   return {
     ok: false,
     error:
-      "Почта не настроена. Добавьте SMTP_HOST, SMTP_USER, SMTP_PASSWORD (и при необходимости SMTP_PORT, SMTP_FROM) в .env.local или на хостинге.",
+      "Почта не настроена. Добавьте SMTP_HOST, SMTP_USER, SMTP_PASSWORD (и при необходимости SMTP_PORT, SMTP_FROM) в переменные окружения на сервере.",
   };
 }

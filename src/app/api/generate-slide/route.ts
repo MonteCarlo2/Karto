@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateWithKieAi } from "@/lib/services/kie-ai";
+import { KieAiContentFilteredError, kieErrorToClient } from "@/lib/services/kie-ai-errors";
 import { 
   downloadImage, 
   getPublicUrl,
@@ -329,7 +330,10 @@ ${scenarioPrompt}${environmentReference}${userDescription}
       console.log("✅ Генерация успешна");
     } catch (error: any) {
       console.error("❌ Ошибка в generateWithKieAi:", error);
-      throw new Error(`Модель не смогла сгенерировать изображение. Ошибка: ${error.message || "Неизвестная ошибка"}`);
+      if (error instanceof KieAiContentFilteredError) throw error;
+      throw new Error(
+        `Модель не смогла сгенерировать изображение. Ошибка: ${error.message || "Неизвестная ошибка"}`
+      );
     }
     
     // Скачиваем результат
@@ -351,22 +355,33 @@ ${scenarioPrompt}${environmentReference}${userDescription}
 
   } catch (error: any) {
     console.error("❌ Ошибка генерации слайда:", error);
-    
-    let errorMessage = "Ошибка генерации";
-    const errorString = String(error);
-    
+    const errorString = String(error?.message ?? error);
+    let status = 500;
+
     if (errorString.includes("401") || errorString.includes("Unauthorized")) {
-      errorMessage = "Ошибка авторизации. Проверьте KIE_AI_API_KEY";
-    } else if (errorString.includes("429")) {
-      errorMessage = "Превышен лимит запросов. Подождите минуту.";
-    } else if (errorString.includes("insufficient") || errorString.includes("402")) {
-      errorMessage = "Недостаточно средств на KIE";
+      return NextResponse.json(
+        { success: false, error: "Ошибка авторизации сервиса генерации." },
+        { status: 500 }
+      );
     }
-    
-    return NextResponse.json({
-      success: false,
-      error: errorMessage,
-      details: errorString,
-    }, { status: 500 });
+    if (errorString.includes("429")) {
+      return NextResponse.json(
+        { success: false, error: "Превышен лимит запросов. Подождите минуту." },
+        { status: 429 }
+      );
+    }
+    if (errorString.includes("insufficient") || errorString.includes("402")) {
+      return NextResponse.json(
+        { success: false, error: "Временная недоступность сервиса генерации." },
+        { status: 503 }
+      );
+    }
+
+    const payload = kieErrorToClient(error);
+    if (payload.code === "CONTENT_FILTER") status = 422;
+    return NextResponse.json(
+      { success: false, error: payload.message, ...(payload.code ? { code: payload.code } : {}) },
+      { status }
+    );
   }
 }

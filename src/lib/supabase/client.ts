@@ -1,80 +1,24 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
-
-let _browserClient: SupabaseClient | null = null;
+import { createBrowserClient as createSupabaseBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Создает клиентский клиент Supabase для использования в браузере.
- * Использует синглтон, чтобы избежать множественных экземпляров GoTrueClient.
- * Настроен для сохранения сессии в cookies (для синхронизации с сервером)
+ * Клиент Supabase в браузере через @supabase/ssr:
+ * сессия в cookies (в т.ч. фрагменты sb-…-auth-token.0, .1 …), совместимо с серверными API.
+ * Раньше была одна огромная cookie + localStorage — JWT не помещался, сервер видел «обрезанную» сессию.
  */
-export function createBrowserClient() {
-  if (_browserClient) return _browserClient;
+export function createBrowserClient(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // Если переменные не установлены, выбрасываем ошибку
   if (!supabaseUrl || !supabaseAnonKey) {
     const error = new Error(
-      "Supabase не настроен. Добавьте NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY в .env.local (локально) или в Settings → Environment Variables на Vercel (продакшен)"
+      "Supabase не настроен. Добавьте NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY в .env.local или в переменные окружения на хостинге."
     );
     console.error("❌", error.message);
     throw error;
   }
 
-  // Извлекаем project ref из URL для правильного имени cookie
-  const projectRef = supabaseUrl.match(/https?:\/\/([^.]+)\.supabase\.co/)?.[1] || 'default';
-  
-  _browserClient = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      storage: typeof window !== 'undefined' ? {
-        getItem: (key: string) => {
-          // Пытаемся получить из cookie, если не найдено - из localStorage
-          if (typeof document !== 'undefined') {
-            const cookies = document.cookie.split(';');
-            for (const cookie of cookies) {
-              const [name, value] = cookie.trim().split('=');
-              if (name === key || name === `sb-${projectRef}-auth-token`) {
-                try {
-                  return decodeURIComponent(value);
-                } catch {
-                  return value;
-                }
-              }
-            }
-          }
-          // Fallback на localStorage
-          if (typeof window !== 'undefined' && window.localStorage) {
-            return window.localStorage.getItem(key);
-          }
-          return null;
-        },
-        setItem: (key: string, value: string) => {
-          // Сохраняем и в cookie, и в localStorage
-          if (typeof document !== 'undefined') {
-            // Устанавливаем cookie с правильными параметрами
-            const cookieName = key.includes('auth-token') ? `sb-${projectRef}-auth-token` : key;
-            document.cookie = `${cookieName}=${encodeURIComponent(value)}; path=/; SameSite=Lax; Secure=${location.protocol === 'https:'}`;
-          }
-          // Также сохраняем в localStorage для обратной совместимости
-          if (typeof window !== 'undefined' && window.localStorage) {
-            window.localStorage.setItem(key, value);
-          }
-        },
-        removeItem: (key: string) => {
-          // Удаляем и из cookie, и из localStorage
-          if (typeof document !== 'undefined') {
-            const cookieName = key.includes('auth-token') ? `sb-${projectRef}-auth-token` : key;
-            document.cookie = `${cookieName}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-          }
-          if (typeof window !== 'undefined' && window.localStorage) {
-            window.localStorage.removeItem(key);
-          }
-        },
-      } : undefined,
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
-    },
+  return createSupabaseBrowserClient(supabaseUrl, supabaseAnonKey, {
+    isSingleton: true,
   });
-  return _browserClient;
 }

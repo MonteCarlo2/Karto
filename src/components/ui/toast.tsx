@@ -20,7 +20,12 @@ type Toast = {
 };
 
 type ToastContextValue = {
-  showToast: (opts: { type?: ToastType; title?: string; message: string }) => void;
+  showToast: (opts: {
+    type?: ToastType;
+    title?: string;
+    message: string;
+    durationMs?: number;
+  }) => void;
 };
 
 const ToastContext = createContext<ToastContextValue | undefined>(undefined);
@@ -33,14 +38,23 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const showToast = useCallback(
-    ({ type = "info", title, message }: { type?: ToastType; title?: string; message: string }) => {
+    ({
+      type = "info",
+      title,
+      message,
+      durationMs = 4000,
+    }: {
+      type?: ToastType;
+      title?: string;
+      message: string;
+      durationMs?: number;
+    }) => {
       const id = idCounter++;
       setToasts((prev) => [...prev, { id, type, title, message }]);
 
-      // Авто‑скрытие через 4 секунды
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
-      }, 4000);
+      }, durationMs);
     },
     []
   );

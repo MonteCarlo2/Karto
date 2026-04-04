@@ -1,67 +1,43 @@
-import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 /**
- * Создает серверный клиент Supabase с сессией пользователя из cookies
- * Используется для получения информации о текущем пользователе
+ * Серверный anon-клиент с сессией из запроса (cookies).
+ * Использует @supabase/ssr — те же фрагментированные cookies, что и createBrowserClient().
  */
 export async function createServerClientWithAuth() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.warn("⚠️ NEXT_PUBLIC_SUPABASE_URL или NEXT_PUBLIC_SUPABASE_ANON_KEY не установлены");
+    return null;
+  }
+
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-      console.warn("⚠️ NEXT_PUBLIC_SUPABASE_URL или NEXT_PUBLIC_SUPABASE_ANON_KEY не установлены");
-      return null;
-    }
-
     const cookieStore = await cookies();
-    
-    // Получаем project ref из URL для правильного имени cookie
-    const projectRef = supabaseUrl.match(/https?:\/\/([^.]+)\.supabase\.co/)?.[1] || 'default';
-    const authTokenCookieName = `sb-${projectRef}-auth-token`;
-    
-    // Получаем все cookies для отладки
-    const allCookies = cookieStore.getAll();
-    const authCookies = allCookies.filter(c => 
-      c.name.includes('auth') || 
-      c.name.includes('supabase') || 
-      c.name === authTokenCookieName
-    );
-    
-    // Логируем найденные auth cookies (только для отладки)
-    if (authCookies.length > 0) {
-      console.log("🔍 [server-auth] Найдено auth cookies:", authCookies.map(c => c.name));
-    } else {
-      console.warn("⚠️ [server-auth] Auth cookies не найдены. Ожидаемое имя:", authTokenCookieName);
-      console.warn("⚠️ [server-auth] Все cookies:", allCookies.map(c => c.name));
-    }
-    
-    const client = createClient(supabaseUrl, supabaseAnonKey, {
+
+    return createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
-        get(name: string) {
-          let value = cookieStore.get(name)?.value;
-          if (!value && name.includes('auth-token')) {
-            value = cookieStore.get(authTokenCookieName)?.value;
-          }
-          if (!value && name.includes('auth')) {
-            for (const cookie of allCookies) {
-              if (cookie.name.includes('auth') || cookie.name.includes('supabase')) {
-                value = cookie.value;
-                break;
-              }
-            }
-          }
-          return value || undefined;
+        getAll() {
+          return cookieStore.getAll();
         },
-        set(_name: string, _value: string, _options?: unknown) {},
-        remove(_name: string, _options?: unknown) {},
+        setAll(
+          cookiesToSet: { name: string; value: string; options: Record<string, unknown> }[]
+        ) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options as Parameters<typeof cookieStore.set>[2])
+            );
+          } catch {
+            // В части контекстов (например, статический рендер) set недоступен — только чтение
+          }
+        },
       },
-    } as Parameters<typeof createClient>[2]);
-    
-    return client;
-  } catch (error: any) {
-    console.error("⚠️ Ошибка создания клиента с авторизацией:", error?.message || error);
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("⚠️ Ошибка создания Supabase-клиента с cookies:", message);
     return null;
   }
 }

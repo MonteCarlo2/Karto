@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Logo } from "@/components/ui/logo"
 import { Button } from "@/components/ui/button"
-import { Menu, X, User, LogOut } from "lucide-react"
+import { Menu, X, User, LogOut, Bell } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { createBrowserClient } from "@/lib/supabase/client"
 
@@ -16,6 +16,7 @@ export function Navbar() {
   const [showStudioMenu, setShowStudioMenu] = React.useState(false)
   const [mounted, setMounted] = React.useState(false)
   const [subscriptionLabels, setSubscriptionLabels] = React.useState<string[]>([])
+  const [notifUnread, setNotifUnread] = React.useState(0)
   const pathname = usePathname()
   const router = useRouter()
   const isHome = pathname === "/"
@@ -109,6 +110,38 @@ export function Navbar() {
       }
     })();
     return () => { mounted = false; };
+  }, [user]);
+
+  React.useEffect(() => {
+    if (!user) {
+      setNotifUnread(0);
+      return;
+    }
+    let cancelled = false;
+    const fetchUnread = async () => {
+      try {
+        const supabase = createBrowserClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token || cancelled) return;
+        const res = await fetch("/api/notifications", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!res.ok || cancelled) return;
+        const j = await res.json();
+        if (!cancelled) setNotifUnread(typeof j.unreadCount === "number" ? j.unreadCount : 0);
+      } catch {
+        if (!cancelled) setNotifUnread(0);
+      }
+    };
+    fetchUnread();
+    const id = setInterval(fetchUnread, 120_000);
+    const onFocus = () => { void fetchUnread(); };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [user]);
 
   // Закрытие меню профиля и мастерской при клике вне их
@@ -244,6 +277,18 @@ export function Navbar() {
             </div>
             {mounted && user ? (
               <div className="relative profile-menu-container flex items-center gap-2" suppressHydrationWarning>
+                <Link
+                  href="/notifications"
+                  className="relative flex items-center justify-center w-10 h-10 rounded-full border-2 border-[#2E5A43]/60 hover:bg-[#2E5A43]/10 transition-colors"
+                  aria-label="Сообщения"
+                >
+                  <Bell className="w-5 h-5 text-foreground" />
+                  {notifUnread > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-[#b91c1c] text-[10px] font-bold text-white">
+                      {notifUnread > 99 ? "99+" : notifUnread}
+                    </span>
+                  )}
+                </Link>
                 <button
                   onClick={() => setShowProfileMenu(!showProfileMenu)}
                   className="flex items-center justify-center w-10 h-10 rounded-full border-2 border-[#2E5A43] hover:bg-[#2E5A43] hover:text-white transition-colors"
@@ -269,6 +314,17 @@ export function Navbar() {
                       transition={{ duration: 0.2, ease: "easeOut" }}
                       className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50"
                     >
+                      <Link
+                        href="/notifications"
+                        className="w-full flex items-center gap-2 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
+                        onClick={() => setShowProfileMenu(false)}
+                      >
+                        <Bell className="w-4 h-4" />
+                        Сообщения
+                        {notifUnread > 0 && (
+                          <span className="ml-auto text-xs font-semibold text-[#b91c1c]">{notifUnread}</span>
+                        )}
+                      </Link>
                       <Link
                         href="/profile"
                         className="w-full flex items-center gap-2 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
@@ -386,17 +442,30 @@ export function Navbar() {
                 )}
               </div>
               {mounted && user ? (
-                <Button
-                  onClick={() => {
-                    handleLogout();
-                    setIsOpen(false);
-                  }}
-                  className="w-full mt-2 flex items-center justify-center gap-2"
-                  suppressHydrationWarning
-                >
-                  <LogOut className="w-4 h-4" />
-                  Выйти
-                </Button>
+                <>
+                  <Link
+                    href="/notifications"
+                    className="flex items-center justify-center gap-2 w-full mt-3 py-3 rounded-lg border border-[#2E5A43]/40 text-[#1F4E3D] font-medium"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    <Bell className="w-4 h-4" />
+                    Сообщения
+                    {notifUnread > 0 && (
+                      <span className="text-xs font-bold text-[#b91c1c]">({notifUnread})</span>
+                    )}
+                  </Link>
+                  <Button
+                    onClick={() => {
+                      handleLogout();
+                      setIsOpen(false);
+                    }}
+                    className="w-full mt-2 flex items-center justify-center gap-2"
+                    suppressHydrationWarning
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Выйти
+                  </Button>
+                </>
               ) : mounted ? (
                 <Button
                   asChild

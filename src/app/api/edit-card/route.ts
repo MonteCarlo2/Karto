@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateWithKieAi } from "@/lib/services/kie-ai";
+import { KieAiContentFilteredError, kieErrorToClient } from "@/lib/services/kie-ai-errors";
 import { downloadImage, getPublicUrl } from "@/lib/services/image-processing";
 import { createServerClient } from "@/lib/supabase/server";
 import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
@@ -195,7 +196,10 @@ ${editRequest}
         body: error.body,
         imageUrlType: imageForKie.startsWith("data:") ? "base64" : "url",
       });
-      throw new Error(`Модель не смогла отредактировать изображение. Ошибка: ${error.message || "Неизвестная ошибка"}`);
+      if (error instanceof KieAiContentFilteredError) throw error;
+      throw new Error(
+        `Модель не смогла отредактировать изображение. Ошибка: ${error.message || "Неизвестная ошибка"}`
+      );
     }
 
     // Скачиваем результат
@@ -224,11 +228,15 @@ ${editRequest}
 
   } catch (error: any) {
     console.error("❌ [EDIT] Ошибка редактирования:", error);
-    
-    return NextResponse.json({
-      success: false,
-      error: "Ошибка редактирования карточки",
-      details: error.message,
-    }, { status: 500 });
+    const payload = kieErrorToClient(error);
+    const status = payload.code === "CONTENT_FILTER" ? 422 : 500;
+    return NextResponse.json(
+      {
+        success: false,
+        error: payload.message,
+        ...(payload.code ? { code: payload.code } : {}),
+      },
+      { status }
+    );
   }
 }
