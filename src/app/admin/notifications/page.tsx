@@ -1,16 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createBrowserClient } from "@/lib/supabase/client";
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, ImagePlus, Send, Trash2, Upload } from "lucide-react";
 
-const CATEGORIES = [
-  { value: "reply", label: "Ответ на обращение" },
-  { value: "message", label: "Личное сообщение" },
-  { value: "news", label: "Новость всем" },
-  { value: "promo", label: "Акция / конкурс" },
-];
+const MAX_IMAGES = 12;
 
 export default function AdminNotificationsPage() {
   const [gateLoading, setGateLoading] = useState(true);
@@ -19,14 +14,21 @@ export default function AdminNotificationsPage() {
   const [allowed, setAllowed] = useState(false);
   const [gateNotice, setGateNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [broadcast, setBroadcast] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
-  const [imageUrlsRaw, setImageUrlsRaw] = useState("");
-  const [category, setCategory] = useState("reply");
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const imageUrlsRef = useRef<string[]>([]);
+  const formCardRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    imageUrlsRef.current = imageUrls;
+  }, [imageUrls]);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +76,98 @@ export default function AdminNotificationsPage() {
     };
   }, []);
 
+  const uploadFile = useCallback(async (file: File) => {
+    setResult(null);
+    if (imageUrlsRef.current.length >= MAX_IMAGES) {
+      setResult(`Не больше ${MAX_IMAGES} изображений`);
+      return;
+    }
+
+    const supabase = createBrowserClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      setResult("Нет сессии");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/admin/notification-image", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: fd,
+      });
+      const json = (await res.json()) as { url?: string; error?: string; details?: string };
+      if (!res.ok) {
+        setResult(json.error || json.details || `Ошибка ${res.status}`);
+        return;
+      }
+      if (!json.url?.startsWith("http")) {
+        setResult("Сервер не вернул URL");
+        return;
+      }
+      setImageUrls((prev) => {
+        if (prev.length >= MAX_IMAGES) {
+          setResult(`Не больше ${MAX_IMAGES} изображений`);
+          return prev;
+        }
+        return [...prev, json.url!];
+      });
+    } catch (e) {
+      setResult(e instanceof Error ? e.message : "Ошибка загрузки");
+    } finally {
+      setUploading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = formCardRef.current;
+    if (!allowed || !el) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.kind === "file" && it.type.startsWith("image/")) {
+          e.preventDefault();
+          const f = it.getAsFile();
+          if (f) void uploadFile(f);
+          break;
+        }
+      }
+    };
+    el.addEventListener("paste", onPaste);
+    return () => el.removeEventListener("paste", onPaste);
+  }, [allowed, uploadFile]);
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+    for (const f of files) {
+      if (imageUrlsRef.current.length >= MAX_IMAGES) break;
+      void uploadFile(f);
+    }
+  };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    for (let i = 0; i < files.length; i++) {
+      if (imageUrlsRef.current.length >= MAX_IMAGES) break;
+      void uploadFile(files[i]);
+    }
+    e.target.value = "";
+  };
+
+  const removeImage = (idx: number) => {
+    setImageUrls((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   const submit = useCallback(async () => {
     setResult(null);
     setLoading(true);
@@ -87,10 +181,6 @@ export default function AdminNotificationsPage() {
         setLoading(false);
         return;
       }
-      const imageUrls = imageUrlsRaw
-        .split(/[\n,]+/)
-        .map((s) => s.trim())
-        .filter((s) => s.startsWith("http"));
 
       const res = await fetch("/api/admin/notifications", {
         method: "POST",
@@ -105,7 +195,6 @@ export default function AdminNotificationsPage() {
           body: body.trim(),
           linkUrl: linkUrl.trim() || undefined,
           imageUrls,
-          category,
         }),
       });
       const json = await res.json();
@@ -123,14 +212,14 @@ export default function AdminNotificationsPage() {
         setTitle("");
         setBody("");
         setLinkUrl("");
-        setImageUrlsRaw("");
+        setImageUrls([]);
       }
     } catch (e) {
       setResult(e instanceof Error ? e.message : "Ошибка сети");
     } finally {
       setLoading(false);
     }
-  }, [broadcast, userEmail, title, body, linkUrl, imageUrlsRaw, category]);
+  }, [broadcast, userEmail, title, body, linkUrl, imageUrls]);
 
   if (gateLoading) {
     return (
@@ -199,10 +288,14 @@ export default function AdminNotificationsPage() {
         <h1 className="text-2xl font-bold mb-2">Уведомления пользователям</h1>
         <p className="text-sm text-[#6b7280] mb-6">
           Те же права, что у страницы статистики (<code className="text-xs bg-white px-1 rounded">ADMIN_STATS_EMAILS</code>
-          ). У пользователей уведомления открываются по иконке колокольчика в шапке.
+          ). У пользователей панель открывается по колокольчику в шапке.
         </p>
 
-        <div className="space-y-4 bg-white rounded-2xl border border-[#e5e7eb] p-6 shadow-sm">
+        <div
+          ref={formCardRef}
+          tabIndex={0}
+          className="space-y-4 bg-white rounded-2xl border border-[#e5e7eb] p-6 shadow-sm outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-[#2E5A43]/40"
+        >
           <label className="flex items-center gap-2 cursor-pointer text-sm">
             <input
               type="checkbox"
@@ -227,21 +320,6 @@ export default function AdminNotificationsPage() {
           )}
 
           <div>
-            <label className="block text-xs font-medium text-[#6b7280] mb-1">Тип</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full rounded-lg border border-[#e5e7eb] px-3 py-2 text-sm"
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
             <label className="block text-xs font-medium text-[#6b7280] mb-1">Заголовок</label>
             <input
               value={title}
@@ -255,22 +333,72 @@ export default function AdminNotificationsPage() {
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              rows={8}
-              className="w-full rounded-lg border border-[#e5e7eb] px-3 py-2 text-sm resize-y min-h-[120px]"
+              rows={14}
+              className="w-full rounded-lg border border-[#e5e7eb] px-3 py-3 text-base leading-relaxed resize-y min-h-[320px]"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-[#6b7280] mb-1">
-              Ссылки на картинки (по одной в строке или через запятую)
+            <label className="block text-xs font-medium text-[#6b7280] mb-2">
+              Изображения к письму
             </label>
-            <textarea
-              value={imageUrlsRaw}
-              onChange={(e) => setImageUrlsRaw(e.target.value)}
-              rows={3}
-              placeholder="https://..."
-              className="w-full rounded-lg border border-[#e5e7eb] px-3 py-2 text-sm font-mono text-xs"
-            />
+            <p className="text-xs text-[#6b7280] mb-2">
+              Перетащите файлы сюда, нажмите «Выбрать файлы» или вставьте картинку из буфера (Ctrl+V), когда курсор в этой карточке формы.
+            </p>
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={onDrop}
+              className="rounded-xl border-2 border-dashed border-[#2E5A43]/35 bg-[#f0f4f1]/80 px-4 py-6 text-center transition-colors hover:border-[#2E5A43]/55 hover:bg-[#e8f0eb]/90"
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                className="hidden"
+                onChange={onFileChange}
+              />
+              <div className="flex flex-col items-center gap-2">
+                <ImagePlus className="w-8 h-8 text-[#2E5A43]/70" />
+                <button
+                  type="button"
+                  disabled={uploading || imageUrls.length >= MAX_IMAGES}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#1F4E3D] px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                >
+                  <Upload className="w-4 h-4" />
+                  {uploading ? "Загрузка…" : "Выбрать с компьютера"}
+                </button>
+                <span className="text-[11px] text-[#9ca3af]">
+                  PNG, JPEG, WebP, GIF · до 4 МБ каждый · максимум {MAX_IMAGES} шт.
+                </span>
+              </div>
+            </div>
+
+            {imageUrls.length > 0 && (
+              <ul className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {imageUrls.map((url, idx) => (
+                  <li
+                    key={`${url}-${idx}`}
+                    className="relative group rounded-lg border border-[#e5e7eb] overflow-hidden bg-[#f9fafb] aspect-square"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(idx)}
+                      className="absolute top-1 right-1 rounded-full bg-black/60 p-1.5 text-white opacity-90 hover:bg-red-600 transition-colors"
+                      aria-label="Удалить"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div>

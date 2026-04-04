@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
-import { Bell, ExternalLink } from "lucide-react";
+import { Bell, CheckCheck, ChevronDown, ExternalLink } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+
+const LIME = "#84CC16";
+const GREEN = "#1F4E3D";
 
 type Row = {
   id: string;
@@ -16,12 +19,14 @@ type Row = {
   read_at: string | null;
 };
 
-const categoryShort: Record<string, string> = {
-  reply: "Ответ",
-  message: "Сообщение",
-  news: "Новость",
-  promo: "Акция",
-};
+function formatWhen(iso: string) {
+  return new Date(iso).toLocaleString("ru-RU", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export function UserNotificationBell() {
   const [open, setOpen] = useState(false);
@@ -118,6 +123,8 @@ export function UserNotificationBell() {
     if (next && !n.read_at) void markRead(n.id);
   };
 
+  const hasUnread = unreadCount > 0;
+
   return (
     <div className="relative shrink-0" ref={wrapRef}>
       <button
@@ -133,13 +140,18 @@ export function UserNotificationBell() {
             return true;
           });
         }}
-        className="relative flex items-center justify-center w-10 h-10 rounded-full border-2 border-[#2E5A43]/60 hover:bg-[#2E5A43]/10 transition-colors"
-        aria-label="Сообщения"
+        className={[
+          "relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#2E5A43]/55 bg-white transition-all",
+          "hover:bg-[#ECF7DB]/40 hover:shadow-[0_4px_12px_rgba(31,78,61,0.15)]",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16]/45 focus-visible:ring-offset-2",
+          hasUnread ? "border-[#1F4E3D] shadow-[0_0_0_3px_rgba(132,204,22,0.2)]" : "",
+        ].join(" ")}
+        aria-label="Уведомления"
         aria-expanded={open}
       >
-        <Bell className="w-5 h-5 text-foreground" />
+        <Bell className={`h-5 w-5 ${hasUnread ? "text-[#1F4E3D]" : "text-neutral-800"}`} />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-[#b91c1c] text-[10px] font-bold text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#dc2626] px-1 text-[10px] font-semibold tabular-nums text-white">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
@@ -148,103 +160,164 @@ export function UserNotificationBell() {
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute right-0 top-full mt-2 z-[60] w-[min(calc(100vw-1.5rem),22rem)] rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden flex flex-col max-h-[min(70vh,440px)]"
+            className="absolute right-0 top-full z-[60] mt-2 flex max-h-[min(78vh,560px)] w-[min(calc(100vw-1rem),24.5rem)] flex-col overflow-hidden rounded-2xl border border-[#2E5A43]/14 bg-white/92 shadow-[0_20px_64px_-16px_rgba(31,78,61,0.26),0_8px_22px_rgba(0,0,0,0.07)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/[0.8]"
           >
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2 bg-[#fafafa]">
-              <span className="text-sm font-semibold text-gray-900">Сообщения</span>
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(132,204,22,0.09),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(31,78,61,0.07),transparent_48%)]" />
+            <div className="h-[2px] w-full shrink-0 bg-[#84CC16]/60" aria-hidden />
+
+            <div className="relative flex shrink-0 items-center justify-between gap-3 border-b border-[#2E5A43]/10 bg-[#f8fbf8]/92 px-4 py-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#2E5A43]/15 bg-white/80">
+                  <Bell className="h-3.5 w-3.5 text-[#1F4E3D]" />
+                </span>
+                <h2 className="text-[15px] font-semibold tracking-[-0.015em] text-neutral-900">
+                  Уведомления
+                </h2>
+              </div>
               {unreadCount > 0 && (
                 <button
                   type="button"
                   onClick={() => void markAllRead()}
-                  className="text-xs font-medium text-[#1F4E3D] hover:underline"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#84CC16]/45 bg-[#ECF7DB] px-3 py-1.5 text-[12px] font-semibold text-neutral-900 transition-all hover:bg-[#dff3c4] hover:shadow-[0_3px_10px_rgba(132,204,22,0.28)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16]/40"
                 >
-                  Прочитать все
+                  <CheckCheck className="h-3.5 w-3.5 text-[#1F4E3D]" strokeWidth={2.25} />
+                  Прочитать всё
                 </button>
               )}
             </div>
 
-            <div className="overflow-y-auto flex-1 min-h-0">
+            <div className="relative min-h-0 flex-1 overflow-y-auto">
               {loading && items.length === 0 ? (
-                <p className="p-4 text-sm text-gray-500">Загрузка…</p>
+                <p className="p-8 text-center text-[15px] text-neutral-500">Загрузка…</p>
               ) : items.length === 0 ? (
-                <p className="p-4 text-sm text-gray-500">Пока нет сообщений от команды.</p>
+                <div className="px-6 py-12 text-center">
+                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-[#84CC16]/35 bg-[#ECF7DB]">
+                    <Bell className="h-6 w-6 text-[#1F4E3D]/75" strokeWidth={1.5} />
+                  </div>
+                  <p className="text-[15px] font-semibold text-neutral-900">Пока пусто</p>
+                  <p className="mx-auto mt-1.5 max-w-[240px] text-[13px] leading-relaxed text-neutral-600">
+                    Сообщения от команды KARTO появятся здесь
+                  </p>
+                </div>
               ) : (
-                <ul className="divide-y divide-gray-100">
+                <ul className="relative py-2">
                   {items.map((n) => {
                     const exp = expandedId === n.id;
                     const unread = !n.read_at;
+                    const thumb = n.image_urls?.[0];
                     return (
-                      <li key={n.id}>
+                      <li key={n.id} className="list-none px-2 py-0.5">
                         <button
                           type="button"
                           onClick={() => toggleItem(n)}
-                          className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${
-                            unread ? "bg-emerald-50/40" : ""
-                          }`}
+                          className={[
+                            "relative flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition-all",
+                            "hover:bg-[#f4faf6] hover:shadow-[0_6px_16px_-10px_rgba(31,78,61,0.35)]",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84CC16]/35",
+                            unread
+                              ? "before:absolute before:left-1.5 before:top-2.5 before:bottom-2.5 before:w-px before:rounded-full before:bg-[#84CC16]/30"
+                              : "",
+                            exp ? "bg-white/70" : "",
+                          ].join(" ")}
                         >
-                          <div className="flex items-start gap-2">
-                            {unread && (
-                              <span className="w-2 h-2 rounded-full bg-[#1F4E3D] shrink-0 mt-1.5" />
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium text-gray-900 line-clamp-2">{n.title}</p>
-                              <p className="text-[10px] uppercase tracking-wide text-gray-400 mt-0.5">
-                                {categoryShort[n.category] || n.category} ·{" "}
-                                {new Date(n.created_at).toLocaleString("ru-RU", {
-                                  day: "numeric",
-                                  month: "short",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
+                          <div className="flex w-4 shrink-0 items-start justify-center pt-2" aria-hidden>
+                            <span
+                              className={[
+                                "block rounded-full transition-all",
+                                unread
+                                  ? "h-2.5 w-2.5 ring-2 ring-[#ECF7DB] shadow-[0_0_0_3px_rgba(132,204,22,0.14)]"
+                                  : "h-2 w-2 bg-[#2E5A43]/18",
+                              ].join(" ")}
+                              style={unread ? { backgroundColor: LIME } : undefined}
+                            />
+                          </div>
+                          {thumb ? (
+                            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-black/[0.04] ring-1 ring-black/[0.06]">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={thumb}
+                                alt=""
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                            </div>
+                          ) : null}
+                          <div className="min-w-0 flex-1 pt-0.5">
+                            <p className="text-[15px] font-semibold leading-snug tracking-[-0.01em] text-neutral-900 line-clamp-2">
+                              {n.title}
+                            </p>
+                            <div className="mt-1 flex items-center gap-2">
+                              {unread && (
+                                <span className="inline-flex h-4 items-center rounded-full bg-[#ECF7DB] px-1.5 text-[10px] font-semibold text-[#1F4E3D]">
+                                  NEW
+                                </span>
+                              )}
+                              <p className="text-[13px] tabular-nums text-neutral-500">
+                                {formatWhen(n.created_at)}
                               </p>
                             </div>
-                            <span className="text-gray-400 text-xs shrink-0">{exp ? "▼" : "▶"}</span>
                           </div>
+                          <ChevronDown
+                            className={`mt-1 h-[18px] w-[18px] shrink-0 text-neutral-400 transition-transform duration-300 ease-out ${
+                              exp ? "rotate-180 text-[#1F4E3D]" : ""
+                            }`}
+                            strokeWidth={2}
+                          />
                         </button>
-                        {exp && (
-                          <div className="px-4 pb-4 pt-0 bg-white border-t border-gray-50">
-                            <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed pt-3">
-                              {n.body}
-                            </p>
-                            {n.image_urls?.length > 0 && (
-                              <div className="mt-2 flex flex-col gap-2">
-                                {n.image_urls.slice(0, 4).map((url, i) => (
-                                  <a
-                                    key={i}
-                                    href={url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="block rounded-lg overflow-hidden border border-gray-200"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img
-                                      src={url}
-                                      alt=""
-                                      className="w-full h-auto max-h-40 object-contain bg-gray-50"
-                                    />
-                                  </a>
-                                ))}
-                              </div>
-                            )}
-                            {n.link_url && (
-                              <a
-                                href={n.link_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 mt-3 text-xs font-medium text-[#1F4E3D] hover:underline"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                                Ссылка
-                              </a>
-                            )}
+
+                        <div
+                          className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                            exp ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                          }`}
+                        >
+                          <div className="min-h-0 overflow-hidden">
+                            <div className="ml-6 rounded-xl border border-[#2E5A43]/10 bg-[#f9fdf9]/95 px-4 pb-4 pt-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+                              <p className="whitespace-pre-wrap text-[15px] leading-[1.58] text-neutral-800">
+                                {n.body}
+                              </p>
+
+                              {n.image_urls && n.image_urls.length > 0 && (
+                                <div className="mt-4 space-y-3">
+                                  {n.image_urls.slice(0, 8).map((url, i) => (
+                                    <a
+                                      key={i}
+                                      href={url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="block overflow-hidden rounded-xl bg-black/[0.03] ring-1 ring-black/[0.06]"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img
+                                        src={url}
+                                        alt=""
+                                        className="max-h-64 w-full object-contain"
+                                        loading="lazy"
+                                      />
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+
+                              {n.link_url && (
+                                <a
+                                  href={n.link_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-[#2E5A43]/20 bg-[#ECF7DB] py-2.5 text-[13px] font-semibold text-neutral-900 transition-colors hover:bg-[#dff3c4]"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5 text-[#1F4E3D]" strokeWidth={2} />
+                                  Узнать больше
+                                </a>
+                              )}
+                            </div>
                           </div>
-                        )}
+                        </div>
                       </li>
                     );
                   })}

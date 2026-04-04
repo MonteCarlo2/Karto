@@ -245,6 +245,7 @@ export function Navbar() {
             </div>
             {mounted && user ? (
               <div className="flex items-center gap-2" suppressHydrationWarning>
+                <UserNotificationBell />
                 <div className="relative profile-menu-container flex items-center gap-2">
                   <button
                     onClick={() => setShowProfileMenu(!showProfileMenu)}
@@ -290,7 +291,6 @@ export function Navbar() {
                   )}
                 </AnimatePresence>
                 </div>
-                <UserNotificationBell />
               </div>
             ) : mounted ? (
               <Button
@@ -307,8 +307,9 @@ export function Navbar() {
             )}
           </div>
 
-          {/* Mobile: меню слева от края, колокольчик — крайний справа */}
+          {/* Mobile: колокольчик как раньше — слева от кнопки меню */}
           <div className="flex items-center gap-1 md:hidden">
+            {mounted && user ? <UserNotificationBell /> : null}
             <button
               className="p-2"
               onClick={() => setIsOpen(!isOpen)}
@@ -316,7 +317,6 @@ export function Navbar() {
             >
               {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
-            {mounted && user ? <UserNotificationBell /> : null}
           </div>
         </div>
       </div>
