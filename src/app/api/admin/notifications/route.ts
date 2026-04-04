@@ -61,6 +61,8 @@ export async function POST(request: NextRequest) {
     imageUrls?: string[];
     linkUrl?: string;
     category?: string;
+    /** Разрешить пользователю ответить из колокольчика (один раз). */
+    repliesEnabled?: boolean;
   };
   try {
     body = await request.json();
@@ -87,6 +89,8 @@ export async function POST(request: NextRequest) {
       ? body.linkUrl.trim().slice(0, 2000)
       : null;
 
+  const repliesEnabled = body.repliesEnabled === true;
+
   const supabase = createServerClient();
 
   if (body.broadcast === true) {
@@ -96,6 +100,7 @@ export async function POST(request: NextRequest) {
       p_image_urls: imageUrls.length ? imageUrls : [],
       p_link_url: linkUrl,
       p_category: category,
+      p_replies_enabled: repliesEnabled,
     });
 
     if (error) {
@@ -103,7 +108,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "Рассылка не выполнена. Примените миграцию 20260407_user_notifications.sql и проверьте функцию admin_notify_all_users.",
+            "Рассылка не выполнена. Примените миграции уведомлений (в т.ч. 20260408_notification_replies.sql) и проверьте функцию admin_notify_all_users.",
           details: error.message,
         },
         { status: 500 }
@@ -149,6 +154,7 @@ export async function POST(request: NextRequest) {
       image_urls: imageUrls,
       link_url: linkUrl,
       category,
+      replies_enabled: repliesEnabled,
     })
     .select("id")
     .single();

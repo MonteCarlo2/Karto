@@ -17,6 +17,7 @@ export default function AdminNotificationsPage() {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [broadcast, setBroadcast] = useState(false);
+  const [allowReplies, setAllowReplies] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -25,6 +26,20 @@ export default function AdminNotificationsPage() {
   const imageUrlsRef = useRef<string[]>([]);
   const formCardRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [feedbackReplies, setFeedbackReplies] = useState<
+    {
+      id: string;
+      user_id: string;
+      title: string;
+      body: string;
+      category: string;
+      created_at: string;
+      user_reply_text: string | null;
+      user_replied_at: string | null;
+    }[]
+  >([]);
+  const [repliesLoading, setRepliesLoading] = useState(false);
+  const [repliesError, setRepliesError] = useState<string | null>(null);
 
   useEffect(() => {
     imageUrlsRef.current = imageUrls;
@@ -168,6 +183,47 @@ export default function AdminNotificationsPage() {
     setImageUrls((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  const loadFeedbackReplies = useCallback(async () => {
+    setRepliesError(null);
+    setRepliesLoading(true);
+    try {
+      const supabase = createBrowserClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setRepliesError("Нет сессии");
+        setRepliesLoading(false);
+        return;
+      }
+      const res = await fetch("/api/admin/notification-replies", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = (await res.json()) as {
+        replies?: {
+          id: string;
+          user_id: string;
+          title: string;
+          body: string;
+          category: string;
+          created_at: string;
+          user_reply_text: string | null;
+          user_replied_at: string | null;
+        }[];
+        error?: string;
+      };
+      if (!res.ok) {
+        setRepliesError(json.error || `Ошибка ${res.status}`);
+        return;
+      }
+      setFeedbackReplies(json.replies ?? []);
+    } catch (e) {
+      setRepliesError(e instanceof Error ? e.message : "Ошибка сети");
+    } finally {
+      setRepliesLoading(false);
+    }
+  }, []);
+
   const submit = useCallback(async () => {
     setResult(null);
     setLoading(true);
@@ -195,6 +251,7 @@ export default function AdminNotificationsPage() {
           body: body.trim(),
           linkUrl: linkUrl.trim() || undefined,
           imageUrls,
+          repliesEnabled: allowReplies,
         }),
       });
       const json = await res.json();
@@ -219,7 +276,7 @@ export default function AdminNotificationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [broadcast, userEmail, title, body, linkUrl, imageUrls]);
+  }, [broadcast, userEmail, title, body, linkUrl, imageUrls, allowReplies]);
 
   if (gateLoading) {
     return (
@@ -304,6 +361,19 @@ export default function AdminNotificationsPage() {
               className="rounded border-gray-300"
             />
             Разослать всем зарегистрированным
+          </label>
+
+          <label className="flex items-start gap-2 cursor-pointer text-sm leading-snug">
+            <input
+              type="checkbox"
+              checked={allowReplies}
+              onChange={(e) => setAllowReplies(e.target.checked)}
+              className="mt-0.5 rounded border-gray-300"
+            />
+            <span>
+              Разрешить ответ из уведомления (кнопка «Ответить команде» в колокольчике, один раз на
+              сообщение). Для акций обычно выключено.
+            </span>
           </label>
 
           {!broadcast && (
@@ -423,6 +493,60 @@ export default function AdminNotificationsPage() {
 
           {result && (
             <p className="text-sm text-[#374151] whitespace-pre-wrap border-t border-[#f3f4f6] pt-4">{result}</p>
+          )}
+        </div>
+
+        <div className="mt-10 rounded-2xl border border-[#e5e7eb] bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-[#111827]">Ответы пользователей</h2>
+              <p className="mt-1 text-xs text-[#6b7280]">
+                Только уведомления, у которых была включена опция ответа и пользователь уже написал.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={repliesLoading}
+              onClick={() => void loadFeedbackReplies()}
+              className="rounded-lg border border-[#2E5A43]/25 bg-[#f0f4f1] px-4 py-2 text-sm font-medium text-[#1F4E3D] hover:bg-[#e4ede6] disabled:opacity-50"
+            >
+              {repliesLoading ? "Загрузка…" : "Обновить список"}
+            </button>
+          </div>
+          {repliesError && <p className="mt-3 text-sm text-red-600">{repliesError}</p>}
+          {feedbackReplies.length === 0 && !repliesLoading && !repliesError ? (
+            <p className="mt-4 text-sm text-[#6b7280]">
+              Пока нет ответов или список ещё не загружали — нажмите «Обновить список».
+            </p>
+          ) : null}
+          {feedbackReplies.length > 0 && (
+            <ul className="mt-4 space-y-4">
+              {feedbackReplies.map((r) => (
+                <li
+                  key={r.id}
+                  className="rounded-xl border border-[#e5e7eb] bg-[#fafafa] p-4 text-sm"
+                >
+                  <p className="text-xs font-medium text-[#6b7280]">
+                    user_id: <code className="rounded bg-white px-1">{r.user_id}</code>
+                    {r.user_replied_at && (
+                      <span className="ml-2">
+                        ·{" "}
+                        {new Date(r.user_replied_at).toLocaleString("ru-RU", {
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-2 font-semibold text-[#111827]">{r.title}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-[#374151] text-[13px] leading-relaxed">
+                    {r.user_reply_text}
+                  </p>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>

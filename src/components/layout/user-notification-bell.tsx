@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
-import { Bell, CheckCheck, ChevronDown, ExternalLink } from "lucide-react";
+import { Bell, CheckCheck, ChevronDown, ExternalLink, MessageCircleReply, Send } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
 const LIME = "#84CC16";
@@ -17,6 +17,9 @@ type Row = {
   category: string;
   created_at: string;
   read_at: string | null;
+  replies_enabled?: boolean;
+  user_reply_text?: string | null;
+  user_replied_at?: string | null;
 };
 
 function formatWhen(iso: string) {
@@ -34,6 +37,10 @@ export function UserNotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState<Record<string, string>>({});
+  const [replyOpenId, setReplyOpenId] = useState<string | null>(null);
+  const [replySubmitting, setReplySubmitting] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const fetchList = useCallback(async () => {
@@ -50,6 +57,7 @@ export function UserNotificationBell() {
       const j = await res.json();
       setItems(j.notifications || []);
       setUnreadCount(typeof j.unreadCount === "number" ? j.unreadCount : 0);
+      setReplyError(null);
     } catch {
       /* ignore */
     }
@@ -121,6 +129,56 @@ export function UserNotificationBell() {
     const next = expandedId === n.id ? null : n.id;
     setExpandedId(next);
     if (next && !n.read_at) void markRead(n.id);
+    if (!next) {
+      setReplyOpenId(null);
+      setReplyError(null);
+    }
+  };
+
+  const submitReply = async (n: Row) => {
+    const text = (replyDraft[n.id] ?? "").trim();
+    if (!text) {
+      setReplyError("Напишите ответ");
+      return;
+    }
+    setReplySubmitting(true);
+    setReplyError(null);
+    try {
+      const supabase = createBrowserClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      const res = await fetch("/api/notifications/reply", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: n.id, text }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setReplyError(typeof j.error === "string" ? j.error : "Не удалось отправить");
+        return;
+      }
+      const at = typeof j.user_replied_at === "string" ? j.user_replied_at : new Date().toISOString();
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === n.id ? { ...it, user_reply_text: text, user_replied_at: at } : it
+        )
+      );
+      setReplyDraft((d) => {
+        const next = { ...d };
+        delete next[n.id];
+        return next;
+      });
+      setReplyOpenId(null);
+    } catch {
+      setReplyError("Ошибка сети");
+    } finally {
+      setReplySubmitting(false);
+    }
   };
 
   const hasUnread = unreadCount > 0;
@@ -314,6 +372,82 @@ export function UserNotificationBell() {
                                   <ExternalLink className="h-3.5 w-3.5 text-[#1F4E3D]" strokeWidth={2} />
                                   Узнать больше
                                 </a>
+                              )}
+
+                              {n.replies_enabled && (
+                                <div
+                                  className="mt-4 border-t border-[#2E5A43]/10 pt-4"
+                                  onClick={(e) => e.stopPropagation()}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                  {n.user_reply_text ? (
+                                    <div className="rounded-xl border border-[#84CC16]/35 bg-[#f7fdf0] px-3 py-2.5">
+                                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#4d7c0f]">
+                                        Ваш ответ отправлен
+                                      </p>
+                                      <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-neutral-800">
+                                        {n.user_reply_text}
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      {replyOpenId !== n.id ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setReplyOpenId(n.id);
+                                            setReplyError(null);
+                                          }}
+                                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#2E5A43]/22 bg-white py-2.5 text-[13px] font-semibold text-neutral-900 shadow-sm transition-colors hover:bg-[#f4faf6]"
+                                        >
+                                          <MessageCircleReply className="h-4 w-4 text-[#1F4E3D]" strokeWidth={2} />
+                                          Ответить команде
+                                        </button>
+                                      ) : (
+                                        <div className="space-y-2">
+                                          <label className="block text-[11px] font-semibold text-[#4d7c0f]">
+                                            Ваш ответ (видит только команда KARTO)
+                                          </label>
+                                          <textarea
+                                            value={replyDraft[n.id] ?? ""}
+                                            onChange={(e) =>
+                                              setReplyDraft((d) => ({ ...d, [n.id]: e.target.value }))
+                                            }
+                                            rows={5}
+                                            maxLength={8000}
+                                            placeholder="Что нравится, что улучшить, чего не хватает…"
+                                            className="w-full resize-y rounded-xl border border-[#2E5A43]/18 bg-white px-3 py-2.5 text-[14px] leading-relaxed text-neutral-900 shadow-inner outline-none ring-[#84CC16]/0 transition-shadow focus:border-[#84CC16]/55 focus:ring-2 focus:ring-[#84CC16]/25"
+                                          />
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                              type="button"
+                                              disabled={replySubmitting}
+                                              onClick={() => void submitReply(n)}
+                                              className="inline-flex flex-1 min-w-[8rem] items-center justify-center gap-2 rounded-xl bg-[#1F4E3D] py-2.5 text-[13px] font-semibold text-white transition-opacity disabled:opacity-50"
+                                            >
+                                              <Send className="h-3.5 w-3.5" strokeWidth={2} />
+                                              {replySubmitting ? "Отправка…" : "Отправить"}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              disabled={replySubmitting}
+                                              onClick={() => {
+                                                setReplyOpenId(null);
+                                                setReplyError(null);
+                                              }}
+                                              className="rounded-xl border border-neutral-200 px-3 py-2.5 text-[13px] font-medium text-neutral-600 hover:bg-neutral-50"
+                                            >
+                                              Отмена
+                                            </button>
+                                          </div>
+                                          {replyError && (
+                                            <p className="text-[12px] font-medium text-red-600">{replyError}</p>
+                                          )}
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
                               )}
                             </div>
                           </div>
