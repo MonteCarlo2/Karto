@@ -2067,9 +2067,7 @@ export default function FreeGeneration() {
                   setIsVideoGuideOpen(true);
                 }}
               />
-              {videoGuidePointerDismissed === false && (
-                <GuidePointerOverlay onDismiss={dismissVideoGuidePointer} />
-              )}
+              {videoGuidePointerDismissed === false && <GuidePointerOverlay />}
             </div>
           )}
           {mediaMode === "photo" && (
@@ -2080,9 +2078,7 @@ export default function FreeGeneration() {
                   setIsPhotoGuideOpen(true);
                 }}
               />
-              {photoGuidePointerDismissed === false && (
-                <GuidePointerOverlay onDismiss={dismissPhotoGuidePointer} />
-              )}
+              {photoGuidePointerDismissed === false && <GuidePointerOverlay />}
             </div>
           )}
         </div>
