@@ -223,7 +223,7 @@ export function UserNotificationBell() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute right-0 top-full z-[60] mt-2 flex max-h-[min(78vh,560px)] w-[min(calc(100vw-1rem),24.5rem)] flex-col overflow-hidden rounded-2xl border border-[#2E5A43]/14 bg-white/92 shadow-[0_20px_64px_-16px_rgba(31,78,61,0.26),0_8px_22px_rgba(0,0,0,0.07)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/[0.8]"
+            className="absolute right-0 top-full z-[60] mt-2 flex max-h-[min(78vh,560px)] w-[min(calc(100vw-1rem),28.5rem)] flex-col overflow-hidden rounded-2xl border border-[#2E5A43]/14 bg-white/92 shadow-[0_20px_64px_-16px_rgba(31,78,61,0.26),0_8px_22px_rgba(0,0,0,0.07)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/[0.8]"
           >
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(132,204,22,0.09),transparent_45%),radial-gradient(circle_at_bottom_left,rgba(31,78,61,0.07),transparent_48%)]" />
             <div className="h-[2px] w-full shrink-0 bg-[#84CC16]/60" aria-hidden />
@@ -258,7 +258,7 @@ export function UserNotificationBell() {
                     <Bell className="h-6 w-6 text-[#1F4E3D]/75" strokeWidth={1.5} />
                   </div>
                   <p className="text-[15px] font-semibold text-neutral-900">Пока пусто</p>
-                  <p className="mx-auto mt-1.5 max-w-[240px] text-[13px] leading-relaxed text-neutral-600">
+                  <p className="mx-auto mt-1.5 max-w-[min(280px,85%)] text-[13px] leading-relaxed text-neutral-600">
                     Сообщения от команды KARTO появятся здесь
                   </p>
                 </div>
