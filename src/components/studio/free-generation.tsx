@@ -2041,35 +2041,29 @@ export default function FreeGeneration() {
             </div>
           </div>
           {mediaMode === "video" && (
-            <div className="relative">
-              {videoGuidePointerDismissed === false && (
-                <GuidePointerOverlay
-                  message="Ознакомьтесь с инструкцией — так результат будет предсказуемее."
-                  onDismiss={dismissVideoGuidePointer}
-                />
-              )}
+            <div className="relative flex flex-col items-center">
               <VideoGenerationGuideTrigger
                 onOpen={() => {
                   dismissVideoGuidePointer();
                   setIsVideoGuideOpen(true);
                 }}
               />
+              {videoGuidePointerDismissed === false && (
+                <GuidePointerOverlay onDismiss={dismissVideoGuidePointer} />
+              )}
             </div>
           )}
           {mediaMode === "photo" && (
-            <div className="relative">
-              {photoGuidePointerDismissed === false && (
-                <GuidePointerOverlay
-                  message="Рекомендуем прочитать про фото-режим и ограничения модели."
-                  onDismiss={dismissPhotoGuidePointer}
-                />
-              )}
+            <div className="relative flex flex-col items-center">
               <PhotoGenerationGuideTrigger
                 onOpen={() => {
                   dismissPhotoGuidePointer();
                   setIsPhotoGuideOpen(true);
                 }}
               />
+              {photoGuidePointerDismissed === false && (
+                <GuidePointerOverlay onDismiss={dismissPhotoGuidePointer} />
+              )}
             </div>
           )}
         </div>
