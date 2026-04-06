@@ -44,7 +44,7 @@ export function KartoServicesExplainer({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[200] bg-[#1a2e24]/55 backdrop-blur-md"
+              className="fixed inset-0 z-[200] bg-black/[0.07] backdrop-blur-sm"
               onClick={() => setOpen(false)}
             />
             <motion.div
