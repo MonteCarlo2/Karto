@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { findAuthUserByEmail } from "@/lib/auth/find-auth-user-by-email";
+import { validateDisplayName, validatePasswordForAuth } from "@/lib/auth/password-policy";
 import {
   generateFourDigitCode,
   hashSignupCode,
@@ -19,11 +20,13 @@ export async function POST(request: NextRequest) {
     if (!emailRaw || !emailRaw.includes("@")) {
       return NextResponse.json({ success: false, error: "Введите корректный email" }, { status: 400 });
     }
-    if (!password || password.length < 8) {
-      return NextResponse.json({ success: false, error: "Пароль слишком короткий" }, { status: 400 });
+    const pwdCheck = validatePasswordForAuth(password);
+    if (!pwdCheck.ok) {
+      return NextResponse.json({ success: false, error: pwdCheck.error }, { status: 400 });
     }
-    if (!name || name.length < 1) {
-      return NextResponse.json({ success: false, error: "Введите имя" }, { status: 400 });
+    const nameCheck = validateDisplayName(name);
+    if (!nameCheck.ok) {
+      return NextResponse.json({ success: false, error: nameCheck.error }, { status: 400 });
     }
 
     const email = emailRaw.toLowerCase();

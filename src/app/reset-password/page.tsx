@@ -8,6 +8,7 @@ import { Lock, Eye, EyeOff, ArrowLeft, Check, X } from "lucide-react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import Image from "next/image";
 import { useNotification } from "@/components/ui/notification";
+import { validatePasswordForAuth } from "@/lib/auth/password-policy";
 
 function ResetPasswordContent() {
   const router = useRouter();
@@ -96,35 +97,9 @@ function ResetPasswordContent() {
     setIsLoading(true);
     setError(null);
 
-    // Валидация пароля
-    const requirements = checkPasswordRequirements(password);
-    if (!requirements.minLength) {
-      setError("Пароль должен содержать минимум 8 символов");
-      setIsLoading(false);
-      return;
-    }
-    if (!requirements.maxLength) {
-      setError("Пароль не должен превышать 128 символов");
-      setIsLoading(false);
-      return;
-    }
-    if (!requirements.onlyEnglish) {
-      setError("Пароль должен содержать только английские буквы");
-      setIsLoading(false);
-      return;
-    }
-    if (!requirements.noSpaces) {
-      setError("Пароль не должен содержать пробелы");
-      setIsLoading(false);
-      return;
-    }
-    if (!requirements.hasUpperCase) {
-      setError("Пароль должен содержать заглавную букву");
-      setIsLoading(false);
-      return;
-    }
-    if (!requirements.hasDigit) {
-      setError("Пароль должен содержать цифру");
+    const pwdPolicy = validatePasswordForAuth(password);
+    if (!pwdPolicy.ok) {
+      setError(pwdPolicy.error);
       setIsLoading(false);
       return;
     }
@@ -405,7 +380,11 @@ function ResetPasswordContent() {
                     !password ||
                     !confirmPassword ||
                     !passwordRequirements?.minLength ||
+                    !passwordRequirements?.maxLength ||
+                    !passwordRequirements?.onlyEnglish ||
+                    !passwordRequirements?.noSpaces ||
                     !passwordRequirements?.hasUpperCase ||
+                    !passwordRequirements?.hasLowerCase ||
                     !passwordRequirements?.hasDigit ||
                     password !== confirmPassword
                   }

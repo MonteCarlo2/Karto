@@ -8,6 +8,7 @@ import { Mail, Lock, Eye, EyeOff, ArrowLeft, User, Check, X } from "lucide-react
 import { createBrowserClient } from "@/lib/supabase/client";
 import Image from "next/image";
 import { useNotification } from "@/components/ui/notification";
+import { validateDisplayName, validatePasswordForAuth } from "@/lib/auth/password-policy";
 
 const AUTH_API_TIMEOUT_MS = 90_000;
 
@@ -296,29 +297,15 @@ function LoginContent() {
         return;
       }
 
-      const requirements = checkPasswordRequirements(password);
-      if (!requirements.minLength) {
-        setError("Пароль должен содержать минимум 8 символов");
+      const pwdPolicy = validatePasswordForAuth(password);
+      if (!pwdPolicy.ok) {
+        setError(pwdPolicy.error);
         return;
       }
-      if (!requirements.maxLength) {
-        setError("Пароль не должен превышать 128 символов");
-        return;
-      }
-      if (!requirements.onlyEnglish) {
-        setError("Пароль должен содержать только английские буквы");
-        return;
-      }
-      if (!requirements.noSpaces) {
-        setError("Пароль не должен содержать пробелы");
-        return;
-      }
-      if (!requirements.hasUpperCase) {
-        setError("Пароль должен содержать заглавную букву");
-        return;
-      }
-      if (!requirements.hasDigit) {
-        setError("Пароль должен содержать цифру");
+
+      const namePolicy = validateDisplayName(name);
+      if (!namePolicy.ok) {
+        setError(namePolicy.error);
         return;
       }
 
@@ -1021,7 +1008,11 @@ function LoginContent() {
                   !consentPersonalData ||
                   !isValidEmail(email) ||
                   !passwordRequirements?.minLength ||
+                  !passwordRequirements?.maxLength ||
+                  !passwordRequirements?.onlyEnglish ||
+                  !passwordRequirements?.noSpaces ||
                   !passwordRequirements?.hasUpperCase ||
+                  !passwordRequirements?.hasLowerCase ||
                   !passwordRequirements?.hasDigit ||
                   password !== confirmPassword
                 ))
