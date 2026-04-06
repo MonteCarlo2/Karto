@@ -56,8 +56,8 @@ function galleryImageUrl(url: string): string {
 const LS_VIDEO_GUIDE_OPENED = "karto_seen_video_guide_v1";
 const LS_PHOTO_GUIDE_OPENED = "karto_seen_photo_guide_v1";
 
-/** Строка «N сек» под генерацией — показываем не сразу, а через ~3.5 с от начала отсчёта */
-const GENERATION_TIMER_SHOW_DELAY_MS = 3500;
+/** Скрываем строку «N сек» первые 4 с; затем показываем отсчёт с 1, 2, 3… (не с «5 сек» и т.п.) */
+const GENERATION_TIMER_SHOW_DELAY_MS = 4000;
 /** Уведомление о медленной генерации фото — строго после 120 с ожидания */
 const SLOW_PHOTO_GEN_WARN_AFTER_MS = 120_000;
 const SLOW_VIDEO_GEN_WARN_AFTER_MS = 120_000;
@@ -71,7 +71,7 @@ function VideoGeneratingCard({
 }: {
   aspectRatio?: string;
   cardWidth?: number;
-  /** Секунды с момента постановки задачи; `undefined` — первая задержка, строка скрыта */
+  /** Секунды видимого отсчёта (1, 2, 3…); `undefined` — первые 4 с строка скрыта */
   elapsedSeconds?: number;
 }) {
   const fontPx = Math.max(11, Math.round((cardWidth || 320) / 28));
@@ -203,7 +203,7 @@ function PhotoGeneratingCard({
 }: {
   aspectRatio: "3:4" | "4:3" | "9:16" | "1:1";
   cardWidth?: number;
-  /** Секунды с момента отправки запроса; `undefined` — первая задержка, строка скрыта */
+  /** Секунды видимого отсчёта (1, 2, 3…); `undefined` — первые 4 с строка скрыта */
   elapsedSeconds?: number;
 }) {
   const fontPx = Math.max(11, Math.round((cardWidth || 400) / 28));
@@ -647,7 +647,7 @@ export default function FreeGeneration() {
   const [isGeneratingSlide, setIsGeneratingSlide] = useState(false);
   /** Метка времени непосредственно перед POST на /api/generate-free или generate-for-product (запрос к KIE) */
   const [photoGenStartedAtMs, setPhotoGenStartedAtMs] = useState<number | null>(null);
-  /** null — таймер ещё не показываем (первая задержка 3–4 с) */
+  /** null — первые 4 с строка скрыта; затем 1, 2, 3… */
   const [photoGenTimerSeconds, setPhotoGenTimerSeconds] = useState<number | null>(null);
   // Отдельный флаг для запуска видео-задачи (не блокирует ленту)
   const [isVideoStarting, setIsVideoStarting] = useState(false);
@@ -1040,7 +1040,9 @@ export default function FreeGeneration() {
       if (age < GENERATION_TIMER_SHOW_DELAY_MS) {
         setPhotoGenTimerSeconds(null);
       } else {
-        setPhotoGenTimerSeconds(Math.max(0, Math.floor(age / 1000)));
+        setPhotoGenTimerSeconds(
+          Math.floor((age - GENERATION_TIMER_SHOW_DELAY_MS) / 1000) + 1
+        );
       }
     };
     tick();
@@ -1067,7 +1069,9 @@ export default function FreeGeneration() {
       if (age < GENERATION_TIMER_SHOW_DELAY_MS) {
         setVideoPendingTimerSeconds(null);
       } else {
-        setVideoPendingTimerSeconds(Math.max(0, Math.floor(age / 1000)));
+        setVideoPendingTimerSeconds(
+          Math.floor((age - GENERATION_TIMER_SHOW_DELAY_MS) / 1000) + 1
+        );
       }
     };
     tick();
