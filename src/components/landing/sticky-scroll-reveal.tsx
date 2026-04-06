@@ -11,6 +11,8 @@ import {
 } from "framer-motion"
 
 const PRIMARY = "#1F4E3D"
+/** Фирменный «салатовый» акцент (лайм KARTO) */
+const BRAND_LIME = "#84CC16"
 const BG = "#F5F5F0"
 
 // --- ASSETS ---
@@ -175,10 +177,22 @@ export function StickyScrollReveal() {
         transition={{ duration: 0.7, ease: "easeOut" }}
       >
         
-        {/* Заголовок */}
+        {/* Заголовок: «Поток», ниже подзаголовок; «за четыре шага» — фирменный лайм */}
         <div className="max-w-3xl mb-16">
-          <h2 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground leading-[1.1]" style={{ fontFamily: 'var(--font-serif)' }}>
-            От идеи до карточки — <br/><span style={{ color: PRIMARY }}>за четыре шага.</span>
+          <h2
+            className="font-bold tracking-tight"
+            style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+          >
+            <span
+              className="block text-4xl sm:text-5xl md:text-6xl leading-[0.98]"
+              style={{ color: PRIMARY }}
+            >
+              Поток
+            </span>
+            <span className="mt-3 sm:mt-4 block text-3xl sm:text-4xl md:text-[2.35rem] leading-[1.12] text-foreground">
+              От идеи до карточки — <br />
+              <span style={{ color: BRAND_LIME }}>за четыре шага.</span>
+            </span>
           </h2>
         </div>
 

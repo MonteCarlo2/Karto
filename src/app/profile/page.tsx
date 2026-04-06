@@ -28,6 +28,11 @@ import {
 import Image from "next/image";
 import { useNotification } from "@/components/ui/notification";
 import type { SubscriptionState } from "@/lib/subscription";
+import {
+  FREE_WELCOME_CREATIVE_LIMIT,
+  FREE_WELCOME_VIDEO_TOKENS,
+} from "@/lib/subscription";
+import { KartoServicesExplainer } from "@/components/ui/karto-services-explainer";
 
 type Project = {
   id: string;
@@ -74,6 +79,7 @@ function ProfileContent() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionState | null>(null);
+  const [subscriptionReady, setSubscriptionReady] = useState(false);
   const [paymentSuccessPolling, setPaymentSuccessPolling] = useState(false);
 
   const fetchSubscription = async (): Promise<SubscriptionState | null> => {
@@ -91,15 +97,20 @@ function ProfileContent() {
   useEffect(() => {
     if (!user) {
       setSubscription(null);
+      setSubscriptionReady(false);
       return;
     }
     let mounted = true;
+    setSubscriptionReady(false);
     (async () => {
       const sub = await fetchSubscription();
       if (!mounted) return;
       setSubscription(sub);
+      setSubscriptionReady(true);
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [user]);
 
   // После возврата с оплаты: подтверждаем платёж через API (данные об ожидающем платеже берутся из Supabase), затем опрашиваем подписку
@@ -747,49 +758,92 @@ function ProfileContent() {
                 </div>
               )}
 
-              {/* Ваши услуги */}
-              {subscription &&
-                (subscription.flowsLimit > 0 ||
-                  subscription.creativeLimit > 0 ||
-                  (subscription.videoTokenBalance ?? 0) > 0 ||
-                  (subscription.videoTokensSpent ?? 0) > 0 ||
-                  (subscription.videoTokensLifetimePurchased ?? 0) > 0) && (
+              {/* Ваши услуги: всегда три строки (в т.ч. нули), чтобы было видно, чего нет */}
+              {user && !loading && (
                 <div className="mb-6 p-4 rounded-xl bg-[#F5F5F0] border border-[#2E5A43]/20">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-[#2E5A43]" />
-                    Ваши услуги
-                  </h3>
-                  <div className="space-y-1">
-                    {subscription.flowsLimit > 0 && (
-                      <p className="text-sm text-gray-800">
-                        Поток: осталось <strong>{Math.max(0, subscription.flowsLimit - subscription.flowsUsed)}</strong> из {subscription.flowsLimit}.
-                      </p>
-                    )}
-                    {subscription.creativeLimit > 0 && (
-                      <p className="text-sm text-gray-800">
-                        Свободное творчество: осталось <strong>{Math.max(0, subscription.creativeLimit - subscription.creativeUsed)}</strong> из {subscription.creativeLimit} генераций.
-                      </p>
-                    )}
-                    {(subscription.videoTokenBalance ?? 0) > 0 ||
-                    (subscription.videoTokensSpent ?? 0) > 0 ||
-                    (subscription.videoTokensLifetimePurchased ?? 0) > 0 ? (
-                      <p className="text-sm text-gray-800">
-                        Видео-кредиты: осталось{" "}
-                        <strong className="text-lime-700">{subscription.videoTokenBalance ?? 0}</strong>
-                        {(() => {
-                          const lim = subscription.videoTokensLifetimePurchased ?? 0;
-                          const bal = subscription.videoTokenBalance ?? 0;
-                          const denom = lim > 0 ? lim : Math.max(bal, 0);
-                          return denom > 0 ? (
-                            <> из {denom} ток.</>
-                          ) : (
-                            <> ток.</>
-                          );
-                        })()}
-                      </p>
-                    ) : null}
+                  <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                    <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-[#2E5A43]" />
+                      Ваши услуги
+                    </h3>
+                    {subscriptionReady && <KartoServicesExplainer variant="button" className="shrink-0" />}
                   </div>
-                  <Link href="/#pricing" className="text-xs text-[#2E5A43] hover:underline mt-1 inline-block">Сменить тариф</Link>
+                  {!subscriptionReady ? (
+                    <p className="text-sm text-gray-500">Загрузка данных о тарифах…</p>
+                  ) : subscription ? (
+                    <>
+                      <div className="space-y-1.5">
+                        <p className="text-sm text-gray-800">
+                          Свободное творчество: осталось{" "}
+                          <strong>
+                            {subscription.creativeLimit > 0
+                              ? Math.max(0, subscription.creativeLimit - subscription.creativeUsed)
+                              : 0}
+                          </strong>
+                          {subscription.creativeLimit > 0 ? (
+                            <> из {subscription.creativeLimit} генераций.</>
+                          ) : (
+                            <> генераций — активного пакета нет (0).</>
+                          )}
+                        </p>
+                        <p className="text-sm text-gray-800">
+                          Видео-кредиты: осталось{" "}
+                          <strong className="text-lime-700">{subscription.videoTokenBalance ?? 0}</strong>
+                          {(() => {
+                            const lim = subscription.videoTokensLifetimePurchased ?? 0;
+                            const bal = subscription.videoTokenBalance ?? 0;
+                            const denom = lim > 0 ? lim : bal > 0 ? bal : 0;
+                            return denom > 0 ? (
+                              <> из {denom} ток.</>
+                            ) : (
+                              <> (на счёте 0).</>
+                            );
+                          })()}
+                        </p>
+                        <p className="text-sm text-gray-800">
+                          Поток:{" "}
+                          {subscription.flowsLimit > 0 ? (
+                            <>
+                              осталось{" "}
+                              <strong>
+                                {Math.max(0, subscription.flowsLimit - subscription.flowsUsed)}
+                              </strong>{" "}
+                              из {subscription.flowsLimit}.
+                            </>
+                          ) : (
+                            <>
+                              не подключён — <strong>0</strong> доступных потоков. Пакет Потока
+                              оформляется отдельно от пакетов свободного творчества.
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      <p className="mt-3 text-xs leading-relaxed text-gray-600 border-t border-[#2E5A43]/10 pt-3">
+                        <strong className="text-gray-800">Стартовый бонус:</strong> при первом открытии
+                        аккаунта начисляются до{" "}
+                        <strong>{FREE_WELCOME_CREATIVE_LIMIT}</strong> бесплатных генераций изображений в{" "}
+                        <strong>свободном творчестве</strong> и{" "}
+                        <strong>{FREE_WELCOME_VIDEO_TOKENS}</strong> видео-кредитов — они отображаются в
+                        строках выше, пока не израсходованы. Поток в бонус не входит.
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                        <Link
+                          href="/#pricing"
+                          className="text-xs font-semibold text-[#2E5A43] hover:underline"
+                        >
+                          Цены и пакеты
+                        </Link>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-600">
+                      Не удалось загрузить данные о тарифах. Обновите страницу или откройте{" "}
+                      <Link href="/#pricing" className="text-[#2E5A43] font-semibold hover:underline">
+                        раздел с ценами
+                      </Link>
+                      .
+                    </p>
+                  )}
                 </div>
               )}
 

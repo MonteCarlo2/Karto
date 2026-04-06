@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { KartoServicesExplainer } from "@/components/ui/karto-services-explainer";
 
 interface IntroAnimationProps {
   onComplete: () => void;
@@ -87,7 +89,7 @@ function CanvasTexture({ patternAlpha = 15 }: { patternAlpha?: number }) {
 export function IntroAnimation({ onComplete }: IntroAnimationProps) {
   const router = useRouter();
   const [showContent, setShowContent] = useState(false);
-  const [flowError, setFlowError] = useState<string | null>(null);
+  const [flowError, setFlowError] = useState<ReactNode | null>(null);
   const [checking, setChecking] = useState(false);
 
   const handleOpenFlow = async () => {
@@ -97,7 +99,11 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
       const supabase = createBrowserClient();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
-        setFlowError("Войдите в аккаунт, чтобы начать Поток. Перейдите на главную и войдите или зарегистрируйтесь.");
+        setFlowError(
+          <>
+            Войдите в аккаунт, чтобы начать Поток. Перейдите на главную и войдите или зарегистрируйтесь.
+          </>
+        );
         return;
       }
       const res = await fetch("/api/subscription", {
@@ -105,17 +111,42 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.subscription) {
-        setFlowError("Выберите тариф «Поток» на главной странице, чтобы начать.");
+        setFlowError(
+          <>
+            Поток — отдельная услуга: его нужно приобрести. Откройте{" "}
+            <Link href="/#pricing" className="font-semibold underline underline-offset-2 hover:text-white">
+              раздел с ценами
+            </Link>
+            .
+          </>
+        );
         return;
       }
       const sub = data.subscription;
       if (sub.planType !== "flow") {
-        setFlowError("У вас подключён тариф «Свободное творчество». Для Потока выберите тариф «Поток» на главной.");
+        setFlowError(
+          <>
+            Сейчас у вас активен тариф <strong>«Свободное творчество»</strong>. Поток (сценарий в
+            Мастерской) в него не входит — пакет Потока нужно <strong>купить отдельно</strong>.{" "}
+            <Link href="/#pricing" className="font-semibold underline underline-offset-2 hover:text-white">
+              Цены и пакеты «Поток»
+            </Link>
+            .
+          </>
+        );
         return;
       }
       const left = Math.max(0, sub.flowsLimit - sub.flowsUsed);
       if (left <= 0) {
-        setFlowError("Нет доступных потоков. Выберите тариф на главной странице, чтобы получить поток.");
+        setFlowError(
+          <>
+            В текущем пакете не осталось доступных потоков. Новый пакет можно оформить в{" "}
+            <Link href="/#pricing" className="font-semibold underline underline-offset-2 hover:text-white">
+              разделе «Цена»
+            </Link>
+            .
+          </>
+        );
         return;
       }
       // Новый запуск Потока должен начинаться с чистой сессии.
@@ -126,7 +157,7 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
       }
       router.push("/studio/understanding");
     } catch {
-      setFlowError("Не удалось проверить подписку. Попробуйте ещё раз.");
+      setFlowError(<>Не удалось проверить подписку. Попробуйте ещё раз.</>);
     } finally {
       setChecking(false);
     }
@@ -285,9 +316,12 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
           className="absolute bottom-8 right-8 lg:bottom-12 lg:right-12 flex flex-col items-end gap-3"
         >
           {flowError && (
-            <p className="text-sm text-white/90 bg-black/20 px-4 py-2 rounded-lg max-w-md text-right" role="alert">
+            <div
+              className="text-sm text-white/90 bg-black/20 px-4 py-2 rounded-lg max-w-md text-right"
+              role="alert"
+            >
               {flowError}
-            </p>
+            </div>
           )}
           <button
             onClick={handleOpenFlow}
@@ -339,6 +373,10 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
               />
             </svg>
           </button>
+          <KartoServicesExplainer
+            variant="link"
+            className="text-white/75 hover:text-white text-[11px] sm:text-xs !font-medium !text-white/75 hover:!text-white"
+          />
         </motion.div>
       </div>
     </motion.div>
