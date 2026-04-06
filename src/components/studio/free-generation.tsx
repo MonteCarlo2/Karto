@@ -56,15 +56,26 @@ function galleryImageUrl(url: string): string {
 const LS_VIDEO_GUIDE_OPENED = "karto_seen_video_guide_v1";
 const LS_PHOTO_GUIDE_OPENED = "karto_seen_photo_guide_v1";
 
+/** Строка «N сек» под генерацией — показываем не сразу, а через ~3.5 с от начала отсчёта */
+const GENERATION_TIMER_SHOW_DELAY_MS = 3500;
+/** Уведомление о медленной генерации фото — строго после 120 с ожидания */
+const SLOW_PHOTO_GEN_WARN_AFTER_MS = 120_000;
+const SLOW_VIDEO_GEN_WARN_AFTER_MS = 120_000;
+const SLOW_GEN_TOAST_DURATION_MS = 4000;
+
 /** Анимация генерации — органические пятна как краска (без мерцания) */
 function VideoGeneratingCard({
   aspectRatio = "9:16",
   cardWidth = 320,
+  elapsedSeconds,
 }: {
   aspectRatio?: string;
   cardWidth?: number;
+  /** Секунды с момента постановки задачи; `undefined` — первая задержка, строка скрыта */
+  elapsedSeconds?: number;
 }) {
   const fontPx = Math.max(11, Math.round((cardWidth || 320) / 28));
+  const timerPx = Math.max(10, Math.round((cardWidth || 320) / 32));
   return (
     <div className="w-full h-full rounded-xl overflow-hidden relative flex flex-col items-end justify-end"
       style={{ background: "#2e2e30" }}>
@@ -164,6 +175,212 @@ function VideoGeneratingCard({
         >
           Генерация видео...
         </p>
+        {typeof elapsedSeconds === "number" && (
+          <p
+            className="mt-1.5 font-medium text-white/30 tabular-nums tracking-[0.12em]"
+            style={{
+              fontSize: `${timerPx}px`,
+              textShadow: "0 1px 10px rgba(0,0,0,0.45)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {elapsedSeconds} сек
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Генерация изображения: те же плавные «органические» пятна, что у видео,
+ * но в фирменных и смешанных цветах + сетка точек KARTO.
+ */
+function PhotoGeneratingCard({
+  aspectRatio,
+  cardWidth = 400,
+  elapsedSeconds,
+}: {
+  aspectRatio: "3:4" | "4:3" | "9:16" | "1:1";
+  cardWidth?: number;
+  /** Секунды с момента отправки запроса; `undefined` — первая задержка, строка скрыта */
+  elapsedSeconds?: number;
+}) {
+  const fontPx = Math.max(11, Math.round((cardWidth || 400) / 28));
+  const timerPx = Math.max(10, Math.round((cardWidth || 400) / 32));
+  const gridCols = 12;
+  const gridRows =
+    aspectRatio === "3:4" ? 16 : aspectRatio === "4:3" ? 12 : aspectRatio === "9:16" ? 20 : 12;
+  const totalDots = gridCols * gridRows;
+
+  return (
+    <div
+      className="w-full h-full rounded-xl overflow-hidden relative flex flex-col items-end justify-end border border-white/[0.06]"
+      style={{ background: "#1c1f1e" }}
+    >
+      <style>{`
+        @keyframes photoCowA {
+          0%   { transform: translate(0%,   0%)   rotate(0deg)   scale(1.0); }
+          20%  { transform: translate(22%,  -18%) rotate(25deg)  scale(1.2); }
+          40%  { transform: translate(-8%,  30%)  rotate(-15deg) scale(0.85);}
+          60%  { transform: translate(35%,  15%)  rotate(40deg)  scale(1.15);}
+          80%  { transform: translate(-20%, -5%)  rotate(-10deg) scale(1.05);}
+          100% { transform: translate(0%,   0%)   rotate(0deg)   scale(1.0); }
+        }
+        @keyframes photoCowB {
+          0%   { transform: translate(0%,   0%)   rotate(0deg)   scale(1.1); }
+          25%  { transform: translate(-28%, 20%)  rotate(-30deg) scale(0.9); }
+          50%  { transform: translate(18%,  -25%) rotate(20deg)  scale(1.25);}
+          75%  { transform: translate(-10%, 35%)  rotate(-5deg)  scale(0.95);}
+          100% { transform: translate(0%,   0%)   rotate(0deg)   scale(1.1); }
+        }
+        @keyframes photoCowC {
+          0%   { transform: translate(0%,   0%)   rotate(0deg)   scale(0.9); }
+          30%  { transform: translate(30%,  25%)  rotate(35deg)  scale(1.2); }
+          55%  { transform: translate(-15%, -20%) rotate(-20deg) scale(1.0); }
+          80%  { transform: translate(20%,  -10%) rotate(15deg)  scale(1.15);}
+          100% { transform: translate(0%,   0%)   rotate(0deg)   scale(0.9); }
+        }
+        @keyframes photoCowD {
+          0%   { transform: translate(0%,   0%)   rotate(0deg)   scale(1.3); }
+          35%  { transform: translate(-25%, -30%) rotate(-40deg) scale(0.8); }
+          65%  { transform: translate(15%,  20%)  rotate(30deg)  scale(1.1); }
+          100% { transform: translate(0%,   0%)   rotate(0deg)   scale(1.3); }
+        }
+        @keyframes photoCowE {
+          0%   { transform: translate(0%,   0%)   rotate(0deg)   scale(1.0); }
+          28%  { transform: translate(20%,  30%)  rotate(-25deg) scale(1.2); }
+          56%  { transform: translate(-30%, 5%)   rotate(15deg)  scale(0.85);}
+          84%  { transform: translate(10%,  -28%) rotate(-35deg) scale(1.1); }
+          100% { transform: translate(0%,   0%)   rotate(0deg)   scale(1.0); }
+        }
+        @keyframes photoGenDotPulse {
+          0%, 100% { opacity: 0.28; transform: scale(0.75); }
+          50% { opacity: 1; transform: scale(1.2); }
+        }
+      `}</style>
+
+      <div className="absolute inset-0 pointer-events-none" style={{ overflow: "hidden" }}>
+        <div
+          style={{
+            position: "absolute",
+            top: "-20%",
+            left: "-10%",
+            width: "80%",
+            height: "80%",
+            background:
+              "radial-gradient(ellipse 65% 55% at 50% 50%, rgba(132,204,22,0.55) 0%, rgba(74,222,128,0.2) 42%, transparent 72%)",
+            filter: "blur(42px)",
+            animation: "photoCowA 14.3s ease-in-out infinite",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            bottom: "-15%",
+            left: "5%",
+            width: "85%",
+            height: "70%",
+            background:
+              "radial-gradient(ellipse 70% 55% at 50% 45%, rgba(45,212,191,0.45) 0%, rgba(16,185,129,0.14) 48%, transparent 72%)",
+            filter: "blur(46px)",
+            animation: "photoCowC 17.1s ease-in-out infinite",
+            animationDelay: "0.9s",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            bottom: "-10%",
+            right: "-5%",
+            width: "65%",
+            height: "60%",
+            background:
+              "radial-gradient(ellipse 60% 50% at 50% 50%, rgba(167,139,250,0.42) 0%, rgba(129,140,248,0.12) 50%, transparent 72%)",
+            filter: "blur(44px)",
+            animation: "photoCowE 9.8s ease-in-out infinite",
+            animationDelay: "1.5s",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            top: "15%",
+            right: "-15%",
+            width: "65%",
+            height: "65%",
+            background:
+              "radial-gradient(ellipse 60% 65% at 45% 50%, rgba(31,78,61,0.82) 0%, rgba(15,40,30,0.28) 42%, transparent 72%)",
+            filter: "blur(40px)",
+            animation: "photoCowB 11.7s ease-in-out infinite",
+            animationDelay: "2.1s",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            top: "-10%",
+            right: "-5%",
+            width: "50%",
+            height: "55%",
+            background:
+              "radial-gradient(ellipse 55% 60% at 50% 50%, rgba(253,224,71,0.28) 0%, rgba(255,255,255,0.18) 38%, transparent 70%)",
+            filter: "blur(38px)",
+            animation: "photoCowD 13.5s ease-in-out infinite",
+            animationDelay: "4.3s",
+          }}
+        />
+      </div>
+
+      <div
+        className="absolute inset-0 z-[5] pointer-events-none grid p-3 mix-blend-screen opacity-[0.72]"
+        style={{
+          gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+          gridTemplateRows: `repeat(${gridRows}, 1fr)`,
+          gap: "4px",
+        }}
+      >
+        {Array.from({ length: totalDots }).map((_, index) => {
+          const delay = (index * 0.045) % 1.9;
+          const duration = 0.95 + (index % 4) * 0.22;
+          const palette = ["#D9F99D", "#ffffff", "#84CC16", "#6ee7b7"] as const;
+          const c = palette[index % 4];
+          return (
+            <div
+              key={index}
+              className="rounded-full justify-self-center self-center"
+              style={{
+                backgroundColor: c,
+                width: "4px",
+                height: "4px",
+                boxShadow: index % 5 === 0 ? "0 0 6px rgba(217,249,157,0.9)" : undefined,
+                animation: `photoGenDotPulse ${duration}s ease-in-out ${delay}s infinite`,
+                willChange: "opacity, transform",
+              }}
+            />
+          );
+        })}
+      </div>
+
+      <div className="relative z-10 p-4 w-full bg-gradient-to-t from-black/55 via-black/15 to-transparent pt-14">
+        <p
+          className="font-semibold text-white/45 tracking-widest uppercase"
+          style={{ fontSize: `${fontPx}px`, textShadow: "0 1px 12px rgba(0,0,0,0.5)" }}
+        >
+          Генерация фото...
+        </p>
+        {typeof elapsedSeconds === "number" && (
+          <p
+            className="mt-1.5 font-medium text-white/35 tabular-nums tracking-[0.12em]"
+            style={{
+              fontSize: `${timerPx}px`,
+              textShadow: "0 1px 10px rgba(0,0,0,0.45)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {elapsedSeconds} сек
+          </p>
+        )}
       </div>
     </div>
   );
@@ -396,75 +613,6 @@ function VideoPlayer({ src, className }: { src: string; className?: string }) {
   );
 }
 
-// Анимация загрузки для слайдов
-function LoadingDotsCardSlide({ aspectRatio }: { aspectRatio: "3:4" | "4:3" | "9:16" | "1:1" }) {
-  const gridCols = 12;
-  const gridRows = aspectRatio === "3:4" ? 16 
-    : aspectRatio === "4:3" ? 12
-    : aspectRatio === "9:16" ? 20
-    : 12;
-  const totalDots = gridCols * gridRows;
-  const cardColor = "#000000";
-
-  const aspectRatioValue = aspectRatio === "3:4" ? "3 / 4" 
-    : aspectRatio === "4:3" ? "4 / 3"
-    : aspectRatio === "9:16" ? "9 / 16" 
-    : "1 / 1";
-  
-  return (
-    <div
-      className="relative rounded-lg overflow-hidden bg-white flex items-center justify-center border-2 border-gray-200 w-full h-full"
-      style={{ 
-        aspectRatio: aspectRatioValue,
-        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
-      }}
-    >
-      <div 
-        className="absolute inset-0 grid p-4"
-        style={{
-          gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-          gridTemplateRows: `repeat(${gridRows}, 1fr)`,
-          gap: "4px",
-        }}
-      >
-        {Array.from({ length: totalDots }).map((_, index) => {
-          const delay = (index * 0.05) % 2;
-          const duration = 1 + (index % 3) * 0.3;
-          
-          return (
-            <div
-              key={index}
-              className="rounded-full"
-              style={{
-                backgroundColor: cardColor,
-                width: "4px",
-                height: "4px",
-                justifySelf: "center",
-                alignSelf: "center",
-                animation: `pulse-dot ${duration}s ease-in-out ${delay}s infinite`,
-                willChange: "opacity, transform",
-              }}
-            />
-          );
-        })}
-      </div>
-      
-      <style jsx>{`
-        @keyframes pulse-dot {
-          0%, 100% {
-            opacity: 0.2;
-            transform: scale(0.7);
-          }
-          50% {
-            opacity: 1;
-            transform: scale(1.3);
-          }
-        }
-      `}</style>
-    </div>
-  );
-}
-
 export default function FreeGeneration() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -485,6 +633,8 @@ export default function FreeGeneration() {
     scenario: string | null;
     aspectRatio: "3:4" | "4:3" | "9:16" | "1:1" | "16:9" | "21:9";
     pendingVideoTaskId?: string;
+    /** Метка времени постановки задачи (после успешного ответа API с taskId) */
+    pendingVideoStartedAt?: number;
     pendingVideoError?: string;
     pendingVideoAspect?: string;
     pendingVideoGenerationMode?: "free" | "for-product";
@@ -495,6 +645,10 @@ export default function FreeGeneration() {
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [slideAspectRatio, setSlideAspectRatio] = useState<"3:4" | "4:3" | "9:16" | "1:1">("3:4");
   const [isGeneratingSlide, setIsGeneratingSlide] = useState(false);
+  /** Метка времени непосредственно перед POST на /api/generate-free или generate-for-product (запрос к KIE) */
+  const [photoGenStartedAtMs, setPhotoGenStartedAtMs] = useState<number | null>(null);
+  /** null — таймер ещё не показываем (первая задержка 3–4 с) */
+  const [photoGenTimerSeconds, setPhotoGenTimerSeconds] = useState<number | null>(null);
   // Отдельный флаг для запуска видео-задачи (не блокирует ленту)
   const [isVideoStarting, setIsVideoStarting] = useState(false);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
@@ -875,6 +1029,52 @@ export default function FreeGeneration() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!isGeneratingSlide || photoGenStartedAtMs === null) {
+      setPhotoGenTimerSeconds(null);
+      return;
+    }
+    const started = photoGenStartedAtMs;
+    const tick = () => {
+      const age = Date.now() - started;
+      if (age < GENERATION_TIMER_SHOW_DELAY_MS) {
+        setPhotoGenTimerSeconds(null);
+      } else {
+        setPhotoGenTimerSeconds(Math.max(0, Math.floor(age / 1000)));
+      }
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [isGeneratingSlide, photoGenStartedAtMs]);
+
+  const slideWithPendingVideo = useMemo(() => {
+    if (activeSlideId == null) return undefined;
+    return slides.find((s) => s.id === activeSlideId && s.pendingVideoTaskId);
+  }, [slides, activeSlideId]);
+
+  const [videoPendingTimerSeconds, setVideoPendingTimerSeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    const t0 = slideWithPendingVideo?.pendingVideoStartedAt;
+    const pending = slideWithPendingVideo?.pendingVideoTaskId;
+    if (!pending || t0 == null) {
+      setVideoPendingTimerSeconds(null);
+      return;
+    }
+    const tick = () => {
+      const age = Date.now() - t0;
+      if (age < GENERATION_TIMER_SHOW_DELAY_MS) {
+        setVideoPendingTimerSeconds(null);
+      } else {
+        setVideoPendingTimerSeconds(Math.max(0, Math.floor(age / 1000)));
+      }
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [slideWithPendingVideo?.pendingVideoTaskId, slideWithPendingVideo?.pendingVideoStartedAt]);
+
   const handleOpenVideoGuide = () => {
     try {
       localStorage.setItem(LS_VIDEO_GUIDE_OPENED, "1");
@@ -900,6 +1100,52 @@ export default function FreeGeneration() {
   const videoMenuRef = useRef<HTMLDivElement | null>(null);
   // Защита от дублирования: множество уже обработанных taskId
   const processedTaskIdsRef = useRef<Set<string>>(new Set());
+  const slidesRefForLongVideoCheck = useRef(slides);
+  slidesRefForLongVideoCheck.current = slides;
+  const longVideoGenWarnedRef = useRef<Set<string>>(new Set());
+  const photoSlowGenWarnedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isGeneratingSlide || photoGenStartedAtMs === null) {
+      photoSlowGenWarnedRef.current = false;
+      return;
+    }
+    const started = photoGenStartedAtMs;
+    const id = setInterval(() => {
+      if (photoSlowGenWarnedRef.current) return;
+      if (Date.now() - started <= SLOW_PHOTO_GEN_WARN_AFTER_MS) return;
+      photoSlowGenWarnedRef.current = true;
+      showToast({
+        type: "info",
+        title: "Генерация задерживается",
+        message:
+          "Изображение всё ещё создаётся. Чаще всего это связано с медленным интернет-соединением; реже — с временными перегрузками на стороне платформы. Подождите ещё немного.",
+        durationMs: SLOW_GEN_TOAST_DURATION_MS,
+      });
+    }, 3000);
+    return () => clearInterval(id);
+  }, [isGeneratingSlide, photoGenStartedAtMs, showToast]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      for (const s of slidesRefForLongVideoCheck.current) {
+        const tid = s.pendingVideoTaskId;
+        const t0 = s.pendingVideoStartedAt;
+        if (!tid || t0 == null) continue;
+        if (Date.now() - t0 <= SLOW_VIDEO_GEN_WARN_AFTER_MS) continue;
+        if (longVideoGenWarnedRef.current.has(tid)) continue;
+        longVideoGenWarnedRef.current.add(tid);
+        showToast({
+          type: "info",
+          title: "Генерация затягивается",
+          message:
+            "Видео всё ещё в обработке — для сложных сцен это нормально. Чаще задержки даёт медленный интернет, реже — нагрузка на сервис. Дождитесь результата на этой странице.",
+          durationMs: SLOW_GEN_TOAST_DURATION_MS,
+        });
+      }
+    }, 4000);
+    return () => clearInterval(id);
+  }, [showToast]);
 
   // Сохранение изображения в Supabase через API (service_role на сервере)
   const saveImageToSupabase = async (params: {
@@ -1067,7 +1313,14 @@ export default function FreeGeneration() {
                 if (s.id !== slideId) return s;
                 // Дедупликация по URL
                 if (s.variants.some((v) => v.url === data.videoUrl)) {
-                  return { ...s, pendingVideoTaskId: undefined, pendingVideoError: undefined, pendingVideoAspect: undefined, pendingVideoGenerationMode: undefined };
+                  return {
+                    ...s,
+                    pendingVideoTaskId: undefined,
+                    pendingVideoStartedAt: undefined,
+                    pendingVideoError: undefined,
+                    pendingVideoAspect: undefined,
+                    pendingVideoGenerationMode: undefined,
+                  };
                 }
                 const validARs: Variant["aspectRatio"][] = ["1:1", "3:4", "4:3", "9:16", "16:9", "21:9"];
                 const rawAR = s.pendingVideoAspect || s.aspectRatio;
@@ -1077,6 +1330,7 @@ export default function FreeGeneration() {
                 return {
                   ...s,
                   pendingVideoTaskId: undefined,
+                  pendingVideoStartedAt: undefined,
                   pendingVideoError: undefined,
                   pendingVideoAspect: undefined,
                   pendingVideoGenerationMode: undefined,
@@ -1095,7 +1349,12 @@ export default function FreeGeneration() {
             setSlides((prev) =>
               prev.map((s) =>
                 s.id === slideId
-                  ? { ...s, pendingVideoTaskId: undefined, pendingVideoError: data.error || "Не удалось сгенерировать видео" }
+                  ? {
+                      ...s,
+                      pendingVideoTaskId: undefined,
+                      pendingVideoStartedAt: undefined,
+                      pendingVideoError: data.error || "Не удалось сгенерировать видео",
+                    }
                   : s
               )
             );
@@ -2115,8 +2374,7 @@ export default function FreeGeneration() {
           return (
             <div className="w-full py-8 pl-8">
               <div className="flex flex-wrap gap-4" style={{ maxWidth: '1400px' }}>
-                {/* Анимация загрузки показывается ПЕРВОЙ (сверху), так как новое изображение будет первым */}
-                {/* Точки-анимация только для фото (не для видео-режима) */}
+                {/* Анимация загрузки фото: переливы + фирменные точки (как стиль видео-карточки) */}
                 {isGeneratingSlide && !(mediaMode === "video" && generationMode === "for-product") && (() => {
                   // Используем текущий выбранный формат для нового генерируемого изображения
                   const loadingAspectRatioValue = slideAspectRatio === "3:4" ? "3 / 4" 
@@ -2153,7 +2411,11 @@ export default function FreeGeneration() {
                         aspectRatio: loadingAspectRatioValue
                       }}
                     >
-                      <LoadingDotsCardSlide aspectRatio={slideAspectRatio} />
+                      <PhotoGeneratingCard
+                        aspectRatio={slideAspectRatio}
+                        cardWidth={loadingWidth}
+                        elapsedSeconds={photoGenTimerSeconds ?? undefined}
+                      />
                     </motion.div>
                   );
                 })()}
@@ -2176,7 +2438,11 @@ export default function FreeGeneration() {
                       className="relative flex-shrink-0"
                       style={{ width: `${videoWidth}px`, height: `${videoHeight}px` }}
                     >
-                      <VideoGeneratingCard aspectRatio={pendingAR} cardWidth={videoWidth} />
+                      <VideoGeneratingCard
+                        aspectRatio={pendingAR}
+                        cardWidth={videoWidth}
+                        elapsedSeconds={videoPendingTimerSeconds ?? undefined}
+                      />
                     </motion.div>
                   );
                 })()}
@@ -2416,9 +2682,9 @@ export default function FreeGeneration() {
                       </div>
                     </div>
                     {variant.prompt && variant.prompt.length > 0 && (
-                      <div className="mt-3 px-2 group/prompt relative">
+                      <div className="mt-3 px-2 group/prompt relative flex items-start gap-2">
                         <p
-                          className="text-sm font-semibold text-gray-800 leading-tight line-clamp-2 pr-8 cursor-pointer hover:text-gray-600 transition-colors"
+                          className="flex-1 min-w-0 text-sm font-semibold text-gray-800 leading-tight line-clamp-2 cursor-pointer hover:text-gray-600 transition-colors"
                           style={{
                             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
                             letterSpacing: '-0.01em',
@@ -2434,7 +2700,6 @@ export default function FreeGeneration() {
                         >
                           {variant.prompt}
                         </p>
-                        {/* Кнопка скопировать */}
                         <button
                           type="button"
                           onClick={async (e) => {
@@ -2446,7 +2711,7 @@ export default function FreeGeneration() {
                               showToast({ type: "error", message: "Не удалось скопировать" });
                             }
                           }}
-                          className="absolute right-0 top-0 w-7 h-7 rounded-md bg-gray-200/80 hover:bg-gray-300 text-gray-600 flex items-center justify-center opacity-0 group-hover/prompt:opacity-100 transition-opacity"
+                          className="shrink-0 mt-0.5 w-7 h-7 rounded-md bg-gray-200/80 hover:bg-gray-300 text-gray-600 flex items-center justify-center opacity-0 group-hover/prompt:opacity-100 transition-opacity"
                           title="Копировать промпт"
                         >
                           <Copy className="w-3.5 h-3.5" />
@@ -3616,6 +3881,7 @@ export default function FreeGeneration() {
                           ? {
                               ...s,
                               pendingVideoTaskId: freeVideoData.taskId,
+                              pendingVideoStartedAt: Date.now(),
                               pendingVideoAspect: videoAspect,
                               pendingVideoGenerationMode: "free",
                               pendingVideoError: undefined,
@@ -3633,6 +3899,7 @@ export default function FreeGeneration() {
 
                   if (generationMode === "free") {
                     // Свободная генерация - просто промпт без системных промптов
+                    setPhotoGenStartedAtMs(Date.now());
                     const response = await fetch("/api/generate-free", {
                       method: "POST",
                       headers: authHeaders,
@@ -3792,6 +4059,7 @@ export default function FreeGeneration() {
                             ? {
                                 ...s,
                                 pendingVideoTaskId: videoData.taskId,
+                                pendingVideoStartedAt: Date.now(),
                                 pendingVideoAspect: "9:16",
                                 pendingVideoGenerationMode: "for-product",
                                 pendingVideoError: undefined,
@@ -3808,6 +4076,7 @@ export default function FreeGeneration() {
                     }
 
                     // ── ФОТО ──────────────────────────────────────────────────
+                    setPhotoGenStartedAtMs(Date.now());
                     const response = await fetch("/api/generate-for-product", {
                       method: "POST",
                       headers: authHeaders,
@@ -3935,6 +4204,7 @@ export default function FreeGeneration() {
                 } finally {
                   setIsGeneratingSlide(false);
                   setIsVideoStarting(false);
+                  setPhotoGenStartedAtMs(null);
                 }
               }}
               disabled={isGeneratingSlide || isVideoStarting || activeSlideId === null}
@@ -4055,14 +4325,16 @@ export default function FreeGeneration() {
                     >
                       {viewingPrompt}
                     </p>
-                    {/* Микро-окно при наведении: открывается ВВЕРХ над промптом, чтобы было видно */}
-                    <div className="absolute left-0 right-0 bottom-full mb-1 opacity-0 pointer-events-none group-hover/prompt:opacity-100 group-hover/prompt:pointer-events-auto transition-opacity duration-150 z-10">
-                      <div className="rounded-xl shadow-2xl bg-white/95 backdrop-blur-sm py-3 px-4 max-h-72 overflow-y-auto">
-                        <p 
-                          className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap break-words pr-10"
+                    {/* Всплывающее окно: перекрывает нижнюю часть текста (-mb-2), чтобы курсор не «терял» hover в зазоре */}
+                    <div className="absolute left-0 right-0 bottom-full -mb-2 pb-2 opacity-0 pointer-events-none group-hover/prompt:opacity-100 group-hover/prompt:pointer-events-auto transition-opacity duration-150 z-10">
+                      <div className="rounded-xl shadow-2xl bg-white/95 backdrop-blur-sm py-3 px-4 max-h-72 overflow-y-auto flex items-start gap-3 min-w-[min(100%,260px)]">
+                        <p
+                          className="flex-1 min-w-0 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap break-words"
                           style={{
                             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
                             letterSpacing: '-0.01em',
+                            wordBreak: "normal",
+                            overflowWrap: "break-word",
                           }}
                         >
                           {viewingPrompt}
@@ -4078,7 +4350,7 @@ export default function FreeGeneration() {
                               showToast({ type: "error", message: "Не удалось скопировать" });
                             }
                           }}
-                          className="absolute top-3 right-3 w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center"
+                          className="shrink-0 w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center"
                           title="Копировать промпт"
                         >
                           <Copy className="w-4 h-4" />
