@@ -66,12 +66,19 @@ export function normalizeDescriptionLayout(text: string): string {
 
   // Часто Qwen даёт: "...: пункт - пункт - пункт". Превращаем в список по строкам.
   // Делаем это аккуратно, чтобы не ломать обычные тире в тексте.
+  const splitListSeparators = (line: string): string =>
+    line.replace(/\s[-—]\s+(?=[А-ЯA-ZЁ0-9])/g, "\n- ");
+
   normalized = normalized
     .split("\n")
     .map((line) => {
+      const trimmed = line.trim();
       const dashCount = (line.match(/\s[-—]\s/g) || []).length;
-      if (dashCount < 2) return line;
-      return line.replace(/\s[-—]\s+(?=[А-ЯA-ZЁ0-9])/g, "\n- ");
+      // Если строка уже выглядит как список, делим даже по одному разделителю.
+      if (/^[-•]\s+/.test(trimmed) && dashCount >= 1) return splitListSeparators(line);
+      // Для обычных абзацев — только когда видно явное перечисление (2+ разделителя).
+      if (dashCount >= 2) return splitListSeparators(line);
+      return line;
     })
     .join("\n");
 
