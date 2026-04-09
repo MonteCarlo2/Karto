@@ -54,6 +54,44 @@ function median(values: number[]): number {
   return sorted[mid];
 }
 
+function getMarketplaceSearchLinks(productName: string): Record<PrimaryMarketplace, string> {
+  const q = encodeURIComponent(productName || "");
+  return {
+    Ozon: `https://www.ozon.ru/search/?text=${q}`,
+    WB: `https://www.wildberries.ru/catalog/0/search.aspx?search=${q}`,
+    "Yandex Market": `https://market.yandex.ru/search?text=${q}`,
+  };
+}
+
+function buildFallbackPriceAnalysis(productName: string, reason: string): PriceAnalysis {
+  const links = getMarketplaceSearchLinks(productName);
+  return {
+    trends: [
+      "Автоматический fallback: модель не вернула валидный JSON анализа.",
+      "Откройте ссылки на маркетплейсы и уточните диапазон цен вручную.",
+    ],
+    audience: "Недостаточно структурированных данных от источника анализа.",
+    demandLevel: "Средний",
+    recommendedPrice: 0,
+    marginLevel: "Средняя",
+    nicheSummary:
+      "Модель анализа цен вернула неструктурированный ответ. Показаны безопасные ссылки для ручной проверки рыночной цены.",
+    priceExplanation: reason.slice(0, 500),
+    competitors: [
+      { platform: "Ozon", averagePrice: 0, link: links.Ozon },
+      { platform: "WB", averagePrice: 0, link: links.WB },
+      { platform: "Yandex Market", averagePrice: 0, link: links["Yandex Market"] },
+    ],
+    verdict:
+      "Автоанализ временно недоступен в полном формате JSON. Используйте ссылки маркетплейсов для проверки и повторите анализ позже.",
+    sources: [
+      { platform: "Ozon", title: "Поиск Ozon", url: links.Ozon },
+      { platform: "WB", title: "Поиск Wildberries", url: links.WB },
+      { platform: "Yandex Market", title: "Поиск Яндекс Маркет", url: links["Yandex Market"] },
+    ],
+  };
+}
+
 export async function analyzePriceWithPerplexity(params: {
   productName?: string;
   photoUrl?: string | null;
@@ -184,11 +222,23 @@ export async function analyzePriceWithPerplexity(params: {
   let parsed: any;
   try {
     parsed = JSON.parse(jsonContent);
-  } catch (e) {
-    throw new Error(
-      "Не удалось распарсить JSON от Perplexity Sonar. Ответ: " +
-        jsonContent.slice(0, 400)
-    );
+  } catch {
+    const objectMatch = jsonContent.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+      try {
+        parsed = JSON.parse(objectMatch[0]);
+      } catch {
+        return buildFallbackPriceAnalysis(
+          safeName,
+          "Не удалось распарсить JSON от Perplexity Sonar. Ответ: " + jsonContent.slice(0, 400)
+        );
+      }
+    } else {
+      return buildFallbackPriceAnalysis(
+        safeName,
+        "Не удалось распарсить JSON от Perplexity Sonar. Ответ: " + jsonContent.slice(0, 400)
+      );
+    }
   }
 
   const trends: string[] = Array.isArray(parsed.trends)
@@ -265,13 +315,7 @@ export async function analyzePriceWithPerplexity(params: {
 
   for (const platform of PRIMARY_MARKETPLACES) {
     if (!competitorMap.has(platform)) {
-      const q = encodeURIComponent(safeName || "");
-      const fallbackLink =
-        platform === "Ozon"
-          ? `https://www.ozon.ru/search/?text=${q}`
-          : platform === "WB"
-          ? `https://www.wildberries.ru/catalog/0/search.aspx?search=${q}`
-          : `https://market.yandex.ru/search?text=${q}`;
+      const fallbackLink = getMarketplaceSearchLinks(safeName)[platform];
       competitorMap.set(platform, {
         platform,
         averagePrice: 0,
@@ -283,13 +327,8 @@ export async function analyzePriceWithPerplexity(params: {
   const competitors = PRIMARY_MARKETPLACES.map((platform) => competitorMap.get(platform)!).filter(Boolean);
   for (const competitor of competitors) {
     if (!competitor.link) {
-      const q = encodeURIComponent(safeName || "");
       competitor.link =
-        competitor.platform === "Ozon"
-          ? `https://www.ozon.ru/search/?text=${q}`
-          : competitor.platform === "WB"
-          ? `https://www.wildberries.ru/catalog/0/search.aspx?search=${q}`
-          : `https://market.yandex.ru/search?text=${q}`;
+        getMarketplaceSearchLinks(safeName)[competitor.platform];
     }
   }
 

@@ -1200,6 +1200,7 @@ export default function DescriptionPage() {
                             return lines.map((line, index) => {
                               const trimmed = line.trim();
                               const headingMatch = trimmed.match(/^#+\s*(.+)$/);
+                              const nextTrimmed = (lines[index + 1] || "").trim();
                               
                               // Заголовки (строки, заканчивающиеся на ":")
                               if (trimmed.endsWith(':') && trimmed.length < 50 && trimmed.length > 3) {
@@ -1248,6 +1249,30 @@ export default function DescriptionPage() {
                                   </div>
                                 );
                               }
+
+                              // Короткая standalone-строка без точки/двоеточия = секционный заголовок
+                              if (
+                                trimmed.length >= 6 &&
+                                trimmed.length <= 60 &&
+                                !/[.:!?]$/.test(trimmed) &&
+                                /^[A-Za-zА-Яа-яЁё]/.test(trimmed) &&
+                                nextTrimmed.length > 0 &&
+                                !/^[-•→—–*\d]/.test(nextTrimmed)
+                              ) {
+                                return (
+                                  <div key={index} className="mt-6 mb-3 first:mt-0">
+                                    <h4
+                                      className="font-semibold text-lg"
+                                      style={{
+                                        color: "#2E5A43",
+                                        fontFamily: "var(--font-sans), Inter, sans-serif",
+                                      }}
+                                    >
+                                      {trimmed}
+                                    </h4>
+                                  </div>
+                                );
+                              }
                               
                               // Заголовки в стиле markdown (начинаются с #)
                               if (headingMatch && headingMatch[1]) {
@@ -1267,11 +1292,12 @@ export default function DescriptionPage() {
                               }
 
                               // Списки (строки, начинающиеся с "-", "•", "→", цифры)
-                              if (/^[-•→*\d]/.test(trimmed)) {
-                                const listContent = trimmed.replace(/^[-•→*\d.\s]+/, '').trim();
+                              if (/^[-•→—–*\d]/.test(trimmed)) {
+                                const listContent = trimmed.replace(/^[-•→—–*\d.\s]+/, '').trim();
                                 let listSymbol = "•";
                                 if (trimmed.startsWith('•')) listSymbol = "•";
                                 else if (trimmed.startsWith('-')) listSymbol = "—";
+                                else if (trimmed.startsWith('—') || trimmed.startsWith('–')) listSymbol = "—";
                                 else if (/^\d/.test(trimmed)) listSymbol = "•";
                                 
                                 return (
@@ -1475,6 +1501,7 @@ export default function DescriptionPage() {
                           return lines.map((line, index) => {
                             const trimmed = line.trim();
                             const headingMatch = trimmed.match(/^#+\s*(.+)$/);
+                            const nextTrimmed = (lines[index + 1] || "").trim();
                             
                             // Заголовки (строки, заканчивающиеся на ":")
                             if (trimmed.endsWith(':') && trimmed.length < 50 && trimmed.length > 3) {
@@ -1523,6 +1550,30 @@ export default function DescriptionPage() {
                                 </div>
                               );
                             }
+
+                            // Короткая standalone-строка без точки/двоеточия = секционный заголовок
+                            if (
+                              trimmed.length >= 6 &&
+                              trimmed.length <= 60 &&
+                              !/[.:!?]$/.test(trimmed) &&
+                              /^[A-Za-zА-Яа-яЁё]/.test(trimmed) &&
+                              nextTrimmed.length > 0 &&
+                              !/^[-•→—–*\d]/.test(nextTrimmed)
+                            ) {
+                              return (
+                                <div key={index} className="mt-6 mb-3 first:mt-0">
+                                  <h4
+                                    className="font-semibold text-lg"
+                                    style={{
+                                      color: "#2E5A43",
+                                      fontFamily: "var(--font-sans), Inter, sans-serif",
+                                    }}
+                                  >
+                                    {trimmed}
+                                  </h4>
+                                </div>
+                              );
+                            }
                             
                             // Заголовки в стиле markdown (начинаются с #)
                             if (headingMatch && headingMatch[1]) {
@@ -1542,12 +1593,13 @@ export default function DescriptionPage() {
                             }
 
                             // Списки (строки, начинающиеся с "-", "•", "→", цифры)
-                            if (/^[-•→*\d]/.test(trimmed)) {
-                              const listContent = trimmed.replace(/^[-•→*\d.\s]+/, '').trim();
+                            if (/^[-•→—–*\d]/.test(trimmed)) {
+                              const listContent = trimmed.replace(/^[-•→—–*\d.\s]+/, '').trim();
                               // Определяем символ для списка - используем простые символы для Ozon
                               let listSymbol = "•";
                               if (trimmed.startsWith('•')) listSymbol = "•";
                               else if (trimmed.startsWith('-')) listSymbol = "—";
+                              else if (trimmed.startsWith('—') || trimmed.startsWith('–')) listSymbol = "—";
                               else if (/^\d/.test(trimmed)) listSymbol = "•";
                               // → заменяем на • для лучшей совместимости с Ozon
                               
