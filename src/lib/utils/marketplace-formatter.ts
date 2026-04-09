@@ -33,6 +33,17 @@ export function stripMarkdownArtifacts(text: string): string {
 }
 
 /**
+ * Лёгкая очистка для экрана «Поток» (студия / описание): без разбиения списков и лишних тире.
+ * Нормализация абзацев для маркетплейса — только в {@link normalizeDescriptionLayout} и при рендере «Результаты».
+ */
+export function lightSanitizeDescriptionStream(text: string): string {
+  return stripMarkdownArtifacts(text)
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
  * Нормализация "простыни" от модели:
  * - разворачивает секции в отдельные блоки;
  * - превращает inline " - " в пункт списка;

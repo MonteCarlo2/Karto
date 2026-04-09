@@ -48,6 +48,36 @@ function renderRichText(text: string) {
   });
 }
 
+function buildUiPriceFallback(productName: string): PriceAnalysis {
+  const q = encodeURIComponent(productName || "");
+  const ozon = `https://www.ozon.ru/search/?text=${q}`;
+  const wb = `https://www.wildberries.ru/catalog/0/search.aspx?search=${q}`;
+  const yandex = `https://market.yandex.ru/search?text=${q}`;
+  return {
+    trends: ["Автоанализ временно недоступен. Ниже доступны ссылки для быстрой ручной проверки цен."],
+    audience: "Данные для автоматического анализа не получены.",
+    demandLevel: "Средний",
+    recommendedPrice: 0,
+    marginLevel: "Средняя",
+    nicheSummary:
+      "Этап цены продолжен в резервном режиме, чтобы пользователь не получал ошибку и мог завершить поток.",
+    priceExplanation:
+      "Откройте ссылки маркетплейсов и сравните 5-10 похожих карточек. Затем при необходимости повторите анализ.",
+    competitors: [
+      { platform: "Ozon", averagePrice: 0, link: ozon },
+      { platform: "WB", averagePrice: 0, link: wb },
+      { platform: "Yandex Market", averagePrice: 0, link: yandex },
+    ],
+    verdict:
+      "Резервный режим: сервис анализа временно не выдал структурированный ответ, но этап доступен без ошибки.",
+    sources: [
+      { platform: "Ozon", title: "Поиск Ozon", url: ozon },
+      { platform: "WB", title: "Поиск Wildberries", url: wb },
+      { platform: "Yandex Market", title: "Поиск Яндекс Маркет", url: yandex },
+    ],
+  };
+}
+
 export default function PriceStrategyPage() {
   const router = useRouter();
 
@@ -106,7 +136,7 @@ export default function PriceStrategyPage() {
         setIsLoading(true);
         setError(null);
 
-        const cacheKey = `karto_price_analysis_${savedSessionId}`;
+        const cacheKey = `karto_price_analysis_v2_${savedSessionId}`;
         const cachedRaw = localStorage.getItem(cacheKey);
         if (cachedRaw) {
           try {
@@ -156,10 +186,10 @@ export default function PriceStrategyPage() {
         }
       } catch (e: any) {
         console.error(e);
-        setError(
-          e?.message ||
-            "Не удалось получить ценовой анализ. Попробуйте обновить страницу чуть позже."
-        );
+        // Безошибочный UX: даже при сбое показываем резервный результат, не красную ошибку.
+        const fallback = buildUiPriceFallback(productName || "");
+        setAnalysis(fallback);
+        setError(null);
       } finally {
         setIsLoading(false);
       }

@@ -27,11 +27,11 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   checkStopWords,
-  highlightStopWords,
   getStopWordMessage,
   formatForCopy,
-  normalizeDescriptionLayout,
+  lightSanitizeDescriptionStream,
 } from "@/lib/utils/marketplace-formatter";
+import { FlowProductDescription } from "@/components/studio/ProductDescriptionDisplay";
 
 // Статичный эффект рельефной бумаги (копируем из understanding)
 function CanvasTexture({ patternAlpha = 12 }: { patternAlpha?: number }) {
@@ -974,7 +974,9 @@ export default function DescriptionPage() {
                   
                   if (!descriptionToCheck) return null;
                   
-                  const issues = checkStopWords(descriptionToCheck);
+                  const issues = checkStopWords(
+                    lightSanitizeDescriptionStream(descriptionToCheck)
+                  );
                   const charCount = descriptionToCheck.length;
                   const hasLengthIssue = charCount > 6000;
                   const hasLengthWarning = charCount > 5000 && charCount <= 6000;
@@ -1194,159 +1196,7 @@ export default function DescriptionPage() {
                           color: "#1a1a1a",
                         }}
                       >
-                        {(() => {
-                          const formatDescription = (text: string) => {
-                            const lines = normalizeDescriptionLayout(text).split('\n');
-                            return lines.map((line, index) => {
-                              const trimmed = line.trim();
-                              const headingMatch = trimmed.match(/^#+\s*(.+)$/);
-                              const nextTrimmed = (lines[index + 1] || "").trim();
-                              
-                              // Заголовки (строки, заканчивающиеся на ":")
-                              if (trimmed.endsWith(':') && trimmed.length < 50 && trimmed.length > 3) {
-                                return (
-                                  <div key={index} className="mt-6 mb-3 first:mt-0">
-                                    <h4 
-                                      className="font-semibold text-lg"
-                                      style={{ 
-                                        color: "#2E5A43",
-                                        fontFamily: "var(--font-sans), Inter, sans-serif",
-                                      }}
-                                    >
-                                      {trimmed}
-                                    </h4>
-                                  </div>
-                                );
-                              }
-
-                              // Заголовок и текст в одной строке: "Раздел: продолжение..."
-                              const inlineHeadingMatch = trimmed.match(
-                                /^([A-Za-zА-Яа-яЁё0-9\s/()«»"'-]{3,60}:)\s+(.+)$/
-                              );
-                              if (inlineHeadingMatch) {
-                                return (
-                                  <div key={index} className="mt-6 mb-3 first:mt-0">
-                                    <h4
-                                      className="font-semibold text-lg"
-                                      style={{
-                                        color: "#2E5A43",
-                                        fontFamily: "var(--font-sans), Inter, sans-serif",
-                                      }}
-                                    >
-                                      {inlineHeadingMatch[1]}
-                                    </h4>
-                                    <p
-                                      className="mt-2 mb-0"
-                                      style={{
-                                        color: "#1a1a1a",
-                                        fontSize: "16px",
-                                        lineHeight: "1.5",
-                                        fontFamily: "var(--font-sans), Inter, sans-serif",
-                                      }}
-                                    >
-                                      {inlineHeadingMatch[2]}
-                                    </p>
-                                  </div>
-                                );
-                              }
-
-                              // Короткая standalone-строка без точки/двоеточия = секционный заголовок
-                              if (
-                                trimmed.length >= 6 &&
-                                trimmed.length <= 60 &&
-                                !/[.:!?]$/.test(trimmed) &&
-                                /^[A-Za-zА-Яа-яЁё]/.test(trimmed) &&
-                                nextTrimmed.length > 0 &&
-                                !/^[-•→—–*\d]/.test(nextTrimmed)
-                              ) {
-                                return (
-                                  <div key={index} className="mt-6 mb-3 first:mt-0">
-                                    <h4
-                                      className="font-semibold text-lg"
-                                      style={{
-                                        color: "#2E5A43",
-                                        fontFamily: "var(--font-sans), Inter, sans-serif",
-                                      }}
-                                    >
-                                      {trimmed}
-                                    </h4>
-                                  </div>
-                                );
-                              }
-                              
-                              // Заголовки в стиле markdown (начинаются с #)
-                              if (headingMatch && headingMatch[1]) {
-                                return (
-                                  <div key={index} className="mt-6 mb-3 first:mt-0">
-                                    <h4
-                                      className="font-semibold text-lg"
-                                      style={{
-                                        color: "#2E5A43",
-                                        fontFamily: "var(--font-sans), Inter, sans-serif",
-                                      }}
-                                    >
-                                      {headingMatch[1].trim()}
-                                    </h4>
-                                  </div>
-                                );
-                              }
-
-                              // Списки (строки, начинающиеся с "-", "•", "→", цифры)
-                              if (/^[-•→—–*\d]/.test(trimmed)) {
-                                const listContent = trimmed.replace(/^[-•→—–*\d.\s]+/, '').trim();
-                                let listSymbol = "•";
-                                if (trimmed.startsWith('•')) listSymbol = "•";
-                                else if (trimmed.startsWith('-')) listSymbol = "—";
-                                else if (trimmed.startsWith('—') || trimmed.startsWith('–')) listSymbol = "—";
-                                else if (/^\d/.test(trimmed)) listSymbol = "•";
-                                
-                                return (
-                                  <div key={index} className="ml-2 mb-2.5 flex items-start gap-3">
-                                    <span 
-                                      className="text-lg flex-shrink-0 mt-0.5" 
-                                      style={{ color: "#2E5A43", fontWeight: "bold" }}
-                                    >
-                                      {listSymbol}
-                                    </span>
-                                    <span 
-                                      className="flex-1" 
-                                      style={{ 
-                                        color: "#1a1a1a", 
-                                        lineHeight: "1.8",
-                                        fontFamily: "var(--font-sans), Inter, sans-serif",
-                                      }}
-                                    >
-                                      {listContent}
-                                    </span>
-                                  </div>
-                                );
-                              }
-                              
-                              // Обычный текст (абзацы)
-                              if (trimmed) {
-                                return (
-                                  <p 
-                                    key={index} 
-                                    className="mb-4" 
-                                    style={{ 
-                                      color: "#1a1a1a", 
-                                      fontSize: "16px",
-                                      lineHeight: "1.5",
-                                      fontFamily: "var(--font-sans), Inter, sans-serif",
-                                    }}
-                                  >
-                                    {trimmed}
-                                  </p>
-                                );
-                              }
-                              
-                              // Пустая строка - добавляем отступ
-                              return <div key={index} className="mb-2" />;
-                            });
-                          };
-                          
-                          return formatDescription(finalDescription);
-                        })()}
+                        <FlowProductDescription text={finalDescription} />
                       </div>
                     </div>
                     <div className="mt-auto pt-6 border-t border-gray-200">
@@ -1489,165 +1339,14 @@ export default function DescriptionPage() {
                         const isActive = expandedVariantId === variant.id || (expandedVariantId === null && variant.id === 1);
                         if (!isActive) return null;
 
-                        const description = normalizeDescriptionLayout(variant.description);
-                        const charCount = description.length;
-                        const wordCount = description.split(/\s+/).filter(w => w.length > 0).length;
-                        
-                        // Проверяем стоп-слова для этого варианта
-                        const variantIssues = checkStopWords(description);
-                        
-                        const formatDescription = (text: string) => {
-                          const lines = normalizeDescriptionLayout(text).split('\n');
-                          return lines.map((line, index) => {
-                            const trimmed = line.trim();
-                            const headingMatch = trimmed.match(/^#+\s*(.+)$/);
-                            const nextTrimmed = (lines[index + 1] || "").trim();
-                            
-                            // Заголовки (строки, заканчивающиеся на ":")
-                            if (trimmed.endsWith(':') && trimmed.length < 50 && trimmed.length > 3) {
-                              return (
-                                <div key={index} className="mt-6 mb-3 first:mt-0">
-                                  <h4 
-                                    className="font-semibold text-lg"
-                                    style={{ 
-                                      color: "#2E5A43",
-                                      fontFamily: "var(--font-sans), Inter, sans-serif",
-                                    }}
-                                  >
-                                    {trimmed}
-                                  </h4>
-                                </div>
-                              );
-                            }
-
-                            // Заголовок и текст в одной строке: "Раздел: продолжение..."
-                            const inlineHeadingMatch = trimmed.match(
-                              /^([A-Za-zА-Яа-яЁё0-9\s/()«»"'-]{3,60}:)\s+(.+)$/
-                            );
-                            if (inlineHeadingMatch) {
-                              return (
-                                <div key={index} className="mt-6 mb-3 first:mt-0">
-                                  <h4
-                                    className="font-semibold text-lg"
-                                    style={{
-                                      color: "#2E5A43",
-                                      fontFamily: "var(--font-sans), Inter, sans-serif",
-                                    }}
-                                  >
-                                    {inlineHeadingMatch[1]}
-                                  </h4>
-                                  <p
-                                    className="mt-2 mb-0"
-                                    style={{
-                                      color: "#1a1a1a",
-                                      fontSize: "16px",
-                                      lineHeight: "1.5",
-                                      fontFamily: "var(--font-sans), Inter, sans-serif",
-                                    }}
-                                  >
-                                    {inlineHeadingMatch[2]}
-                                  </p>
-                                </div>
-                              );
-                            }
-
-                            // Короткая standalone-строка без точки/двоеточия = секционный заголовок
-                            if (
-                              trimmed.length >= 6 &&
-                              trimmed.length <= 60 &&
-                              !/[.:!?]$/.test(trimmed) &&
-                              /^[A-Za-zА-Яа-яЁё]/.test(trimmed) &&
-                              nextTrimmed.length > 0 &&
-                              !/^[-•→—–*\d]/.test(nextTrimmed)
-                            ) {
-                              return (
-                                <div key={index} className="mt-6 mb-3 first:mt-0">
-                                  <h4
-                                    className="font-semibold text-lg"
-                                    style={{
-                                      color: "#2E5A43",
-                                      fontFamily: "var(--font-sans), Inter, sans-serif",
-                                    }}
-                                  >
-                                    {trimmed}
-                                  </h4>
-                                </div>
-                              );
-                            }
-                            
-                            // Заголовки в стиле markdown (начинаются с #)
-                            if (headingMatch && headingMatch[1]) {
-                              return (
-                                <div key={index} className="mt-6 mb-3 first:mt-0">
-                                  <h4
-                                    className="font-semibold text-lg"
-                                    style={{
-                                      color: "#2E5A43",
-                                      fontFamily: "var(--font-sans), Inter, sans-serif",
-                                    }}
-                                  >
-                                    {headingMatch[1].trim()}
-                                  </h4>
-                                </div>
-                              );
-                            }
-
-                            // Списки (строки, начинающиеся с "-", "•", "→", цифры)
-                            if (/^[-•→—–*\d]/.test(trimmed)) {
-                              const listContent = trimmed.replace(/^[-•→—–*\d.\s]+/, '').trim();
-                              // Определяем символ для списка - используем простые символы для Ozon
-                              let listSymbol = "•";
-                              if (trimmed.startsWith('•')) listSymbol = "•";
-                              else if (trimmed.startsWith('-')) listSymbol = "—";
-                              else if (trimmed.startsWith('—') || trimmed.startsWith('–')) listSymbol = "—";
-                              else if (/^\d/.test(trimmed)) listSymbol = "•";
-                              // → заменяем на • для лучшей совместимости с Ozon
-                              
-                              return (
-                                <div key={index} className="ml-2 mb-2.5 flex items-start gap-3">
-                                  <span 
-                                    className="text-lg flex-shrink-0 mt-0.5" 
-                                    style={{ color: "#2E5A43", fontWeight: "bold" }}
-                                  >
-                                    {listSymbol}
-                                  </span>
-                                  <span 
-                                    className="flex-1" 
-                                    style={{ 
-                                      color: "#1a1a1a", 
-                                      fontSize: "16px",
-                                      lineHeight: "1.5",
-                                      fontFamily: "var(--font-sans), Inter, sans-serif",
-                                    }}
-                                  >
-                                    {listContent}
-                                  </span>
-                                </div>
-                              );
-                            }
-                            
-                            // Обычный текст (абзацы)
-                            if (trimmed) {
-                              return (
-                                <p 
-                                  key={index} 
-                                  className="mb-4" 
-                                  style={{ 
-                                    color: "#1a1a1a", 
-                                    fontSize: "16px",
-                                    lineHeight: "1.5",
-                                    fontFamily: "var(--font-sans), Inter, sans-serif",
-                                  }}
-                                >
-                                  {trimmed}
-                                </p>
-                              );
-                            }
-                            
-                            // Пустая строка - добавляем отступ
-                            return <div key={index} className="mb-2" />;
-                          });
-                        };
+                        const raw = variant.description;
+                        const charCount = raw.length;
+                        const wordCount = raw
+                          .split(/\s+/)
+                          .filter((w) => w.length > 0).length;
+                        const variantIssues = checkStopWords(
+                          lightSanitizeDescriptionStream(raw)
+                        );
 
                         return (
                           <div key={variant.id} className="flex flex-col h-full">
@@ -1670,23 +1369,8 @@ export default function DescriptionPage() {
                               </div>
                             )}
 
-                            {/* Форматированный текст с подсветкой стоп-слов */}
-                            <div 
-                              className="flex-1"
-                              style={{ 
-                                fontFamily: "var(--font-sans), Inter, sans-serif",
-                                color: "#1a1a1a",
-                                fontSize: "16px",
-                                lineHeight: "1.5",
-                              }}
-                            >
-                              {variantIssues.length > 0 ? (
-                                <div dangerouslySetInnerHTML={{
-                                  __html: highlightStopWords(description, variantIssues)
-                                }} />
-                              ) : (
-                                formatDescription(description)
-                              )}
+                            <div className="flex-1">
+                              <FlowProductDescription text={raw} />
                             </div>
 
                             {/* Footer: Поле ввода "Что изменить" приклеено к тексту */}

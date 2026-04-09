@@ -6,18 +6,8 @@ import { Check, Download, Copy } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { triggerDownloadFromRemoteUrl } from "@/lib/client/media-download";
 import type { PriceAnalysis } from "@/lib/services/price-analyzer";
-
-// Конвертация markdown в HTML для копирования
-function convertMarkdownToHtml(text: string): string {
-  if (!text) return "";
-  let html = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  return html;
-}
+import { formatForCopy } from "@/lib/utils/marketplace-formatter";
+import { ResultsProductDescription } from "@/components/studio/ProductDescriptionDisplay";
 
 interface VisualSlide {
   id: number;
@@ -222,8 +212,7 @@ export default function ResultsPage() {
   const handleCopyDescription = async () => {
     if (!description) return;
     try {
-      // Используем простой текст для надежности
-      const textToCopy = description;
+      const textToCopy = formatForCopy(description);
       
       // Пробуем современный Clipboard API
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -564,16 +553,7 @@ export default function ResultsPage() {
                       fontFamily: 'Georgia, "Times New Roman", serif',
                     }}
                   >
-                    {description.split("\n\n").map((paragraph, index) => {
-                      const html = convertMarkdownToHtml(paragraph);
-                      return (
-                        <p
-                          key={index}
-                          className="mb-4 last:mb-0"
-                          dangerouslySetInnerHTML={{ __html: html }}
-                        />
-                      );
-                    })}
+                    <ResultsProductDescription text={description} />
                   </div>
                 </div>
               </motion.div>
