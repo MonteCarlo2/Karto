@@ -30,7 +30,7 @@ import {
   highlightStopWords,
   getStopWordMessage,
   formatForCopy,
-  stripMarkdownArtifacts,
+  normalizeDescriptionLayout,
 } from "@/lib/utils/marketplace-formatter";
 
 // Статичный эффект рельефной бумаги (копируем из understanding)
@@ -1196,7 +1196,7 @@ export default function DescriptionPage() {
                       >
                         {(() => {
                           const formatDescription = (text: string) => {
-                            const lines = stripMarkdownArtifacts(text).split('\n');
+                            const lines = normalizeDescriptionLayout(text).split('\n');
                             return lines.map((line, index) => {
                               const trimmed = line.trim();
                               const headingMatch = trimmed.match(/^#+\s*(.+)$/);
@@ -1432,7 +1432,7 @@ export default function DescriptionPage() {
                         const isActive = expandedVariantId === variant.id || (expandedVariantId === null && variant.id === 1);
                         if (!isActive) return null;
 
-                        const description = stripMarkdownArtifacts(variant.description);
+                        const description = normalizeDescriptionLayout(variant.description);
                         const charCount = description.length;
                         const wordCount = description.split(/\s+/).filter(w => w.length > 0).length;
                         
@@ -1440,7 +1440,7 @@ export default function DescriptionPage() {
                         const variantIssues = checkStopWords(description);
                         
                         const formatDescription = (text: string) => {
-                          const lines = stripMarkdownArtifacts(text).split('\n');
+                          const lines = normalizeDescriptionLayout(text).split('\n');
                           return lines.map((line, index) => {
                             const trimmed = line.trim();
                             const headingMatch = trimmed.match(/^#+\s*(.+)$/);

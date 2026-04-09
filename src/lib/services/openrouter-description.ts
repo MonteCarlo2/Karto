@@ -8,6 +8,7 @@ import {
   getNormalizedOpenRouterApiKey,
   getOpenRouterRequestHeaders,
 } from "@/lib/openrouter-headers";
+import { normalizeDescriptionLayout } from "@/lib/utils/marketplace-formatter";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -36,15 +37,7 @@ function sleep(ms: number): Promise<void> {
  * несмотря на инструкции в промпте.
  */
 function sanitizeDescriptionOutput(text: string): string {
-  const withoutMarkdownHeaders = text.replace(/^\s{0,3}#{1,6}\s+/gm, "");
-  // Убираем частые markdown-артефакты форматирования
-  const withoutBold = withoutMarkdownHeaders
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/__(.*?)__/g, "$1")
-    .replace(/\*(.*?)\*/g, "$1")
-    .replace(/`([^`]+)`/g, "$1");
-  // Нормализуем избыточные пустые строки после чистки
-  return withoutBold.replace(/\n{3,}/g, "\n\n").trim();
+  return normalizeDescriptionLayout(text);
 }
 
 async function readDescriptionFromOpenRouterResponse(

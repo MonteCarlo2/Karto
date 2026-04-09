@@ -33,6 +33,49 @@ export function stripMarkdownArtifacts(text: string): string {
 }
 
 /**
+ * Нормализация "простыни" от модели:
+ * - разворачивает секции в отдельные блоки;
+ * - превращает inline " - " в пункт списка;
+ * - сохраняет аккуратные абзацы.
+ */
+export function normalizeDescriptionLayout(text: string): string {
+  let normalized = stripMarkdownArtifacts(text).replace(/\r\n/g, "\n");
+
+  // Вставляем переносы перед типовыми секциями, если модель вернула всё в одну строку.
+  const sectionHeadings = [
+    "Характеристики",
+    "Преимущества",
+    "Для кого подойд[её]т",
+    "Сценарии использования",
+    "Примеры использования",
+    "Заключение",
+    "Дизайн и стиль",
+    "Конструкция и удобство",
+    "Поверхность",
+    "Дополнительные возможности",
+    "Уход и эксплуатация",
+    "Комплектация",
+  ];
+
+  const sectionPattern = new RegExp(`\\s+(${sectionHeadings.join("|")})\\s*:`, "gi");
+  normalized = normalized.replace(sectionPattern, "\n\n$1:");
+
+  // Часто Qwen даёт: "...: пункт - пункт - пункт". Превращаем в список по строкам.
+  normalized = normalized.replace(/\s+[—-]\s+(?=[А-ЯA-ZЁ0-9])/g, "\n- ");
+
+  // Если список идёт сразу после заголовка без переноса — добавляем перенос.
+  normalized = normalized.replace(/:\s*-\s+/g, ":\n- ");
+
+  // Лёгкая нормализация пустых строк.
+  normalized = normalized
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return normalized;
+}
+
+/**
  * Проверка текста на стоп-слова
  * Возвращает массив найденных проблемных слов с их позициями
  */
@@ -116,7 +159,7 @@ export function checkStopWords(text: string): Array<{ word: string; category: st
  * Сохраняет абзацы и преобразует markdown-заголовки/списки в читабельный вид
  */
 export function formatForCopy(text: string): string {
-  const lines = stripMarkdownArtifacts(text).split('\n');
+  const lines = normalizeDescriptionLayout(text).split('\n');
   const result: string[] = [];
 
   lines.forEach((line) => {
