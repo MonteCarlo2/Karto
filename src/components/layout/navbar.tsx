@@ -247,18 +247,6 @@ export function Navbar() {
               <div className="flex items-center gap-2" suppressHydrationWarning>
                 <UserNotificationBell />
                 <div className="flex items-center gap-2">
-                  {subscriptionLabels.length > 0 && (
-                    <div className="hidden sm:flex items-center gap-1.5">
-                      {subscriptionLabels.map((label, i) => (
-                        <span
-                          key={i}
-                          className="text-xs font-medium text-[#2E5A43] bg-[#2E5A43]/10 px-2.5 py-1 rounded-full border border-[#2E5A43]/30"
-                        >
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                   <div className="relative profile-menu-container">
                     <button
                       onClick={() => setShowProfileMenu(!showProfileMenu)}
@@ -274,7 +262,7 @@ export function Navbar() {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -10, scale: 0.95 }}
                           transition={{ duration: 0.2, ease: "easeOut" }}
-                          className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50"
+                          className="absolute left-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50"
                         >
                           <Link
                             href="/profile"
@@ -295,6 +283,18 @@ export function Navbar() {
                       )}
                     </AnimatePresence>
                   </div>
+                  {subscriptionLabels.length > 0 && (
+                    <div className="hidden sm:flex items-center gap-1.5">
+                      {subscriptionLabels.map((label, i) => (
+                        <span
+                          key={i}
+                          className="text-xs font-medium text-[#2E5A43] bg-[#2E5A43]/10 px-2.5 py-1 rounded-full border border-[#2E5A43]/30"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : mounted ? (
