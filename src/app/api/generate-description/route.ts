@@ -4,6 +4,31 @@ import { generateProductDescription } from "@/lib/services/openrouter-descriptio
 // Допускаем долгий ответ (4 параллельных запроса к OpenRouter), чтобы не обрывать по таймауту
 export const maxDuration = 120;
 
+function messageWhenAllOpenRouterVariantsFailed(reason: unknown): {
+  error: string;
+  hint?: string;
+} {
+  const msg = String((reason as Error)?.message || reason || "");
+  if (/403/.test(msg) && /Terms Of Service/i.test(msg)) {
+    return {
+      error:
+        "OpenRouter отклонил запрос (403: ограничение провайдера). Проверьте баланс и аккаунт на openrouter.ai; при необходимости — поддержка OpenRouter (в ответе API есть user_id).",
+      hint:
+        "Ключ в панели хостинга должен быть одной строкой без переносов; в новой версии приложения переносы в ключе убираются автоматически.",
+    };
+  }
+  if (/401/.test(msg)) {
+    return {
+      error:
+        "Ключ OpenRouter не принят (401). Проверьте OPENROUTER_API_KEY на хостинге: полная строка sk-or-v1-… без кавычек и пробелов по краям.",
+    };
+  }
+  return {
+    error: "OpenRouter временно недоступен или вернул ошибку. Описания не сгенерированы.",
+    hint: msg.length > 0 ? msg.slice(0, 280) : undefined,
+  };
+}
+
 /**
  * Генерация 4 вариантов описания товара через OpenRouter (Claude)
  * ВАЖНО: Все операции через серверный API route для безопасности
@@ -85,10 +110,15 @@ export async function POST(request: NextRequest) {
     const rejectedCount = descriptions.filter((r) => r.status === "rejected").length;
     if (rejectedCount === descriptions.length) {
       const firstError = descriptions.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+      const { error: errText, hint } = messageWhenAllOpenRouterVariantsFailed(firstError?.reason);
       return NextResponse.json(
         {
-          error: "OpenRouter временно недоступен. Описания не сгенерированы.",
-          details: process.env.NODE_ENV === "development" ? String(firstError?.reason?.message || firstError?.reason || "") : undefined,
+          error: errText,
+          hint,
+          details:
+            process.env.NODE_ENV === "development"
+              ? String(firstError?.reason?.message || firstError?.reason || "")
+              : undefined,
         },
         { status: 502 }
       );

@@ -123,6 +123,21 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
         return;
       }
       const sub = data.subscription;
+      if (sub.flowPackExpired) {
+        setFlowError(
+          <>
+            Пакет «Поток» в базе есть (до {sub.expiredFlowVolume} потоков), но{" "}
+            <strong>истёк срок действия</strong> (30 дней с даты активации). Оформите новый пакет в{" "}
+            <Link href="/#pricing" className="font-semibold underline underline-offset-2 hover:text-white">
+              разделе «Цена»
+            </Link>
+            {" "}
+            или попросите администратора обновить в Supabase для строки <strong>flow</strong> поле{" "}
+            <strong>period_start</strong> на текущую дату.
+          </>
+        );
+        return;
+      }
       if (sub.planType !== "flow") {
         setFlowError(
           <>

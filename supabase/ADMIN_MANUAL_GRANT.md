@@ -4,7 +4,7 @@
 
 ## 1. Узнать `user_id`
 
-**Authentication → Users** → открой пользователя → скопируй **UUID** (поле User UID).
+**Authentication → Users** → открой пользователя → скопируй **полный** **UUID** (поле User UID), **36 символов**, без многоточия `…`. Если в SQL вставить обрезанный UUID вроде `3928e290-6f1d-4b6b-8e78-d4342…`, PostgreSQL вернёт `invalid input syntax for type uuid`.
 
 Или по email:
 
@@ -17,6 +17,18 @@ SELECT id, email FROM auth.users WHERE email ILIKE '%его_почта%';
 ---
 
 ## 2. Поток: лимит **5** за текущий 30-дневный период
+
+**Важно:** приложение учитывает только строки, у которых не прошло **30 календарных дней** с `period_start`. Если вы в Table Editor меняете только `plan_volume`, а `period_start` остаётся старым, пакет будет считаться **просроченным** — в профиле будет «0 потоков», хотя число в таблице большое. Всегда выставляйте **`period_start = NOW()`** при выдаче или продлении.
+
+**Только продлить период** (лимит и `flows_used` не трогаем):
+
+```sql
+UPDATE public.user_subscriptions
+SET period_start = NOW(), updated_at = NOW()
+WHERE user_id = '<USER_UUID>'::uuid AND plan_type = 'flow';
+```
+
+---
 
 `plan_volume` = сколько потоков доступно за период; `flows_used` = сколько уже израсходовано (для «полного пакета с нуля» ставим **0**).
 

@@ -45,6 +45,15 @@ export interface SubscriptionState {
   videoTokensLifetimePurchased: number;
   periodStart?: string;
   expiresAt?: string;
+  /**
+   * В БД есть строка plan_type=flow с лимитом, но прошло ≥30 дней с period_start —
+   * лимит не применяется. Частая причина: ручное изменение только plan_volume без period_start.
+   */
+  flowPackExpired?: boolean;
+  /** Только при flowPackExpired */
+  expiredFlowVolume?: number;
+  expiredFlowsUsed?: number;
+  expiredFlowPeriodStart?: string;
 }
 
 export function subscriptionToState(row: SubscriptionRow): SubscriptionState {
@@ -156,7 +165,22 @@ export async function getSubscriptionByUserId(supabase: any, userId: string): Pr
   if (rows.length === 0) return null;
   const active = filterActiveSubscriptionRows(rows);
   if (active.length === 0) return null;
-  return mergeSubscriptionRows(active);
+  const merged = mergeSubscriptionRows(active);
+  const flowRow = rows.find((r) => r.plan_type === "flow");
+  if (
+    flowRow &&
+    isSubscriptionExpired(flowRow) &&
+    flowRow.plan_volume > 0
+  ) {
+    return {
+      ...merged,
+      flowPackExpired: true,
+      expiredFlowVolume: flowRow.plan_volume,
+      expiredFlowsUsed: flowRow.flows_used,
+      expiredFlowPeriodStart: flowRow.period_start,
+    };
+  }
+  return merged;
 }
 
 /** Получить сырые строки подписки по user_id (для списания потока/генераций). */

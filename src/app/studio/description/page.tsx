@@ -341,7 +341,10 @@ export default function DescriptionPage() {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: "Неизвестная ошибка" }));
         console.error("❌ Ошибка API:", errorData);
-        alert(`Ошибка генерации описаний: ${errorData.error || errorData.details || "Попробуйте еще раз"}`);
+        const hint = errorData.hint ? `\n\n${errorData.hint}` : "";
+        alert(
+          `Ошибка генерации описаний: ${errorData.error || errorData.details || "Попробуйте еще раз"}${hint}`
+        );
         setIsGenerating(false);
         return;
       }

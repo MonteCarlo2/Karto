@@ -1,4 +1,8 @@
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+import {
+  getNormalizedOpenRouterApiKey,
+  getOpenRouterRequestHeaders,
+} from "@/lib/openrouter-headers";
+
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 export interface PriceAnalysis {
@@ -57,8 +61,8 @@ export async function analyzePriceWithPerplexity(params: {
   const safeName = (params.productName || "").slice(0, 200);
   const safePhoto = params.photoUrl || undefined;
 
-  if (!OPENROUTER_API_KEY) {
-    throw new Error("Отсутствует ключ OPENROUTER_API_KEY");
+  if (!getNormalizedOpenRouterApiKey()) {
+    throw new Error("Отсутствует или пустой OPENROUTER_API_KEY");
   }
 
   const systemPrompt = `
@@ -151,12 +155,7 @@ export async function analyzePriceWithPerplexity(params: {
 
   const response = await fetch(OPENROUTER_API_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://karto.app",
-      "X-Title": "KARTO - Price Strategy",
-    },
+    headers: getOpenRouterRequestHeaders("KARTO - Price Strategy"),
     body: JSON.stringify(body),
   });
 

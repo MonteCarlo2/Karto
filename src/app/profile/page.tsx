@@ -802,7 +802,20 @@ function ProfileContent() {
                         </p>
                         <p className="text-sm text-gray-800">
                           Поток:{" "}
-                          {subscription.flowsLimit > 0 ? (
+                          {subscription.flowPackExpired ? (
+                            <>
+                              в учёте указано до <strong>{subscription.expiredFlowVolume}</strong>{" "}
+                              потоков, но <strong>истёк 30-дневный период</strong> пакета (отсчёт от даты
+                              активации). Пока лимит не действует — оформите новый пакет в{" "}
+                              <Link href="/#pricing" className="font-semibold text-[#2E5A43] underline">
+                                разделе «Цена»
+                              </Link>
+                              {" "}или при ручном начислении в Supabase обновите у строки{" "}
+                              <code className="text-xs bg-white/80 px-1 rounded">flow</code> поле{" "}
+                              <code className="text-xs bg-white/80 px-1 rounded">period_start</code> на{" "}
+                              <code className="text-xs bg-white/80 px-1 rounded">NOW()</code>.
+                            </>
+                          ) : subscription.flowsLimit > 0 ? (
                             <>
                               осталось{" "}
                               <strong>
