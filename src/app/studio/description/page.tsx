@@ -25,7 +25,13 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { checkStopWords, highlightStopWords, getStopWordMessage, formatForCopy } from "@/lib/utils/marketplace-formatter";
+import {
+  checkStopWords,
+  highlightStopWords,
+  getStopWordMessage,
+  formatForCopy,
+  stripMarkdownArtifacts,
+} from "@/lib/utils/marketplace-formatter";
 
 // Статичный эффект рельефной бумаги (копируем из understanding)
 function CanvasTexture({ patternAlpha = 12 }: { patternAlpha?: number }) {
@@ -1190,7 +1196,7 @@ export default function DescriptionPage() {
                       >
                         {(() => {
                           const formatDescription = (text: string) => {
-                            const lines = text.split('\n');
+                            const lines = stripMarkdownArtifacts(text).split('\n');
                             return lines.map((line, index) => {
                               const trimmed = line.trim();
                               const headingMatch = trimmed.match(/^#+\s*(.+)$/);
@@ -1230,8 +1236,8 @@ export default function DescriptionPage() {
                               }
 
                               // Списки (строки, начинающиеся с "-", "•", "→", цифры)
-                              if (/^[-•→\d]/.test(trimmed)) {
-                                const listContent = trimmed.replace(/^[-•→\d.\s]+/, '').trim();
+                              if (/^[-•→*\d]/.test(trimmed)) {
+                                const listContent = trimmed.replace(/^[-•→*\d.\s]+/, '').trim();
                                 let listSymbol = "•";
                                 if (trimmed.startsWith('•')) listSymbol = "•";
                                 else if (trimmed.startsWith('-')) listSymbol = "—";
@@ -1426,7 +1432,7 @@ export default function DescriptionPage() {
                         const isActive = expandedVariantId === variant.id || (expandedVariantId === null && variant.id === 1);
                         if (!isActive) return null;
 
-                        const description = variant.description;
+                        const description = stripMarkdownArtifacts(variant.description);
                         const charCount = description.length;
                         const wordCount = description.split(/\s+/).filter(w => w.length > 0).length;
                         
@@ -1434,7 +1440,7 @@ export default function DescriptionPage() {
                         const variantIssues = checkStopWords(description);
                         
                         const formatDescription = (text: string) => {
-                          const lines = text.split('\n');
+                          const lines = stripMarkdownArtifacts(text).split('\n');
                           return lines.map((line, index) => {
                             const trimmed = line.trim();
                             const headingMatch = trimmed.match(/^#+\s*(.+)$/);
@@ -1474,8 +1480,8 @@ export default function DescriptionPage() {
                             }
 
                             // Списки (строки, начинающиеся с "-", "•", "→", цифры)
-                            if (/^[-•→\d]/.test(trimmed)) {
-                              const listContent = trimmed.replace(/^[-•→\d.\s]+/, '').trim();
+                            if (/^[-•→*\d]/.test(trimmed)) {
+                              const listContent = trimmed.replace(/^[-•→*\d.\s]+/, '').trim();
                               // Определяем символ для списка - используем простые символы для Ozon
                               let listSymbol = "•";
                               if (trimmed.startsWith('•')) listSymbol = "•";

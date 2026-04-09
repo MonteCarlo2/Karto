@@ -23,6 +23,15 @@ const STOP_WORDS = {
   ],
 };
 
+export function stripMarkdownArtifacts(text: string): string {
+  return text
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1");
+}
+
 /**
  * Проверка текста на стоп-слова
  * Возвращает массив найденных проблемных слов с их позициями
@@ -107,7 +116,7 @@ export function checkStopWords(text: string): Array<{ word: string; category: st
  * Сохраняет абзацы и преобразует markdown-заголовки/списки в читабельный вид
  */
 export function formatForCopy(text: string): string {
-  const lines = text.split('\n');
+  const lines = stripMarkdownArtifacts(text).split('\n');
   const result: string[] = [];
 
   lines.forEach((line) => {
@@ -125,8 +134,8 @@ export function formatForCopy(text: string): string {
     }
 
     // Списки - используем простые символы для Ozon
-    if (/^[-•→\d]/.test(trimmed)) {
-      const item = trimmed.replace(/^[-•→\d.\s]+/, '').trim();
+    if (/^[-•→*\d]/.test(trimmed)) {
+      const item = trimmed.replace(/^[-•→*\d.\s]+/, '').trim();
       if (item) result.push(`• ${item}`);
       return;
     }

@@ -246,50 +246,55 @@ export function Navbar() {
             {mounted && user ? (
               <div className="flex items-center gap-2" suppressHydrationWarning>
                 <UserNotificationBell />
-                <div className="relative profile-menu-container flex items-center gap-2">
-                  <button
-                    onClick={() => setShowProfileMenu(!showProfileMenu)}
-                    className="flex items-center justify-center w-10 h-10 rounded-full border-2 border-[#2E5A43] hover:bg-[#2E5A43] hover:text-white transition-colors"
-                    aria-label="Профиль"
-                  >
-                    <User className="w-5 h-5 text-foreground" />
-                  </button>
+                <div className="flex items-center gap-2">
                   {subscriptionLabels.length > 0 && (
                     <div className="hidden sm:flex items-center gap-1.5">
                       {subscriptionLabels.map((label, i) => (
-                        <span key={i} className="text-xs font-medium text-[#2E5A43] bg-[#2E5A43]/10 px-2.5 py-1 rounded-full border border-[#2E5A43]/30">
+                        <span
+                          key={i}
+                          className="text-xs font-medium text-[#2E5A43] bg-[#2E5A43]/10 px-2.5 py-1 rounded-full border border-[#2E5A43]/30"
+                        >
                           {label}
                         </span>
                       ))}
                     </div>
                   )}
-                <AnimatePresence>
-                  {showProfileMenu && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                      transition={{ duration: 0.2, ease: "easeOut" }}
-                      className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50"
+                  <div className="relative profile-menu-container">
+                    <button
+                      onClick={() => setShowProfileMenu(!showProfileMenu)}
+                      className="flex items-center justify-center w-10 h-10 rounded-full border-2 border-[#2E5A43] hover:bg-[#2E5A43] hover:text-white transition-colors"
+                      aria-label="Профиль"
                     >
-                      <Link
-                        href="/profile"
-                        className="w-full flex items-center gap-2 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
-                        onClick={() => setShowProfileMenu(false)}
-                      >
-                        <User className="w-4 h-4" />
-                        Профиль
-                      </Link>
-                      <button
-                        onClick={handleLogout}
-                        className="w-full flex items-center gap-2 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        Выйти
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                      <User className="w-5 h-5 text-foreground" />
+                    </button>
+                    <AnimatePresence>
+                      {showProfileMenu && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                          transition={{ duration: 0.2, ease: "easeOut" }}
+                          className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50"
+                        >
+                          <Link
+                            href="/profile"
+                            className="w-full flex items-center gap-2 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
+                            onClick={() => setShowProfileMenu(false)}
+                          >
+                            <User className="w-4 h-4" />
+                            Профиль
+                          </Link>
+                          <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center gap-2 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
+                          >
+                            <LogOut className="w-4 h-4" />
+                            Выйти
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
               </div>
             ) : mounted ? (
