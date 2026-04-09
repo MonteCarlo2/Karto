@@ -1217,6 +1217,37 @@ export default function DescriptionPage() {
                                   </div>
                                 );
                               }
+
+                              // Заголовок и текст в одной строке: "Раздел: продолжение..."
+                              const inlineHeadingMatch = trimmed.match(
+                                /^([A-Za-zА-Яа-яЁё0-9\s/()«»"'-]{3,60}:)\s+(.+)$/
+                              );
+                              if (inlineHeadingMatch) {
+                                return (
+                                  <div key={index} className="mt-6 mb-3 first:mt-0">
+                                    <h4
+                                      className="font-semibold text-lg"
+                                      style={{
+                                        color: "#2E5A43",
+                                        fontFamily: "var(--font-sans), Inter, sans-serif",
+                                      }}
+                                    >
+                                      {inlineHeadingMatch[1]}
+                                    </h4>
+                                    <p
+                                      className="mt-2 mb-0"
+                                      style={{
+                                        color: "#1a1a1a",
+                                        fontSize: "16px",
+                                        lineHeight: "1.5",
+                                        fontFamily: "var(--font-sans), Inter, sans-serif",
+                                      }}
+                                    >
+                                      {inlineHeadingMatch[2]}
+                                    </p>
+                                  </div>
+                                );
+                              }
                               
                               // Заголовки в стиле markdown (начинаются с #)
                               if (headingMatch && headingMatch[1]) {
@@ -1458,6 +1489,37 @@ export default function DescriptionPage() {
                                   >
                                     {trimmed}
                                   </h4>
+                                </div>
+                              );
+                            }
+
+                            // Заголовок и текст в одной строке: "Раздел: продолжение..."
+                            const inlineHeadingMatch = trimmed.match(
+                              /^([A-Za-zА-Яа-яЁё0-9\s/()«»"'-]{3,60}:)\s+(.+)$/
+                            );
+                            if (inlineHeadingMatch) {
+                              return (
+                                <div key={index} className="mt-6 mb-3 first:mt-0">
+                                  <h4
+                                    className="font-semibold text-lg"
+                                    style={{
+                                      color: "#2E5A43",
+                                      fontFamily: "var(--font-sans), Inter, sans-serif",
+                                    }}
+                                  >
+                                    {inlineHeadingMatch[1]}
+                                  </h4>
+                                  <p
+                                    className="mt-2 mb-0"
+                                    style={{
+                                      color: "#1a1a1a",
+                                      fontSize: "16px",
+                                      lineHeight: "1.5",
+                                      fontFamily: "var(--font-sans), Inter, sans-serif",
+                                    }}
+                                  >
+                                    {inlineHeadingMatch[2]}
+                                  </p>
                                 </div>
                               );
                             }

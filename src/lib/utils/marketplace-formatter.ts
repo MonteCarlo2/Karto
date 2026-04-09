@@ -41,6 +41,10 @@ export function stripMarkdownArtifacts(text: string): string {
 export function normalizeDescriptionLayout(text: string): string {
   let normalized = stripMarkdownArtifacts(text).replace(/\r\n/g, "\n");
 
+  // Иногда markdown-заголовки приходят не с новой строки ("... текст ### Заголовок ...").
+  // Превращаем такие в явный разрыв секции.
+  normalized = normalized.replace(/\s+#{1,6}\s+/g, "\n\n");
+
   // Вставляем переносы перед типовыми секциями, если модель вернула всё в одну строку.
   const sectionHeadings = [
     "Характеристики",
@@ -61,7 +65,15 @@ export function normalizeDescriptionLayout(text: string): string {
   normalized = normalized.replace(sectionPattern, "\n\n$1:");
 
   // Часто Qwen даёт: "...: пункт - пункт - пункт". Превращаем в список по строкам.
-  normalized = normalized.replace(/\s+[—-]\s+(?=[А-ЯA-ZЁ0-9])/g, "\n- ");
+  // Делаем это аккуратно, чтобы не ломать обычные тире в тексте.
+  normalized = normalized
+    .split("\n")
+    .map((line) => {
+      const dashCount = (line.match(/\s[-—]\s/g) || []).length;
+      if (dashCount < 2) return line;
+      return line.replace(/\s[-—]\s+(?=[А-ЯA-ZЁ0-9])/g, "\n- ");
+    })
+    .join("\n");
 
   // Если список идёт сразу после заголовка без переноса — добавляем перенос.
   normalized = normalized.replace(/:\s*-\s+/g, ":\n- ");
