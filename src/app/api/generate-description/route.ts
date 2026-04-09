@@ -12,9 +12,9 @@ function messageWhenAllOpenRouterVariantsFailed(reason: unknown): {
   if (/403/.test(msg) && /Terms Of Service/i.test(msg)) {
     return {
       error:
-        "OpenRouter отклонил запрос (403: ограничение провайдера). Проверьте баланс и аккаунт на openrouter.ai; при необходимости — поддержка OpenRouter (в ответе API есть user_id).",
+        "OpenRouter отклонил основную модель описаний (403, чаще у anthropic/*). В актуальной версии должен сработать автоматический fallback на другую модель; если видите это сообщение — обновите деплой или задайте OPENROUTER_DESCRIPTION_MODEL / OPENROUTER_DESCRIPTION_FALLBACK_MODEL.",
       hint:
-        "Ключ в панели хостинга должен быть одной строкой без переносов; в новой версии приложения переносы в ключе убираются автоматически.",
+        "Старого ключа в репозитории нет: используется только OPENROUTER_API_KEY с сервера. Проверьте кабинет openrouter.ai и при необходимости поддержку (user_id в логах).",
     };
   }
   if (/401/.test(msg)) {
