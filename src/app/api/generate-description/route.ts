@@ -30,7 +30,7 @@ function messageWhenAllOpenRouterVariantsFailed(reason: unknown): {
 }
 
 /**
- * Генерация 4 вариантов описания товара через OpenRouter (Claude)
+ * Генерация 4 вариантов описания товара через OpenRouter
  * ВАЖНО: Все операции через серверный API route для безопасности
  */
 export async function POST(request: NextRequest) {
