@@ -9,6 +9,7 @@ import {
   CREATIVE_PRICES,
 } from "@/lib/subscription";
 import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
+import { ATTR_COOKIE_NAME, isAttributionActive, readAttributionCookie } from "@/lib/attribution";
 
 const YOOKASSA_API = "https://api.yookassa.ru/v3/payments";
 /** ЮKassa требует ключ идемпотентности не длиннее допустимого (иначе "Idempotence key is too long"). */
@@ -64,6 +65,20 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    const cookieAttr = readAttributionCookie(
+      request.cookies.get(ATTR_COOKIE_NAME)?.value ?? null
+    );
+    const userMeta = (user as { user_metadata?: Record<string, unknown> }).user_metadata || {};
+    const userMetaBloggerCode =
+      typeof userMeta.blogger_code === "string" ? userMeta.blogger_code.trim() : "";
+    const userMetaBloggerSource =
+      typeof userMeta.blogger_source === "string" ? userMeta.blogger_source.trim() : "";
+    const bloggerCode =
+      userMetaBloggerCode || (cookieAttr && isAttributionActive(cookieAttr) ? cookieAttr.code : "");
+    const bloggerSource =
+      userMetaBloggerSource ||
+      (cookieAttr && isAttributionActive(cookieAttr) ? cookieAttr.source : "");
+
     const mode = body?.mode === "1" ? "1" : "0";
     const rawKind = String(body?.paymentKind ?? "").trim();
     const paymentKind =
@@ -128,6 +143,8 @@ export async function POST(request: NextRequest) {
         mode: paymentKind === "flow" ? "0" : paymentKind === "creative" ? "1" : "1",
         payment_kind: paymentKind,
         tariffIndex: String(metadataTariffIndex),
+        blogger_code: bloggerCode || undefined,
+        blogger_source: bloggerSource || undefined,
       },
     };
 

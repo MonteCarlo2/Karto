@@ -87,6 +87,9 @@ export async function POST(request: NextRequest) {
     const tariffIndex = Number.isFinite(rawTariff) ? rawTariff : 0;
     const paymentKind =
       String(meta.payment_kind ?? "").trim() || (mode === "0" ? "flow" : "creative");
+    const bloggerCode = String(meta.blogger_code ?? "").trim().toLowerCase();
+    const bloggerSource = String(meta.blogger_source ?? "").trim().toLowerCase() || "unknown";
+    const amountRub = Number(payment.amount?.value ?? 0);
 
     if (userId !== user.id || !userId) return NextResponse.json({ success: false, error: "Чужой платёж" }, { status: 200 });
 
@@ -100,6 +103,20 @@ export async function POST(request: NextRequest) {
     if (insErr) {
       console.error("[PAYMENT CONFIRM] payment_processed insert:", insErr.message);
       return NextResponse.json({ success: false, error: "Ошибка записи платежа" }, { status: 200 });
+    }
+    const { error: evtErr } = await supabase.from("influencer_payment_events").upsert(
+      {
+        payment_id: paymentId,
+        user_id: userId,
+        blogger_code: bloggerCode || null,
+        blogger_source: bloggerCode ? bloggerSource : null,
+        payment_kind: paymentKind,
+        amount_rub: Number.isFinite(amountRub) ? amountRub : null,
+      },
+      { onConflict: "payment_id" }
+    );
+    if (evtErr) {
+      console.warn("[PAYMENT CONFIRM] influencer_payment_events upsert:", evtErr.message);
     }
     console.log("[PAYMENT CONFIRM] payment_processed ok, crediting...");
     let result: { ok: boolean; error?: string } = { ok: true };

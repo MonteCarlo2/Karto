@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { findAuthUserByEmail } from "@/lib/auth/find-auth-user-by-email";
 import { validateDisplayName, validatePasswordForAuth } from "@/lib/auth/password-policy";
+import { ATTR_COOKIE_NAME, isAttributionActive, readAttributionCookie } from "@/lib/attribution";
 import {
   generateFourDigitCode,
   hashSignupCode,
@@ -30,6 +31,16 @@ export async function POST(request: NextRequest) {
     }
 
     const email = emailRaw.toLowerCase();
+    const attr = readAttributionCookie(request.cookies.get(ATTR_COOKIE_NAME)?.value ?? null);
+    const attributionFields =
+      attr && isAttributionActive(attr)
+        ? {
+            blogger_code: attr.code,
+            blogger_source: attr.source,
+            blogger_attr_at: new Date(attr.capturedAt).toISOString(),
+            blogger_attr_expires_at: new Date(attr.expiresAt).toISOString(),
+          }
+        : {};
     const supabase = createServerClient();
 
     let userId: string;
@@ -42,6 +53,7 @@ export async function POST(request: NextRequest) {
         name,
         consent_personal_data: true,
         consent_personal_data_at: new Date().toISOString(),
+        ...attributionFields,
       },
     });
 
@@ -81,6 +93,7 @@ export async function POST(request: NextRequest) {
           name,
           consent_personal_data: true,
           consent_personal_data_at: new Date().toISOString(),
+          ...attributionFields,
         },
       });
       if (updErr) {

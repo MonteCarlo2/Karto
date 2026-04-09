@@ -70,6 +70,9 @@ export async function POST(request: NextRequest) {
     const mode = String(meta.mode) === "1" ? "1" : "0";
     const rawTariff = Number(meta.tariffIndex);
     const tariffIndex = Number.isFinite(rawTariff) ? rawTariff : 0;
+    const bloggerCode = String(meta.blogger_code ?? "").trim().toLowerCase();
+    const bloggerSource = String(meta.blogger_source ?? "").trim().toLowerCase() || "unknown";
+    const amountRub = Number(payment.amount?.value ?? 0);
 
     if (userId.length < 30) {
       console.warn("[PAYMENT WEBHOOK] no user_id, payment:", paymentToProcess.id);
@@ -103,6 +106,20 @@ export async function POST(request: NextRequest) {
     if (claimErr) {
       console.error("[PAYMENT WEBHOOK] payment_processed insert error:", claimErr.message);
       return new NextResponse(null, { status: 200 });
+    }
+    const { error: evtErr } = await supabase.from("influencer_payment_events").upsert(
+      {
+        payment_id: paymentToProcess.id,
+        user_id: userId,
+        blogger_code: bloggerCode || null,
+        blogger_source: bloggerCode ? bloggerSource : null,
+        payment_kind: paymentKind,
+        amount_rub: Number.isFinite(amountRub) ? amountRub : null,
+      },
+      { onConflict: "payment_id" }
+    );
+    if (evtErr) {
+      console.warn("[PAYMENT WEBHOOK] influencer_payment_events upsert:", evtErr.message);
     }
     console.log("[PAYMENT WEBHOOK] payment_processed ok, crediting...");
     let result: { ok: boolean; error?: string } = { ok: true };
