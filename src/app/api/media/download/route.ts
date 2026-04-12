@@ -128,6 +128,7 @@ function isAllowedRemoteUrl(url: URL, sameOrigin: string): boolean {
   // Временные файлы / CDN KIE (видео и иногда картинки)
   if (host.includes("redpandaai.co")) return true;
   if (host === "kie.ai" || host.endsWith(".kie.ai")) return true;
+  if (host.includes("aiquickdraw.com")) return true;
 
   // Replicate (иногда остаётся временный URL в ленте / кэше)
   if (host === "replicate.delivery" || host.endsWith(".replicate.delivery")) {
@@ -178,7 +179,9 @@ function sanitizeFilename(name: string): string {
 
 /**
  * POST { url, filename?, mediaType? }
- * Проксирует файл с разрешённого хоста (обход CORS при скачивании в браузере).
+ * — **video**: после проверки URL возвращаем JSON с прямой ссылкой — браузер качает с CDN,
+ *   без потока через Node (нет «failed to pipe response» и нагрузки на VPS).
+ * — **image**: по-прежнему прокси с разрешённого хоста (обход CORS, файлы обычно небольшие).
  */
 export async function POST(request: NextRequest) {
   let body: { url?: string; filename?: string; mediaType?: string };
@@ -219,6 +222,20 @@ export async function POST(request: NextRequest) {
       },
       { status: 403 }
     );
+  }
+
+  if (body.mediaType === "video") {
+    const defaultExt = "mp4";
+    const baseName =
+      typeof body.filename === "string" && body.filename.trim()
+        ? sanitizeFilename(body.filename.trim())
+        : `karto-video-${Date.now()}.${defaultExt}`;
+    const safeName = baseName.includes(".") ? baseName : `${baseName}.${defaultExt}`;
+    return NextResponse.json({
+      mode: "direct",
+      url: target.toString(),
+      filename: safeName,
+    });
   }
 
   const upstream = await fetch(target.toString(), {

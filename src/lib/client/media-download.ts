@@ -29,8 +29,9 @@ function alignLoopbackToPageOrigin(abs: string): string {
 }
 
 /**
- * Скачивание медиа с внешнего URL через серверный прокси (/api/media/download).
- * Нужен из‑за CORS: прямой fetch(url) в браузере к Supabase/CDN часто даёт TypeError: Failed to fetch.
+ * Скачивание медиа через `/api/media/download`.
+ * Видео: сервер отдаёт прямую ссылку — качает браузер с CDN (не грузим VPS потоком).
+ * Картинки: прокси с сервера (CORS).
  */
 export async function triggerDownloadFromRemoteUrl(params: {
   url: string;
@@ -88,6 +89,30 @@ export async function triggerDownloadFromRemoteUrl(params: {
       /* ignore */
     }
     throw new Error(msg);
+  }
+
+  const ctHeader = response.headers.get("content-type") || "";
+  if (ctHeader.includes("application/json")) {
+    const data = (await response.json()) as {
+      mode?: string;
+      url?: string;
+      filename?: string;
+    };
+    if (data?.mode === "direct" && typeof data.url === "string" && data.url.length > 0) {
+      const name =
+        typeof data.filename === "string" && data.filename.trim()
+          ? data.filename.trim()
+          : suggestedName;
+      const a = document.createElement("a");
+      a.href = data.url;
+      a.download = name;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
   }
 
   const blob = await response.blob();
