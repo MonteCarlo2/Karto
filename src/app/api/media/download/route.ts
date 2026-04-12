@@ -1,7 +1,45 @@
+import { randomUUID } from "crypto";
+import { createReadStream, createWriteStream } from "fs";
+import fsp from "fs/promises";
+import os from "os";
+import path from "path";
+import { pipeline } from "stream/promises";
+import { Readable, Transform } from "stream";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+/** Сливаем тело ответа CDN во временный файл (без pipe CDN→клиент), затем отдаём с диска. */
+async function spoolWebStreamToTempFile(
+  webStream: ReadableStream<Uint8Array>,
+  maxBytes: number
+): Promise<{ path: string } | { error: string; status: number }> {
+  const tmpPath = path.join(os.tmpdir(), `karto-media-${randomUUID()}.bin`);
+  let total = 0;
+  const limiter = new Transform({
+    transform(chunk: Buffer, _enc, cb) {
+      total += chunk.length;
+      if (total > maxBytes) {
+        cb(new Error("FILE_TOO_LARGE"));
+        return;
+      }
+      cb(null, chunk);
+    },
+  });
+  const out = createWriteStream(tmpPath);
+  const nodeReadable = Readable.fromWeb(webStream as Parameters<typeof Readable.fromWeb>[0]);
+  try {
+    await pipeline(nodeReadable, limiter, out);
+  } catch (e) {
+    await fsp.unlink(tmpPath).catch(() => {});
+    if (e instanceof Error && e.message === "FILE_TOO_LARGE") {
+      return { error: "Файл слишком большой", status: 413 };
+    }
+    return { error: "Не удалось получить файл с хранилища", status: 502 };
+  }
+  return { path: tmpPath };
+}
 
 const MAX_BYTES = 250 * 1024 * 1024; // 250 MB — защита от злоупотреблений
 
@@ -179,9 +217,9 @@ function sanitizeFilename(name: string): string {
 
 /**
  * POST { url, filename?, mediaType? }
- * — **video**: после проверки URL возвращаем JSON с прямой ссылкой — браузер качает с CDN,
- *   без потока через Node (нет «failed to pipe response» и нагрузки на VPS).
- * — **image**: по-прежнему прокси с разрешённого хоста (обход CORS, файлы обычно небольшие).
+ * — **video**: сначала полностью сливаем ответ CDN во временный файл на диск, затем отдаём клиенту
+ *   с диска (тот же UX — скачивание с вашего API), без pipe «CDN → сокет клиента».
+ * — **image**: как раньше — потоковый прокси (файлы обычно небольшие).
  */
 export async function POST(request: NextRequest) {
   let body: { url?: string; filename?: string; mediaType?: string };
@@ -224,28 +262,35 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (body.mediaType === "video") {
-    const defaultExt = "mp4";
-    const baseName =
-      typeof body.filename === "string" && body.filename.trim()
-        ? sanitizeFilename(body.filename.trim())
-        : `karto-video-${Date.now()}.${defaultExt}`;
-    const safeName = baseName.includes(".") ? baseName : `${baseName}.${defaultExt}`;
-    return NextResponse.json({
-      mode: "direct",
-      url: target.toString(),
-      filename: safeName,
-    });
-  }
+  const upstreamFetchMs = Math.min(
+    900_000,
+    Math.max(60_000, Number(process.env.MEDIA_DOWNLOAD_UPSTREAM_MS) || 600_000)
+  );
 
-  const upstream = await fetch(target.toString(), {
-    method: "GET",
-    redirect: "follow",
-    headers: {
-      Accept: "*/*",
-      "User-Agent": "KartoMediaDownload/1.0",
-    },
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(target.toString(), {
+      method: "GET",
+      redirect: "follow",
+      signal: AbortSignal.timeout(upstreamFetchMs),
+      headers: {
+        Accept: "*/*",
+        "User-Agent": "KartoMediaDownload/1.0",
+      },
+    });
+  } catch (e) {
+    const name = e instanceof Error ? e.name : "";
+    if (name === "TimeoutError" || name === "AbortError") {
+      return NextResponse.json(
+        { error: "Превышено время ожидания файла с хранилища. Попробуйте ещё раз." },
+        { status: 504 }
+      );
+    }
+    return NextResponse.json(
+      { error: "Не удалось связаться с хранилищем файла" },
+      { status: 502 }
+    );
+  }
 
   if (!upstream.ok || !upstream.body) {
     return NextResponse.json(
@@ -285,12 +330,29 @@ export async function POST(request: NextRequest) {
 
   const safeName = baseName.includes(".") ? baseName : `${baseName}.${defaultExt}`;
 
+  const attachmentHeaders = {
+    "Content-Type": contentType,
+    "Content-Disposition": `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`,
+    "Cache-Control": "private, no-store",
+  };
+
+  if (body.mediaType === "video" && upstream.body) {
+    const tmp = await spoolWebStreamToTempFile(upstream.body, MAX_BYTES);
+    if ("error" in tmp) {
+      return NextResponse.json({ error: tmp.error }, { status: tmp.status });
+    }
+    const readStream = createReadStream(tmp.path);
+    const cleanup = () => fsp.unlink(tmp.path).catch(() => {});
+    readStream.once("close", cleanup);
+    readStream.once("error", cleanup);
+    return new NextResponse(Readable.toWeb(readStream) as unknown as BodyInit, {
+      status: 200,
+      headers: attachmentHeaders,
+    });
+  }
+
   return new NextResponse(upstream.body, {
     status: 200,
-    headers: {
-      "Content-Type": contentType,
-      "Content-Disposition": `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`,
-      "Cache-Control": "private, no-store",
-    },
+    headers: attachmentHeaders,
   });
 }
