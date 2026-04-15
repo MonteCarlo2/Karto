@@ -44,6 +44,7 @@ export function readAttributionCookie(raw: string | null | undefined): Attributi
 export function pickAttributionFromRequest(request: NextRequest): AttributionPayload | null {
   const url = request.nextUrl;
   const fromQueryCode =
+    sanitizeCode(url.searchParams.get("p")) ??
     sanitizeCode(url.searchParams.get("r")) ??
     sanitizeCode(url.searchParams.get("ref")) ??
     sanitizeCode(url.searchParams.get("campaign")) ??
@@ -53,7 +54,10 @@ export function pickAttributionFromRequest(request: NextRequest): AttributionPay
   const code = fromQueryCode ?? fromPathCode;
   if (!code) return null;
 
-  const sourceRaw = url.searchParams.get("src") ?? url.searchParams.get("s");
+  const sourceRaw =
+    url.searchParams.get("ch") ??
+    url.searchParams.get("src") ??
+    url.searchParams.get("s");
   const source = sanitizeSource(sourceRaw);
   const capturedAt = Date.now();
   return {
