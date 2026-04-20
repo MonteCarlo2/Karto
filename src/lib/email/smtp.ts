@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { getSmtpDkimSigningOption } from "@/lib/email/smtp-dkim";
 
 /**
  * Отправка писем через SMTP (Timeweb, Яндекс 360, Mail.ru, свой сервер и т.д.).
@@ -7,6 +8,8 @@ import nodemailer from "nodemailer";
  * Обязательно: SMTP_HOST, SMTP_USER, SMTP_PASSWORD
  * Опционально: SMTP_PORT (по умолчанию 587), SMTP_SECURE=true для порта 465,
  *   SMTP_FROM — адрес «От кого» (иначе берётся SMTP_USER или SIGNUP_EMAIL_FROM).
+ * DKIM (как в справке Mail.ru — ключ на сервере, публичный ключ в DNS):
+ *   SMTP_DKIM_PRIVATE_KEY или SMTP_DKIM_PRIVATE_KEY_PATH, опционально SMTP_DKIM_DOMAIN, SMTP_DKIM_KEY_SELECTOR (по умолчанию mailru).
  */
 export function isSmtpConfigured(): boolean {
   return Boolean(
@@ -29,6 +32,13 @@ export async function sendHtmlEmailSmtp(options: {
   const port = parseInt(process.env.SMTP_PORT || "587", 10);
   const secure = process.env.SMTP_SECURE === "true" || port === 465;
 
+  const dkim = getSmtpDkimSigningOption();
+  if (dkim) {
+    console.log(
+      `[smtp] DKIM включён: селектор ${dkim.keySelector}._domainkey, домен d=${dkim.domainName}`
+    );
+  }
+
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST!.trim(),
     port,
@@ -37,6 +47,7 @@ export async function sendHtmlEmailSmtp(options: {
       user: process.env.SMTP_USER!.trim(),
       pass: process.env.SMTP_PASSWORD!.trim(),
     },
+    ...(dkim ? { dkim } : {}),
     // На хостингах (Timeweb и др.) исходящий SMTP часто фильтруется — без таймаутов
     // nodemailer может висеть минутами, клиент ловит AbortError, а пользователь уже в Supabase.
     connectionTimeout: 12_000,

@@ -43,4 +43,7 @@ next-env.d.ts
 # локальные артефакты / Cursor
 .cursor/
 public/temp/
+
+# вывод scripts/gen-dkim-mailru.ps1 (ключи не в репозиторий)
+scripts/dkim-out/
 supabase/.temp/
