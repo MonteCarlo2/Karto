@@ -1,4 +1,5 @@
 import { isSmtpConfigured, sendHtmlEmailSmtp } from "@/lib/email/smtp";
+import { SIGNUP_EMAIL_TEMPORARY_FAILURE_MESSAGE } from "@/lib/email/user-facing-signup-email-error";
 
 /**
  * Письмо с 4-значным кодом подтверждения email — только SMTP (переменные SMTP_*).
@@ -72,8 +73,10 @@ export async function sendSignupVerificationEmail(options: {
     const result = await sendHtmlEmailSmtp({ to, subject, html });
     if (result.ok) {
       console.log("✅ [SIGNUP EMAIL] SMTP отправлено на", to);
+      return result;
     }
-    return result;
+    console.error("❌ [SIGNUP EMAIL] SMTP ошибка (детали только в логе):", result.error);
+    return { ok: false, error: SIGNUP_EMAIL_TEMPORARY_FAILURE_MESSAGE };
   }
 
   if (process.env.NODE_ENV === "development") {
