@@ -5,6 +5,7 @@ import { creditSubscription } from "@/lib/payment-credit";
 import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
 import { addVideoTokens } from "@/lib/video-tokens";
 import { capturePayment } from "@/lib/yookassa-capture";
+import { parsePromoFromPaymentMetadata, recordPromoRedemption } from "@/lib/promo/record-redemption";
 
 /**
  * GET: проверка в браузере.
@@ -137,8 +138,23 @@ export async function POST(request: NextRequest) {
       const idx = Math.min(2, Math.max(0, tariffIndex));
       result = await creditSubscription(supabase, userId, "creative", CREATIVE_VOLUMES[idx]);
     }
-    if (!result.ok) console.error("[PAYMENT WEBHOOK] credit error:", result.error);
-    else console.log("[PAYMENT WEBHOOK] credited ok:", paymentToProcess.id);
+    if (!result.ok) {
+      console.error("[PAYMENT WEBHOOK] credit error:", result.error);
+    } else {
+      console.log("[PAYMENT WEBHOOK] credited ok:", paymentToProcess.id);
+      const promo = parsePromoFromPaymentMetadata(meta as Record<string, unknown>);
+      if (promo && userId.length >= 30) {
+        const pr = await recordPromoRedemption(supabase, {
+          campaignId: promo.campaignId,
+          userId,
+          paymentId: paymentToProcess.id,
+          amountPaidRub: amountRub,
+          originalPriceRub: promo.originalRub,
+          discountPercent: promo.discountPercent,
+        });
+        if (!pr.ok && !pr.duplicate) console.warn("[PAYMENT WEBHOOK] promo redemption:", pr.error);
+      }
+    }
 
     return new NextResponse(null, { status: 200 });
   } catch (err) {

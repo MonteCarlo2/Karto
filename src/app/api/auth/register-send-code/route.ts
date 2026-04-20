@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
     const emailRaw = typeof body.email === "string" ? body.email.trim() : "";
     const password = typeof body.password === "string" ? body.password : "";
     const name = typeof body.name === "string" ? body.name.trim() : "";
+    const emailMarketingOptIn = body.emailMarketingOptIn === true;
 
     if (!emailRaw || !emailRaw.includes("@")) {
       return NextResponse.json({ success: false, error: "Введите корректный email" }, { status: 400 });
@@ -53,6 +54,10 @@ export async function POST(request: NextRequest) {
         name,
         consent_personal_data: true,
         consent_personal_data_at: new Date().toISOString(),
+        email_marketing_opt_in: emailMarketingOptIn,
+        ...(emailMarketingOptIn
+          ? { email_marketing_opt_in_at: new Date().toISOString() }
+          : {}),
         ...attributionFields,
       },
     });
@@ -93,6 +98,10 @@ export async function POST(request: NextRequest) {
           name,
           consent_personal_data: true,
           consent_personal_data_at: new Date().toISOString(),
+          email_marketing_opt_in: emailMarketingOptIn,
+          ...(emailMarketingOptIn
+            ? { email_marketing_opt_in_at: new Date().toISOString() }
+            : {}),
           ...attributionFields,
         },
       });

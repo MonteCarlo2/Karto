@@ -6,6 +6,7 @@ import { creditSubscription } from "@/lib/payment-credit";
 import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
 import { addVideoTokens } from "@/lib/video-tokens";
 import { capturePayment } from "@/lib/yookassa-capture";
+import { parsePromoFromPaymentMetadata, recordPromoRedemption } from "@/lib/promo/record-redemption";
 
 const YOOKASSA_API = "https://api.yookassa.ru/v3/payments";
 
@@ -136,6 +137,19 @@ export async function POST(request: NextRequest) {
     if (!result.ok) {
       console.error("[PAYMENT CONFIRM] credit:", result.error);
       return NextResponse.json({ success: false, error: "Ошибка начисления" }, { status: 200 });
+    }
+
+    const promo = parsePromoFromPaymentMetadata(meta as Record<string, unknown>);
+    if (promo && userId.length >= 30) {
+      const pr = await recordPromoRedemption(supabase, {
+        campaignId: promo.campaignId,
+        userId,
+        paymentId,
+        amountPaidRub: amountRub,
+        originalPriceRub: promo.originalRub,
+        discountPercent: promo.discountPercent,
+      });
+      if (!pr.ok && !pr.duplicate) console.warn("[PAYMENT CONFIRM] promo redemption:", pr.error);
     }
 
     await supabase.from("pending_payment").delete().eq("user_id", user.id).eq("payment_id", paymentId);

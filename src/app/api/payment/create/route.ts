@@ -10,6 +10,7 @@ import {
 } from "@/lib/subscription";
 import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
 import { ATTR_COOKIE_NAME, isAttributionActive, readAttributionCookie } from "@/lib/attribution";
+import { validatePromoForCheckout } from "@/lib/promo/checkout";
 
 const YOOKASSA_API = "https://api.yookassa.ru/v3/payments";
 /** ЮKassa требует ключ идемпотентности не длиннее допустимого (иначе "Idempotence key is too long"). */
@@ -119,6 +120,29 @@ export async function POST(request: NextRequest) {
       metadataTariffIndex = tariffIndexCreativeOrFlow;
     }
 
+    const rawPromo = typeof body?.promoCode === "string" ? body.promoCode.trim() : "";
+    let promoCampaignId: string | null = null;
+    let promoDiscountPercent = 0;
+    let promoOriginalRub = amountRub;
+
+    if (rawPromo) {
+      const promoTariffIdx =
+        paymentKind === "video_tokens" ? tariffIndexVideo : tariffIndexCreativeOrFlow;
+      const promoCheck = await validatePromoForCheckout(supabase, {
+        userId: user.id,
+        rawCode: rawPromo,
+        paymentKind,
+        tariffIndex: promoTariffIdx,
+      });
+      if (!promoCheck.ok) {
+        return NextResponse.json({ success: false, error: promoCheck.error }, { status: 200 });
+      }
+      promoOriginalRub = promoCheck.originalRub;
+      amountRub = promoCheck.finalRub;
+      promoCampaignId = promoCheck.campaignId;
+      promoDiscountPercent = promoCheck.discountPercent;
+    }
+
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
       (request.headers.get("x-forwarded-proto") && request.headers.get("host")
@@ -145,6 +169,13 @@ export async function POST(request: NextRequest) {
         tariffIndex: String(metadataTariffIndex),
         blogger_code: bloggerCode || undefined,
         blogger_source: bloggerSource || undefined,
+        ...(promoCampaignId
+          ? {
+              promo_campaign_id: promoCampaignId,
+              promo_original_rub: String(promoOriginalRub),
+              promo_discount_percent: String(promoDiscountPercent),
+            }
+          : {}),
       },
     };
 

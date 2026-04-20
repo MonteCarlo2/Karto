@@ -131,6 +131,27 @@ export async function POST(request: NextRequest) {
 
     await supabase.from("signup_email_verification").delete().eq("user_id", user.id);
 
+    try {
+      const { data: userFull, error: getErr } = await supabase.auth.admin.getUserById(user.id);
+      if (!getErr && userFull?.user) {
+        const opted = userFull.user.user_metadata?.email_marketing_opt_in === true;
+        const { error: consentErr } = await supabase.from("email_marketing_consent").upsert(
+          {
+            user_id: user.id,
+            opted_in: opted,
+            opted_in_at: opted ? new Date().toISOString() : null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        );
+        if (consentErr && consentErr.code !== "42P01") {
+          console.warn("[verify-signup-code] email_marketing_consent:", consentErr.message);
+        }
+      }
+    } catch (e) {
+      console.warn("[verify-signup-code] consent upsert:", e);
+    }
+
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("[verify-signup-code]", e);

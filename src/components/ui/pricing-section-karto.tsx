@@ -12,7 +12,7 @@ import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing"
 import NumberFlow from "@number-flow/react"
 import { CheckCheck, Loader2, Check, X } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import { useId, useRef, useState, useEffect } from "react"
+import { useId, useRef, useState, useEffect, useCallback } from "react"
 
 const PricingSwitch2 = ({
   button1,
@@ -189,6 +189,69 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [videoPolicyOpen, setVideoPolicyOpen] = useState(false)
   const pricingRef = useRef<HTMLDivElement>(null)
+  const [promoCodeInput, setPromoCodeInput] = useState("")
+  const [promoBusy, setPromoBusy] = useState(false)
+  const [promoError, setPromoError] = useState<string | null>(null)
+  const [promoApplied, setPromoApplied] = useState<{
+    finalRub: number
+    originalRub: number
+    discountPercent: number
+  } | null>(null)
+
+  useEffect(() => {
+    setPromoApplied(null)
+    setPromoError(null)
+  }, [mode, tariff, videoTariff, creativeMediaSub])
+
+  const applyPromo = useCallback(async () => {
+    if (!user || !promoCodeInput.trim()) return
+    setPromoBusy(true)
+    setPromoError(null)
+    try {
+      const supabase = createBrowserClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setPromoError("Войдите в аккаунт")
+        setPromoApplied(null)
+        return
+      }
+      const isFl = mode === "0"
+      const paymentKind =
+        isFl ? "flow" : creativeMediaSub === "1" ? "video_tokens" : "creative"
+      const res = await fetch("/api/payment/promo-preview", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          promoCode: promoCodeInput.trim(),
+          paymentKind,
+          mode,
+          tariffIndex: Number.parseInt(tariff, 10) || 0,
+          videoTariff: Number.parseInt(videoTariff, 10) || 0,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!data.success) {
+        setPromoApplied(null)
+        setPromoError(typeof data.error === "string" ? data.error : "Не удалось применить")
+        return
+      }
+      setPromoApplied({
+        finalRub: data.finalRub,
+        originalRub: data.originalRub,
+        discountPercent: data.discountPercent,
+      })
+    } catch {
+      setPromoError("Ошибка сети")
+      setPromoApplied(null)
+    } finally {
+      setPromoBusy(false)
+    }
+  }, [user, mode, creativeMediaSub, tariff, videoTariff, promoCodeInput])
 
   const doSelectTariff = async () => {
     if (!user) return
@@ -213,6 +276,9 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
           mode,
           paymentKind,
           tariffIndex,
+          ...(promoApplied && promoCodeInput.trim()
+            ? { promoCode: promoCodeInput.trim() }
+            : {}),
         }),
       })
       const data = await res.json()
@@ -589,11 +655,60 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                             : CREATIVE_OPTIONS[tariffIndex]}
                       </span>
                     </div>
+                    <div className="rounded-lg border border-dashed border-neutral-200 bg-white/60 px-3 py-2.5 space-y-2">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">
+                        Промокод
+                      </p>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <input
+                          type="text"
+                          value={promoCodeInput}
+                          onChange={(e) => {
+                            setPromoCodeInput(e.target.value.toUpperCase())
+                            setPromoApplied(null)
+                            setPromoError(null)
+                          }}
+                          autoComplete="off"
+                          spellCheck={false}
+                          placeholder="Введите код"
+                          className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium uppercase tracking-wide text-neutral-900 placeholder:text-neutral-400 focus:border-[#1F4E3D]/40 focus:outline-none focus:ring-2 focus:ring-[#1F4E3D]/20"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void applyPromo()}
+                          disabled={promoBusy || !promoCodeInput.trim()}
+                          className="shrink-0 rounded-lg bg-neutral-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-900 disabled:opacity-50"
+                        >
+                          {promoBusy ? "Проверка…" : "Применить"}
+                        </button>
+                      </div>
+                      {promoError ? (
+                        <p className="text-xs font-medium text-red-600">{promoError}</p>
+                      ) : null}
+                      {promoApplied ? (
+                        <p className="text-xs font-semibold text-[#1F4E3D]">
+                          Скидка {promoApplied.discountPercent}% учтена
+                        </p>
+                      ) : null}
+                    </div>
                     <div className="flex justify-between items-baseline pt-1 border-t border-neutral-100">
                       <span className="text-neutral-500">Сумма</span>
-                      <span className="text-2xl font-bold text-[#1F4E3D]">
-                        {currentPrice} ₽
-                      </span>
+                      <div className="text-right">
+                        {promoApplied ? (
+                          <span className="inline-flex flex-wrap items-baseline justify-end gap-x-2 gap-y-0">
+                            <span className="text-sm text-neutral-400 line-through">
+                              {promoApplied.originalRub} ₽
+                            </span>
+                            <span className="text-2xl font-bold text-[#1F4E3D]">
+                              {promoApplied.finalRub} ₽
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="text-2xl font-bold text-[#1F4E3D]">
+                            {currentPrice} ₽
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div>

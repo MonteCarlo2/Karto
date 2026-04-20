@@ -46,6 +46,8 @@ function LoginContent() {
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
   const [isSendingReset, setIsSendingReset] = useState(false);
   const [consentPersonalData, setConsentPersonalData] = useState(false);
+  /** Добровольное согласие на редкие email с предложениями (отдельно от ПДн). */
+  const [consentEmailMarketing, setConsentEmailMarketing] = useState(false);
 
   /** Подтверждение email 4-значным кодом после регистрации */
   const [showVerifyModal, setShowVerifyModal] = useState(false);
@@ -318,6 +320,7 @@ function LoginContent() {
         email: email.trim(),
         password,
         name: name.trim(),
+        emailMarketingOptIn: consentEmailMarketing,
       });
       const regData = await regRes.json().catch(() => ({}));
       if (!regRes.ok) {
@@ -345,6 +348,7 @@ function LoginContent() {
       setName("");
       setConfirmPassword("");
       setConsentPersonalData(false);
+      setConsentEmailMarketing(false);
       setPassword("");
     } catch (err: unknown) {
       const isAbort =
@@ -720,6 +724,7 @@ function LoginContent() {
                 setError(null);
                 setName("");
                 setConfirmPassword("");
+                setConsentEmailMarketing(false);
               }}
               className={`relative z-10 flex-1 py-2 px-3 rounded-md font-bold text-base transition-colors duration-300 ${
                 isLogin
@@ -737,6 +742,7 @@ function LoginContent() {
                 setName("");
                 setConfirmPassword("");
                 setConsentPersonalData(false);
+                setConsentEmailMarketing(false);
               }}
               className={`relative z-10 flex-1 py-2 px-3 rounded-md font-bold text-base transition-colors duration-300 ${
                 !isLogin
@@ -984,6 +990,22 @@ function LoginContent() {
                     соглашением
                   </Link>
                   .
+                </span>
+              </label>
+            )}
+
+            {!isLogin && (
+              <label className="flex items-start gap-3 cursor-pointer group" suppressHydrationWarning>
+                <input
+                  type="checkbox"
+                  checked={consentEmailMarketing}
+                  onChange={(e) => setConsentEmailMarketing(e.target.checked)}
+                  className="mt-1 w-5 h-5 rounded border-gray-300 text-[#1F4E3D] focus:ring-[#1F4E3D] focus:ring-offset-0 cursor-pointer flex-shrink-0"
+                  suppressHydrationWarning
+                />
+                <span className="text-sm text-gray-700 leading-snug" suppressHydrationWarning>
+                  Разрешаю получать на email предложения и новости KARTO (без навязчивой рекламы, не
+                  чаще нескольких писем в месяц). Можно отказаться в любой момент.
                 </span>
               </label>
             )}
