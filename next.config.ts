@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   // (export = статический /out, тогда статика не отдаётся нашим сервером).
   output: "standalone",
 
+  // Меньше размер .next и образа Docker, быстрее пуш в реестр (без карт в браузере).
+  productionBrowserSourceMaps: false,
+
   async rewrites() {
     return [
       // Не делаем редирект с /favicon.ico — Яндекс считает это ошибкой («Файл перенаправляет на другой адрес»). Отдаём реальный favicon.ico из public (создаётся в prebuild).
