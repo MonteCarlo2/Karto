@@ -1,6 +1,5 @@
 "use client"
 
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createBrowserClient } from "@/lib/supabase/client"
 import { RainbowButton } from "@/components/ui/rainbow-button"
@@ -196,12 +195,19 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
     finalRub: number
     originalRub: number
     discountPercent: number
+    discountRub?: number
   } | null>(null)
+  /** Поле ввода промокода показываем только после «Есть промокод». */
+  const [promoFieldsOpen, setPromoFieldsOpen] = useState(false)
 
   useEffect(() => {
     setPromoApplied(null)
     setPromoError(null)
   }, [mode, tariff, videoTariff, creativeMediaSub])
+
+  useEffect(() => {
+    if (!confirmOpen) setPromoFieldsOpen(false)
+  }, [confirmOpen])
 
   const applyPromo = useCallback(async () => {
     if (!user || !promoCodeInput.trim()) return
@@ -244,6 +250,7 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
         finalRub: data.finalRub,
         originalRub: data.originalRub,
         discountPercent: data.discountPercent,
+        ...(typeof data.discountRub === "number" ? { discountRub: data.discountRub } : {}),
       })
     } catch {
       setPromoError("Ошибка сети")
@@ -628,6 +635,21 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                   </p>
                 </div>
                 <div className="px-6 py-5 space-y-5">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-2">
+                      Что вы получаете
+                    </p>
+                    <ul className="space-y-2">
+                      {features.slice(0, 5).map((text, i) => (
+                        <li key={i} className="flex items-start gap-2.5 text-sm text-neutral-700">
+                          <span className="mt-0.5 shrink-0 rounded-full bg-[#84CC16]/20 p-0.5">
+                            <Check className="h-3.5 w-3.5 text-[#1F4E3D]" strokeWidth={2.5} />
+                          </span>
+                          <span>{text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                   <div className="rounded-xl bg-white/80 border border-neutral-200/80 p-4 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-neutral-500">Режим</span>
@@ -655,43 +677,64 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                             : CREATIVE_OPTIONS[tariffIndex]}
                       </span>
                     </div>
-                    <div className="rounded-lg border border-dashed border-neutral-200 bg-white/60 px-3 py-2.5 space-y-2">
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">
-                        Промокод
-                      </p>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <input
-                          type="text"
-                          value={promoCodeInput}
-                          onChange={(e) => {
-                            setPromoCodeInput(e.target.value.toUpperCase())
+                    {!promoFieldsOpen ? (
+                      <button
+                        type="button"
+                        onClick={() => setPromoFieldsOpen(true)}
+                        className="mt-0.5 w-full rounded-lg py-2 text-left text-sm font-semibold text-[#1F4E3D] underline decoration-[#1F4E3D]/35 underline-offset-2 hover:text-[#163d30]"
+                      >
+                        Есть промокод
+                      </button>
+                    ) : (
+                      <div className="mt-2 space-y-2 rounded-lg border border-dashed border-neutral-200 bg-white/60 px-3 py-2.5">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <input
+                            type="text"
+                            value={promoCodeInput}
+                            onChange={(e) => {
+                              setPromoCodeInput(e.target.value.toUpperCase())
+                              setPromoApplied(null)
+                              setPromoError(null)
+                            }}
+                            autoComplete="off"
+                            spellCheck={false}
+                            placeholder="Введите код"
+                            className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium uppercase tracking-wide text-neutral-900 placeholder:text-neutral-400 focus:border-[#1F4E3D]/40 focus:outline-none focus:ring-2 focus:ring-[#1F4E3D]/20"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void applyPromo()}
+                            disabled={promoBusy || !promoCodeInput.trim()}
+                            className="shrink-0 rounded-lg bg-neutral-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-900 disabled:opacity-50"
+                          >
+                            {promoBusy ? "Проверка…" : "Применить"}
+                          </button>
+                        </div>
+                        {promoError ? (
+                          <p className="text-xs font-medium text-red-600">{promoError}</p>
+                        ) : null}
+                        {promoApplied ? (
+                          <p className="text-xs font-semibold text-[#1F4E3D]">
+                            {promoApplied.discountRub != null
+                              ? `Скидка ${promoApplied.discountRub} ₽ учтена`
+                              : `Скидка ${promoApplied.discountPercent}% учтена`}
+                          </p>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPromoFieldsOpen(false)
+                            setPromoCodeInput("")
                             setPromoApplied(null)
                             setPromoError(null)
                           }}
-                          autoComplete="off"
-                          spellCheck={false}
-                          placeholder="Введите код"
-                          className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium uppercase tracking-wide text-neutral-900 placeholder:text-neutral-400 focus:border-[#1F4E3D]/40 focus:outline-none focus:ring-2 focus:ring-[#1F4E3D]/20"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => void applyPromo()}
-                          disabled={promoBusy || !promoCodeInput.trim()}
-                          className="shrink-0 rounded-lg bg-neutral-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-900 disabled:opacity-50"
+                          className="text-xs font-medium text-neutral-500 hover:text-neutral-800"
                         >
-                          {promoBusy ? "Проверка…" : "Применить"}
+                          Скрыть
                         </button>
                       </div>
-                      {promoError ? (
-                        <p className="text-xs font-medium text-red-600">{promoError}</p>
-                      ) : null}
-                      {promoApplied ? (
-                        <p className="text-xs font-semibold text-[#1F4E3D]">
-                          Скидка {promoApplied.discountPercent}% учтена
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="flex justify-between items-baseline pt-1 border-t border-neutral-100">
+                    )}
+                    <div className="flex justify-between items-baseline border-t border-neutral-100 pt-2">
                       <span className="text-neutral-500">Сумма</span>
                       <div className="text-right">
                         {promoApplied ? (
@@ -710,21 +753,6 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                         )}
                       </div>
                     </div>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-2">
-                      Что вы получаете
-                    </p>
-                    <ul className="space-y-2">
-                      {features.slice(0, 5).map((text, i) => (
-                        <li key={i} className="flex items-start gap-2.5 text-sm text-neutral-700">
-                          <span className="mt-0.5 shrink-0 rounded-full bg-[#84CC16]/20 p-0.5">
-                            <Check className="h-3.5 w-3.5 text-[#1F4E3D]" strokeWidth={2.5} />
-                          </span>
-                          <span>{text}</span>
-                        </li>
-                      ))}
-                    </ul>
                   </div>
                 </div>
                 <div className="flex gap-3 px-6 pb-6">

@@ -20,6 +20,7 @@ export function basePriceRub(kind: PromoPaymentKind, tariffIndex: number): numbe
 type CampaignRow = {
   id: string;
   discount_percent: number;
+  discount_rub: number | null;
   payment_kind: PromoPaymentKind;
   tariff_indices: number[] | null;
   restrict_to_recipients: boolean;
@@ -41,7 +42,16 @@ export async function validatePromoForCheckout(
     tariffIndex: number;
   }
 ): Promise<
-  | { ok: true; campaignId: string; discountPercent: number; originalRub: number; finalRub: number }
+  | {
+      ok: true;
+      campaignId: string;
+      /** Доля скидки для отображения и метаданных (при фикс. ₽ — расчётная). */
+      discountPercent: number;
+      originalRub: number;
+      finalRub: number;
+      /** Заданная фиксированная скидка в ₽, если в кампании используется discount_rub. */
+      discountRub?: number;
+    }
   | { ok: false; error: string }
 > {
   const code = params.rawCode.trim().toUpperCase();
@@ -55,14 +65,14 @@ export async function validatePromoForCheckout(
     const res = await supabase
       .from("promo_campaigns")
       .select(
-        "id, discount_percent, payment_kind, tariff_indices, restrict_to_recipients, active, starts_at, ends_at"
+        "id, discount_percent, discount_rub, payment_kind, tariff_indices, restrict_to_recipients, active, starts_at, ends_at"
       )
       .eq("active", true)
       .eq("code", code)
       .limit(1);
     campaigns = res.data as CampaignRow[] | null;
     selErr = res.error;
-  } catch (e) {
+  } catch {
     return { ok: false, error: "Промокоды временно недоступны" };
   }
 
@@ -122,8 +132,24 @@ export async function validatePromoForCheckout(
   }
 
   const originalRub = basePriceRub(params.paymentKind, params.tariffIndex);
-  const discountPercent = Math.min(90, Math.max(1, Math.round(Number(c.discount_percent))));
-  const finalRub = Math.max(1, Math.round((originalRub * (100 - discountPercent)) / 100));
+  const rubRaw = c.discount_rub != null ? Number(c.discount_rub) : NaN;
+  const useFixedRub = Number.isFinite(rubRaw) && rubRaw >= 1;
+
+  let finalRub: number;
+  let discountPercent: number;
+  let discountRub: number | undefined;
+
+  if (useFixedRub) {
+    const applied = Math.min(originalRub - 1, Math.floor(rubRaw));
+    finalRub = Math.max(1, originalRub - applied);
+    discountRub = applied;
+    discountPercent =
+      originalRub > 0 ? Math.round(((originalRub - finalRub) / originalRub) * 100) : 0;
+  } else {
+    const p = Math.min(90, Math.max(1, Math.round(Number(c.discount_percent))));
+    discountPercent = p;
+    finalRub = Math.max(1, Math.round((originalRub * (100 - p)) / 100));
+  }
 
   return {
     ok: true,
@@ -131,5 +157,6 @@ export async function validatePromoForCheckout(
     discountPercent,
     originalRub,
     finalRub,
+    ...(discountRub != null ? { discountRub } : {}),
   };
 }

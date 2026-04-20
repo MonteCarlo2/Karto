@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@/lib/supabase/server";
 import {
+  getAdminStatsSecretExpected,
   isAdminStatsConfigured,
   isAdminStatsEmail,
   isAdminStatsSecretProvided,
@@ -24,6 +25,19 @@ type Body = {
 };
 
 /**
+ * GET: подсказка (в браузере открывается именно GET — без этого был бы 405).
+ */
+export async function GET() {
+  return NextResponse.json(
+    {
+      hint:
+        "Не открывайте этот URL в браузере для рассылки. Нужен POST с JSON (campaignId, sendEmail, sendInApp, emailSubject, emailHtml, notifyTitle, notifyBody, …) и заголовок x-admin-stats-secret или Authorization: Bearer. Локально: скопируйте scripts/promo-potok989-rassylka.example.json, затем выполните scripts/send-promo-broadcast.ps1 из корня репозитория.",
+    },
+    { status: 200 }
+  );
+}
+
+/**
  * POST: рассылка по promo_campaign_recipients — in-app и/или email (только с opted_in).
  * Доступ: x-admin-stats-secret или Bearer + email из ADMIN_STATS_EMAILS.
  */
@@ -38,12 +52,41 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const secretOk = isAdminStatsSecretProvided(request.headers.get("x-admin-stats-secret"));
+  const secretHeaderRaw = request.headers.get("x-admin-stats-secret");
+  const secretFromClient = secretHeaderRaw?.trim() ?? "";
+  const serverSecret = getAdminStatsSecretExpected();
+
+  if (secretFromClient && !serverSecret) {
+    return NextResponse.json(
+      {
+        error:
+          "На сервере не задан ADMIN_STATS_SECRET. Укажите ту же строку, что и локально, в переменных окружения Timeweb (или Docker) и перезапустите приложение.",
+      },
+      { status: 503 }
+    );
+  }
+
+  const secretOk = isAdminStatsSecretProvided(secretHeaderRaw);
   if (!secretOk) {
+    if (secretFromClient && serverSecret) {
+      return NextResponse.json(
+        {
+          error:
+            "Неверный x-admin-stats-secret: значение не совпадает с ADMIN_STATS_SECRET на сервере. Проверьте пробелы/кавычки в панели Timeweb и что после изменения env был redeploy/restart.",
+        },
+        { status: 401 }
+      );
+    }
     const authHeader = request.headers.get("authorization");
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
     if (!token) {
-      return NextResponse.json({ error: "Нужна авторизация или секрет" }, { status: 401 });
+      return NextResponse.json(
+        {
+          error:
+            "Нужен заголовок x-admin-stats-secret (как в scripts/send-promo-broadcast.ps1) или Authorization: Bearer с сессией админа (email из ADMIN_STATS_EMAIL).",
+        },
+        { status: 401 }
+      );
     }
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -99,14 +142,16 @@ export async function POST(request: NextRequest) {
 
   let inAppCount: number | null = null;
   if (sendInApp) {
-    const title = typeof body.notifyTitle === "string" ? body.notifyTitle.trim() : "";
-    const html = typeof body.notifyBody === "string" ? body.notifyBody.trim() : "";
+    let title = typeof body.notifyTitle === "string" ? body.notifyTitle.trim() : "";
+    let html = typeof body.notifyBody === "string" ? body.notifyBody.trim() : "";
     if (!title || !html) {
       return NextResponse.json(
         { error: "Для in-app укажите notifyTitle и notifyBody (HTML)" },
         { status: 400 }
       );
     }
+    title = title.split("{{PROMO_CODE}}").join(promoCode);
+    html = html.split("{{PROMO_CODE}}").join(promoCode);
     const linkUrl =
       typeof body.notifyLinkUrl === "string" && body.notifyLinkUrl.startsWith("http")
         ? body.notifyLinkUrl.trim().slice(0, 2000)

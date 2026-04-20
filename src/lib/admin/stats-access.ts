@@ -22,15 +22,19 @@ export function isAdminStatsEmail(email: string | null | undefined): boolean {
   return list.includes(email.trim().toLowerCase());
 }
 
+/** Секрет из env (без пробелов по краям). Пусто — на сервере не задан. */
+export function getAdminStatsSecretExpected(): string | null {
+  const s = process.env.ADMIN_STATS_SECRET?.trim();
+  return s ? s : null;
+}
+
 export function isAdminStatsSecretProvided(secretHeader: string | null): boolean {
-  const expected = process.env.ADMIN_STATS_SECRET?.trim();
-  if (!expected || !secretHeader) return false;
-  return secretHeader === expected;
+  const expected = getAdminStatsSecretExpected();
+  if (!expected) return false;
+  const received = secretHeader?.trim() ?? "";
+  return received.length > 0 && received === expected;
 }
 
 export function isAdminStatsConfigured(): boolean {
-  return (
-    getAdminStatsEmailAllowlist().length > 0 ||
-    Boolean(process.env.ADMIN_STATS_SECRET?.trim())
-  );
+  return getAdminStatsEmailAllowlist().length > 0 || Boolean(getAdminStatsSecretExpected());
 }

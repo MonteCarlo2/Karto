@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
     const rawPromo = typeof body?.promoCode === "string" ? body.promoCode.trim() : "";
     let promoCampaignId: string | null = null;
     let promoDiscountPercent = 0;
+    let promoDiscountRub: number | undefined;
     let promoOriginalRub = amountRub;
 
     if (rawPromo) {
@@ -141,6 +142,7 @@ export async function POST(request: NextRequest) {
       amountRub = promoCheck.finalRub;
       promoCampaignId = promoCheck.campaignId;
       promoDiscountPercent = promoCheck.discountPercent;
+      if (promoCheck.discountRub != null) promoDiscountRub = promoCheck.discountRub;
     }
 
     const baseUrl =
@@ -174,6 +176,9 @@ export async function POST(request: NextRequest) {
               promo_campaign_id: promoCampaignId,
               promo_original_rub: String(promoOriginalRub),
               promo_discount_percent: String(promoDiscountPercent),
+              ...(promoDiscountRub != null
+                ? { promo_discount_rub: String(promoDiscountRub) }
+                : {}),
             }
           : {}),
       },

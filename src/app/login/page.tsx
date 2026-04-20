@@ -1004,8 +1004,8 @@ function LoginContent() {
                   suppressHydrationWarning
                 />
                 <span className="text-sm text-gray-700 leading-snug" suppressHydrationWarning>
-                  Разрешаю получать на email предложения и новости KARTO (без навязчивой рекламы, не
-                  чаще нескольких писем в месяц). Можно отказаться в любой момент.
+                  Разрешаю получать на e-mail предложения и новости KARTO (не чаще нескольких писем в
+                  месяц).
                 </span>
               </label>
             )}

@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
       originalRub: res.originalRub,
       finalRub: res.finalRub,
       discountPercent: res.discountPercent,
+      ...(res.discountRub != null ? { discountRub: res.discountRub } : {}),
     });
   } catch (err: unknown) {
     if (isSupabaseNetworkError(err)) {
