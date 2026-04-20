@@ -65,6 +65,50 @@
   50% { background-position: 100% 50%; }
 }
 
+/* Кнопка голосования в шапке: очень слабый переливающийся блик (туда–обратно) */
+@keyframes vote-nav-glint {
+  0% {
+    transform: translateX(-125%);
+  }
+  100% {
+    transform: translateX(125%);
+  }
+}
+
+.vote-nav-shimmer-btn {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.vote-nav-shimmer-btn::after {
+  content: "";
+  position: absolute;
+  top: -40%;
+  bottom: -40%;
+  left: 0;
+  width: 38%;
+  border-radius: inherit;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 38%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.04) 62%,
+    transparent 100%
+  );
+  animation: vote-nav-glint 5.8s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vote-nav-shimmer-btn::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 /* Пульс курсора и улучшенный placeholder */
 textarea::placeholder {
   color: rgba(102, 102, 102, 0.7) !important;

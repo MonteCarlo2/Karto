@@ -7,6 +7,7 @@ import { Logo } from "@/components/ui/logo"
 import { Button } from "@/components/ui/button"
 import { Menu, X, User, LogOut } from "lucide-react"
 import { UserNotificationBell } from "@/components/layout/user-notification-bell"
+import { CommunityVoteModal, CommunityVoteNavButton } from "@/components/layout/community-vote-modal"
 import { motion, AnimatePresence } from "framer-motion"
 import { createBrowserClient } from "@/lib/supabase/client"
 
@@ -17,6 +18,7 @@ export function Navbar() {
   const [showStudioMenu, setShowStudioMenu] = React.useState(false)
   const [mounted, setMounted] = React.useState(false)
   const [subscriptionLabels, setSubscriptionLabels] = React.useState<string[]>([])
+  const [communityVoteOpen, setCommunityVoteOpen] = React.useState(false)
   const pathname = usePathname()
   const router = useRouter()
   const isHome = pathname === "/"
@@ -193,7 +195,8 @@ export function Navbar() {
           </nav>
 
           {/* CTA Buttons */}
-          <div className="hidden md:flex items-center gap-4" suppressHydrationWarning>
+          <div className="hidden md:flex items-center gap-3" suppressHydrationWarning>
+            <CommunityVoteNavButton onClick={() => setCommunityVoteOpen(true)} />
             <div className="relative studio-menu-container" suppressHydrationWarning>
               <Button 
                 variant="ghost" 
@@ -312,8 +315,9 @@ export function Navbar() {
             )}
           </div>
 
-          {/* Mobile: колокольчик как раньше — слева от кнопки меню */}
-          <div className="flex items-center gap-1 md:hidden">
+          {/* Mobile: голосование + колокольчик — слева от кнопки меню */}
+          <div className="flex items-center gap-1.5 md:hidden">
+            <CommunityVoteNavButton compact onClick={() => setCommunityVoteOpen(true)} />
             {mounted && user ? <UserNotificationBell /> : null}
             <button
               className="p-2"
@@ -349,6 +353,16 @@ export function Navbar() {
                   {link.name}
                 </Link>
               ))}
+              <button
+                type="button"
+                className="text-left text-base font-semibold text-[#1F4E3D] py-2 px-4 rounded-lg hover:bg-[#1F4E3D]/10"
+                onClick={() => {
+                  setCommunityVoteOpen(true)
+                  setIsOpen(false)
+                }}
+              >
+                Что внедрим следующим?
+              </button>
               <div className="w-full mt-2">
                 <Button 
                   variant="ghost" 
@@ -427,6 +441,8 @@ export function Navbar() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <CommunityVoteModal open={communityVoteOpen} onOpenChange={setCommunityVoteOpen} />
     </header>
   )
 }
