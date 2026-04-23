@@ -113,6 +113,7 @@ export async function POST(request: NextRequest) {
         blogger_source: bloggerCode ? bloggerSource : null,
         payment_kind: paymentKind,
         amount_rub: Number.isFinite(amountRub) ? amountRub : null,
+        tariff_index: tariffIndex,
       },
       { onConflict: "payment_id" }
     );
