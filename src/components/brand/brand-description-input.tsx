@@ -297,12 +297,12 @@ export function BrandDescriptionInput({ value, onChange, isActive }: Props) {
 
         const mime = blob.type || "audio/webm";
         const ext = mime.includes("webm") ? "webm" : mime.includes("mp4") ? "m4a" : "webm";
-        const typed =
-          blob instanceof File && blob.type
-            ? blob
-            : new File([blob], `karto-voice.${ext}`, {
-                type: mime,
-              });
+        /** Всегда ASCII-имя файла: иначе multipart/заголовки на сервере дают TypeError ByteString при кириллице в name. */
+        const effectiveType =
+          blob instanceof File && blob.type && blob.type.trim() !== ""
+            ? blob.type
+            : mime;
+        const typed = new File([blob], `karto-voice.${ext}`, { type: effectiveType });
 
         let res: Response | null = null;
         let data: { text?: string; error?: string; saluteNotConfigured?: boolean } = {};
