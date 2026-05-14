@@ -2117,7 +2117,7 @@ export default function FreeGeneration() {
       suppressHydrationWarning
     >
       {/* Левая панель */}
-      <div className="fixed left-0 top-0 bottom-0 w-72 bg-[#f5f3ef] z-40 flex flex-col border-r border-gray-200">
+      <div className="fixed left-0 top-0 bottom-0 w-72 bg-[#f5f3ef] z-[100] flex flex-col border-r border-gray-200">
         {/* Логотип вверху */}
         <Link
           href="/"
@@ -2302,7 +2302,7 @@ export default function FreeGeneration() {
       </div>
 
       {user ? (
-        <div className="fixed top-6 right-6 z-50 profile-menu-container relative flex flex-col items-center gap-3">
+        <div className="fixed top-6 right-6 z-50 profile-menu-container relative flex max-w-[min(22rem,calc(100vw-19rem))] flex-col items-end gap-3">
           <ProfileAvatarNewTag show={Boolean(profileUpdateBadge)}>
             <button
               type="button"

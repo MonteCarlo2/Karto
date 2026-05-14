@@ -226,6 +226,8 @@ export async function POST(request: NextRequest) {
             aspectRatio,
             variation: index,
             designConcept: concept,
+            /** Поток визуала: только батч → модель nano-banana-2 в generate-card (см. route). */
+            flowBatch: true,
           }),
           signal: controller.signal,
         });

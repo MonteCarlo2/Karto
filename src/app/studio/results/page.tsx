@@ -70,7 +70,23 @@ export default function ResultsPage() {
         });
         const descriptionData = await descriptionResponse.json();
         if (descriptionData.success && descriptionData.data) {
-          setDescription(descriptionData.data.final_description || "");
+          const row = descriptionData.data as {
+            final_description?: string | null;
+            generated_descriptions?: unknown;
+          };
+          let text = (row.final_description || "").trim();
+          if (!text && Array.isArray(row.generated_descriptions) && row.generated_descriptions.length > 0) {
+            for (const item of row.generated_descriptions) {
+              if (item && typeof item === "object" && "description" in item) {
+                const d = String((item as { description?: string }).description || "").trim();
+                if (d) {
+                  text = d;
+                  break;
+                }
+              }
+            }
+          }
+          setDescription(text);
         }
 
         // 3. Загружаем результаты (визуал + цена) из Supabase
