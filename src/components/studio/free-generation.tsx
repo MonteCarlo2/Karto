@@ -2302,7 +2302,15 @@ export default function FreeGeneration() {
       </div>
 
       {user ? (
-        <div className="fixed top-6 right-6 z-50 profile-menu-container relative flex max-w-[min(22rem,calc(100vw-19rem))] flex-col items-end gap-3">
+        <div
+          className="profile-menu-container relative fixed z-50 flex w-max shrink-0 flex-col items-center gap-3"
+          style={{
+            top: "1.5rem",
+            right: "1.5rem",
+            left: "auto",
+            maxWidth: "min(22rem, calc(100vw - 19rem))",
+          }}
+        >
           <ProfileAvatarNewTag show={Boolean(profileUpdateBadge)}>
             <button
               type="button"
@@ -2468,7 +2476,8 @@ export default function FreeGeneration() {
       ) : (
         <Link
           href="/login"
-          className="fixed top-6 right-6 z-50 flex items-center justify-center w-10 h-10 rounded-full border-2 border-[#2E5A43] hover:bg-gray-100 transition-colors"
+          className="fixed z-50 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-[#2E5A43] transition-colors hover:bg-gray-100"
+          style={{ top: "1.5rem", right: "1.5rem", left: "auto" }}
           aria-label="Войти"
         >
           <User className="w-5 h-5 text-foreground" />
