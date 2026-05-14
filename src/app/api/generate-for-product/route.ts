@@ -7,6 +7,7 @@ import { getPublicUrl, saveBase64Image } from "@/lib/services/image-processing";
 
 /**
  * Генерация изображения для режима "Для товара" в свободной генерации.
+ * Модель KIE: env `KIE_IMAGE_MODEL` (см. lib/services/kie-ai.ts).
  * Требуется подписка «Свободное творчество» и лимит генераций.
  */
 export async function POST(request: NextRequest) {

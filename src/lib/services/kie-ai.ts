@@ -35,6 +35,32 @@ const UPLOAD_BACKOFF_MS = [1500, 3000, 5000];
 const KIE_REF_BUCKET = "generated-images";
 const KIE_REF_PREFIX = "kie-refs";
 
+/** Идентификаторы моделей KIE createTask (документация KIE). */
+export const KIE_MODEL_GPT_IMAGE_2 = "gpt-image-2-text-to-image";
+export const KIE_MODEL_NANO_BANANA_2 = "nano-banana-2";
+
+/**
+ * Единая модель изображений для всей платформы (свободное творчество, поток, товар, карточки, логотип, правки).
+ * В .env: `KIE_IMAGE_MODEL=gpt-image-2-text-to-image` (по умолчанию в коде то же).
+ * Откат на nano-banana-2 без правки кода: `KIE_IMAGE_MODEL=nano-banana-2`
+ */
+export function getDefaultKieImageModel(): string {
+  return process.env.KIE_IMAGE_MODEL ?? KIE_MODEL_GPT_IMAGE_2;
+}
+
+/** У gpt-image-2-text-to-image для 1:1 в KIE максимум 2K, не 4K. */
+export function effectiveKieResolutionForModel(
+  modelId: string,
+  aspectRatio: string,
+  resolution: string
+): string {
+  if (modelId === KIE_MODEL_GPT_IMAGE_2 && aspectRatio === "1:1") {
+    const up = resolution.trim().toUpperCase();
+    if (up === "4K") return "2K";
+  }
+  return resolution;
+}
+
 /**
  * Получение API ключа KIE AI
  */
@@ -55,11 +81,15 @@ async function createTask(params: {
   outputFormat?: string;
   resolution?: string;
   imageInput?: string[];
+  /** Если не задан — см. getDefaultKieImageModel() / env KIE_IMAGE_MODEL */
+  model?: string;
 }): Promise<{ taskId: string; referenceCount: number }> {
   const apiKey = getKieAiApiKey();
+
+  const modelId = params.model ?? getDefaultKieImageModel();
   
   const requestBody: any = {
-    model: "nano-banana-2",
+    model: modelId,
     input: {
       prompt: params.prompt,
     },
@@ -91,6 +121,7 @@ async function createTask(params: {
   }
 
   console.log("🚀 [KIE AI] Создаём задачу генерации...");
+  console.log("🤖 Модель:", modelId);
   console.log("📝 Промпт:", params.prompt.substring(0, 150) + "...");
   console.log("🔧 Параметры:", {
     aspect_ratio: params.aspectRatio,
@@ -200,21 +231,41 @@ async function getTaskResult(taskId: string, maxWaitTime: number = 300000): Prom
 
 export type GenerateWithKieAiResult = { imageUrl: string; referenceUsed: boolean };
 
+export type GenerateWithKieAiOptions = {
+  /** Переопределить модель для одиночного вызова; иначе используется KIE_IMAGE_MODEL / getDefaultKieImageModel. */
+  model?: string;
+};
+
 /**
- * Генерация изображения через KIE AI (nano-banana-2), resolution 4K (свободное творчество, поток, товар, правки).
+ * Генерация изображения через KIE AI. Модель по умолчанию — `KIE_IMAGE_MODEL` (см. getDefaultKieImageModel).
+ * По умолчанию resolution 4K; для gpt-image-2 при 1:1 принудительно не выше 2K.
  */
 export async function generateWithKieAi(
   prompt: string,
   imageInput?: string | string[], // URL или data URL; в createTask в image_input уходят только URL
   aspectRatio: string = "3:4",
-  outputFormat: string = "png"
+  outputFormat: string = "png",
+  resolution: string = "4K",
+  options?: GenerateWithKieAiOptions
 ): Promise<GenerateWithKieAiResult> {
+  const modelId = options?.model ?? getDefaultKieImageModel();
+  const resolutionEffective = effectiveKieResolutionForModel(modelId, aspectRatio, resolution);
+
   console.log("🍌 [KIE AI] Начинаем генерацию через KIE AI...");
   console.log("📝 Промпт:", prompt.substring(0, 150) + "...");
   
   if (imageInput) {
     const count = Array.isArray(imageInput) ? imageInput.length : 1;
     console.log(`🖼️ Референсное изображение: добавлено (${count} шт.)`);
+  }
+
+  if (options?.model) {
+    console.log("🤖 Модель (override):", options.model);
+  } else {
+    console.log("🤖 Модель:", modelId);
+  }
+  if (resolutionEffective !== resolution) {
+    console.log("📐 Разрешение скорректировано для модели:", resolution, "→", resolutionEffective);
   }
 
   const maxWaitTimeMs = parseInt(process.env.KIE_TASK_MAX_WAIT_MS ?? "300000", 10);
@@ -235,8 +286,9 @@ export async function generateWithKieAi(
         prompt: prompt.trim(),
         aspectRatio,
         outputFormat,
-        resolution: "4K",
+        resolution: resolutionEffective,
         imageInput: imageArray,
+        model: modelId,
       });
 
       const imageUrl = await getTaskResult(taskId, maxWaitTimeMs);

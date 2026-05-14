@@ -37,6 +37,15 @@ import {
   Lock,
   Wrench
 } from "lucide-react";
+import { IosToggleRow } from "@/components/ui/ios-toggle-row";
+import {
+  FREE_BRAND_CONTEXT_ROWS,
+  FREE_BRAND_TOGGLE_DEFAULTS,
+  type FreeCreativityBrandToggleKey,
+  buildFreeCreativityBrandPromptPrefix,
+  mergeFreeCreativityPrompt,
+} from "@/lib/brand/free-creativity-brand-prompt";
+import { fetchUserBrandOnboarding } from "@/lib/brand/user-brand-onboarding-db";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
@@ -56,6 +65,56 @@ function normalizeVisualCardSlots(raw: unknown): (string | null)[] {
 
 function countFilledCardSlots(slots: (string | null)[]): number {
   return slots.filter((x): x is string => typeof x === "string" && x.length > 0).length;
+}
+
+/** Те же ключи, что в «Свободное творчество» — настройки учёта бренда синхронизируются. */
+const LS_FREE_BRAND_MASTER = "karto_free_brand_apply";
+const LS_FREE_BRAND_TOGGLES = "karto_free_brand_toggles_v1";
+
+function readFlowBrandMasterLs(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(LS_FREE_BRAND_MASTER) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Сжатие референса на клиенте (max 1200px, JPEG) для надёжной доставки в KIE, как в «Свободное творчество». */
+function compressReferenceFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = document.createElement("img");
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const maxW = 1200;
+      let w = img.width;
+      let h = img.height;
+      if (w > maxW) {
+        h = Math.round((h * maxW) / w);
+        w = maxW;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Canvas not available"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      try {
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Failed to load image"));
+    };
+    img.src = url;
+  });
 }
 
 // Стили карточек (wireframe макеты)
@@ -641,43 +700,82 @@ export default function VisualPage() {
   const [isFormatExpanded, setIsFormatExpanded] = useState(false);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [customPrompt, setCustomPrompt] = useState("");
-  
-  // Сжатие референса на клиенте (max 1200px, JPEG) для надёжной доставки в KIE, как в «Свободное творчество»
-  const compressReferenceFile = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const img = document.createElement("img");
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const maxW = 1200;
-        let w = img.width;
-        let h = img.height;
-        if (w > maxW) {
-          h = Math.round((h * maxW) / w);
-          w = maxW;
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          reject(new Error("Canvas not available"));
-          return;
-        }
-        ctx.drawImage(img, 0, 0, w, h);
-        try {
-          resolve(canvas.toDataURL("image/jpeg", 0.85));
-        } catch (e) {
-          reject(e);
-        }
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error("Failed to load image"));
-      };
-      img.src = url;
-    });
-  };
+
+  const [flowBrandMaster, setFlowBrandMaster] = useState(readFlowBrandMasterLs);
+  const [flowBrandPanelOpen, setFlowBrandPanelOpen] = useState(readFlowBrandMasterLs);
+  const [flowBrandToggles, setFlowBrandToggles] = useState<
+    Record<FreeCreativityBrandToggleKey, boolean>
+  >(() => ({ ...FREE_BRAND_TOGGLE_DEFAULTS }));
+  const [flowBrandDraftJson, setFlowBrandDraftJson] = useState<Record<string, unknown> | null>(null);
+  const [flowBrandWizardDone, setFlowBrandWizardDone] = useState(false);
+  const flowBrandMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_FREE_BRAND_TOGGLES);
+      if (raw) {
+        const p = JSON.parse(raw) as Partial<Record<FreeCreativityBrandToggleKey, boolean>>;
+        setFlowBrandToggles({ ...FREE_BRAND_TOGGLE_DEFAULTS, ...p });
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_FREE_BRAND_MASTER, flowBrandMaster ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [flowBrandMaster]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_FREE_BRAND_TOGGLES, JSON.stringify(flowBrandToggles));
+    } catch {
+      /* ignore */
+    }
+  }, [flowBrandToggles]);
+
+  useEffect(() => {
+    if (!flowBrandPanelOpen) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      const root = flowBrandMenuRef.current;
+      if (root && !root.contains(e.target as Node)) setFlowBrandPanelOpen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [flowBrandPanelOpen]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setFlowBrandDraftJson(null);
+      setFlowBrandWizardDone(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const supabase = createBrowserClient();
+      const row = await fetchUserBrandOnboarding(supabase, user.id);
+      if (cancelled) return;
+      if (!row) {
+        setFlowBrandDraftJson(null);
+        setFlowBrandWizardDone(false);
+        return;
+      }
+      const dj = row.draft_json;
+      const obj =
+        dj && typeof dj === "object" && !Array.isArray(dj)
+          ? (dj as Record<string, unknown>)
+          : null;
+      setFlowBrandDraftJson(obj);
+      setFlowBrandWizardDone(Boolean(row.wizard_completed_at));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   // Получение пользователя для баг-репортов
   useEffect(() => {
@@ -874,6 +972,24 @@ export default function VisualPage() {
     }
   }, [generatedCards, filledCardCount, selectedCardIndex, isSeriesMode, sessionId, visualQuota.used, visualQuota.limit]);
 
+  const flowBrandHasReadyProfile = Boolean(
+    user?.id &&
+      flowBrandWizardDone &&
+      flowBrandDraftJson &&
+      typeof flowBrandDraftJson === "object"
+  );
+
+  const augmentVisualPrompt = (raw: string) => {
+    const t = raw.trim();
+    if (!flowBrandHasReadyProfile || !flowBrandDraftJson) return t;
+    const prefix = buildFreeCreativityBrandPromptPrefix(
+      flowBrandDraftJson,
+      flowBrandToggles,
+      flowBrandMaster
+    );
+    return mergeFreeCreativityPrompt(raw, prefix);
+  };
+
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const pollForGeneratedCards = async (
@@ -971,7 +1087,7 @@ export default function VisualPage() {
       const requestData = {
         productName: productName,
         photoUrl: photoUrl,
-        customPrompt: customPrompt || "",
+        customPrompt: augmentVisualPrompt(customPrompt || ""),
         addText: addText,
         title: addText ? (title || productName) : "",
         bullets: addText ? bullets.filter((b: string) => b && b.trim()) : [],
@@ -1516,6 +1632,102 @@ export default function VisualPage() {
                 )}
               </AnimatePresence>
             </div>
+
+            {flowBrandHasReadyProfile && (
+              <div ref={flowBrandMenuRef} className="mb-6">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-gray-500 mb-1">
+                      Учитывать данные бренда из профиля
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!flowBrandMaster) {
+                          setFlowBrandMaster(true);
+                          setFlowBrandPanelOpen(true);
+                        } else {
+                          setFlowBrandPanelOpen((o) => !o);
+                        }
+                      }}
+                      title="Открыть список полей бренда (когда включено)"
+                      className="flex max-w-full items-center gap-2 text-left"
+                    >
+                      <span className="text-sm font-black text-black">Применить бренд</span>
+                      <motion.span
+                        transition={{ type: "spring", stiffness: 440, damping: 30 }}
+                        animate={{ rotate: flowBrandPanelOpen ? 180 : 0 }}
+                        className="inline-flex shrink-0"
+                      >
+                        <ChevronDown className="h-4 w-4 text-gray-600" />
+                      </motion.span>
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={flowBrandMaster}
+                    aria-label={
+                      flowBrandMaster
+                        ? "Выключить учёт бренда в промпте"
+                        : "Включить учёт бренда в промпте"
+                    }
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${
+                      flowBrandMaster ? "bg-[#4ADE80]" : "bg-gray-300"
+                    }`}
+                    onClick={() => {
+                      setFlowBrandMaster((m) => {
+                        const next = !m;
+                        if (!next) setFlowBrandPanelOpen(false);
+                        else setFlowBrandPanelOpen(true);
+                        return next;
+                      });
+                    }}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                        flowBrandMaster ? "translate-x-5" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <AnimatePresence>
+                  {flowBrandMaster && flowBrandPanelOpen ? (
+                    <motion.div
+                      key="flow-brand-context-panel"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-2.5 w-full rounded-[1.25rem] border border-[#070907]/12 bg-[#FDFCF9]/98 p-3.5 shadow-[0_12px_40px_-28px_rgba(7,9,7,0.45)] backdrop-blur-lg ring-1 ring-white/60">
+                        <p className="border-b border-[#070907]/8 pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 md:text-[11px]">
+                          УЧИТЫВАТЬ
+                        </p>
+                        <div className="mt-2.5 grid max-h-[min(52vh,300px)] grid-cols-2 gap-x-5 gap-y-1 overflow-y-auto overscroll-contain pr-0.5 [-webkit-overflow-scrolling:touch]">
+                          {FREE_BRAND_CONTEXT_ROWS.map((item) => (
+                            <IosToggleRow
+                              key={item.key}
+                              label={item.label}
+                              checked={flowBrandToggles[item.key]}
+                              onChange={(next) =>
+                                setFlowBrandToggles((prev) => ({ ...prev, [item.key]: next }))
+                              }
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </div>
+            )}
+            {user?.id && !flowBrandHasReadyProfile && (
+              <p className="mb-6 text-[10px] leading-snug text-neutral-400 md:text-[11px]">
+                Завершите настройку бренда в профиле — тогда здесь можно будет подставлять название, нишу, описание и стиль в промпт.
+              </p>
+            )}
           
             {/* Формат (нераскрытый) */}
             <div>

@@ -1,6 +1,20 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Нативный ffmpeg-installer тянет platform-пакеты через относительные пути —
+  // Turbopack/Webpack не должны их бандлить (иначе «Can't resolve … package.json»).
+  serverExternalPackages: [
+    "@ffmpeg-installer/ffmpeg",
+    "@ffmpeg-installer/win32-x64",
+    "@ffmpeg-installer/win32-ia32",
+    "@ffmpeg-installer/linux-x64",
+    "@ffmpeg-installer/linux-arm64",
+    "@ffmpeg-installer/linux-arm",
+    "@ffmpeg-installer/linux-ia32",
+    "@ffmpeg-installer/darwin-x64",
+    "@ffmpeg-installer/darwin-arm64",
+  ],
+
   // Для Timeweb (Node.js) — только standalone. НЕ использовать output: 'export'
   // (export = статический /out, тогда статика не отдаётся нашим сервером).
   output: "standalone",

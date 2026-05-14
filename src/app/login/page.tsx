@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -30,6 +30,13 @@ async function fetchAuthApi(url: string, body: object): Promise<Response> {
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const redirectAfterAuth = useMemo(() => {
+    const raw = searchParams.get("redirect");
+    if (raw == null || typeof raw !== "string") return "/";
+    const p = raw.trim();
+    if (!p.startsWith("/") || p.startsWith("//")) return "/";
+    return p;
+  }, [searchParams]);
   const { showNotification, NotificationComponent } = useNotification();
   const [vantaEffect, setVantaEffect] = useState<any>(null);
   const vantaRef = useRef<HTMLDivElement>(null);
@@ -230,7 +237,7 @@ function LoginContent() {
       const supabase = createBrowserClient();
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
-          router.push("/");
+          router.push(redirectAfterAuth);
         }
       }).catch((error) => {
         console.warn("Ошибка проверки сессии:", error);
@@ -238,7 +245,7 @@ function LoginContent() {
     } catch (error) {
       console.warn("Supabase не настроен:", error);
     }
-  }, [router]);
+  }, [router, redirectAfterAuth]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -288,7 +295,7 @@ function LoginContent() {
         }
 
         if (data.user) {
-          router.push("/");
+          router.push(redirectAfterAuth);
         }
         return;
       }
@@ -407,7 +414,7 @@ function LoginContent() {
       setPendingPassword("");
       setVerifyCode("");
       showNotification("Добро пожаловать в KARTO!", "success");
-      router.push("/");
+      router.push(redirectAfterAuth);
     } catch (err: unknown) {
       const isAbort =
         (err instanceof DOMException && err.name === "AbortError") ||

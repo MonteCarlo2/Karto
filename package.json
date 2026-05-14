@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:webpack": "next dev --webpack",
     "prebuild": "node scripts/generate-favicon-ico.js",
     "build": "next build && node scripts/copy-standalone.js",
     "start": "node -e \"const path=require('path'); process.env.NEXT_CACHE_DIR = process.env.NEXT_CACHE_DIR ?? (process.platform === 'win32' ? path.join(process.cwd(), '.next-cache') : '/tmp'); require('./.next/standalone/server.js');\"",
@@ -11,6 +12,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@google/generative-ai": "^0.24.1",
     "@number-flow/react": "^0.5.11",
     "@radix-ui/react-slot": "^1.2.4",

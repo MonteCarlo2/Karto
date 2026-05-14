@@ -8,8 +8,27 @@ import { Button } from "@/components/ui/button"
 import { Menu, X, User, LogOut } from "lucide-react"
 import { UserNotificationBell } from "@/components/layout/user-notification-bell"
 import { CommunityVoteModal, CommunityVoteNavButton } from "@/components/layout/community-vote-modal"
+import {
+  NAV_DROPDOWN_PANEL,
+  NAV_MENU_DIVIDER,
+  NAV_MENU_ICON_WRAP,
+  NAV_MENU_ICON_WRAP_LOGOUT,
+  NAV_LOGOUT_LABEL,
+  NAV_MENU_ROW_LOGOUT,
+  NAV_MENU_ROW_PROFILE,
+  NAV_MENU_ROW_STUDIO,
+  NAV_MENU_SUBTITLE,
+  NAV_MENU_TITLE,
+  NAV_PROFILE_LABEL,
+} from "@/components/layout/nav-dropdown-classes"
 import { motion, AnimatePresence } from "framer-motion"
 import { createBrowserClient } from "@/lib/supabase/client"
+import { useProfileUpdateBadge } from "@/hooks/use-profile-update-badge"
+import { cn } from "@/lib/utils"
+import {
+  ProfileAvatarNewTag,
+  ProfileMenuUpdateCue,
+} from "@/components/layout/profile-update-cue"
 
 export function Navbar() {
   const [isOpen, setIsOpen] = React.useState(false)
@@ -23,6 +42,7 @@ export function Navbar() {
   const router = useRouter()
   const isHome = pathname === "/"
   const isFreeGeneration = pathname === "/studio/free"
+  const { showBadge: profileUpdateBadge, dismissProfileUpdateBadge } = useProfileUpdateBadge()
 
   // Предотвращаем гидратацию до монтирования на клиенте
   React.useEffect(() => {
@@ -213,33 +233,37 @@ export function Navbar() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ duration: 0.15, ease: "easeOut" }}
-                    className="absolute right-0 top-full mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1.5 z-50"
+                    className={`absolute right-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),296px)] ${NAV_DROPDOWN_PANEL}`}
                   >
                     <Link
                       href="/studio?intro=true"
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#1F4E3D] transition-colors"
+                      className={NAV_MENU_ROW_STUDIO}
                       onClick={() => setShowStudioMenu(false)}
                     >
-                      <svg className="w-4 h-4 text-[#1F4E3D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      <div className="flex-1">
-                        <div className="font-medium">Поток</div>
-                        <div className="text-xs text-gray-500 mt-0.5">От идеи до готовой карточки</div>
+                      <span className={NAV_MENU_ICON_WRAP} aria-hidden>
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className={NAV_MENU_TITLE}>Поток</div>
+                        <div className={NAV_MENU_SUBTITLE}>От идеи до готовой карточки</div>
                       </div>
                     </Link>
-                    <div className="h-px bg-gray-100 mx-2 my-1" />
+                    <div className={NAV_MENU_DIVIDER} />
                     <Link
                       href="/studio/free"
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#1F4E3D] transition-colors"
+                      className={NAV_MENU_ROW_STUDIO}
                       onClick={() => setShowStudioMenu(false)}
                     >
-                      <svg className="w-4 h-4 text-[#1F4E3D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <div className="flex-1">
-                        <div className="font-medium">Свободное творчество</div>
-                        <div className="text-xs text-gray-500 mt-0.5">Карточки без полного потока</div>
+                      <span className={NAV_MENU_ICON_WRAP} aria-hidden>
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className={NAV_MENU_TITLE}>Свободное творчество</div>
+                        <div className={NAV_MENU_SUBTITLE}>Карточки без полного потока</div>
                       </div>
                     </Link>
                   </motion.div>
@@ -251,13 +275,17 @@ export function Navbar() {
                 <UserNotificationBell />
                 <div className="flex items-center gap-2">
                   <div className="relative profile-menu-container">
-                    <button
-                      onClick={() => setShowProfileMenu(!showProfileMenu)}
-                      className="flex items-center justify-center w-10 h-10 rounded-full border-2 border-[#2E5A43] hover:bg-[#2E5A43] hover:text-white transition-colors"
-                      aria-label="Профиль"
-                    >
-                      <User className="w-5 h-5 text-foreground" />
-                    </button>
+                    <ProfileAvatarNewTag show={Boolean(mounted && user && profileUpdateBadge)}>
+                      <button
+                        type="button"
+                        onClick={() => setShowProfileMenu(!showProfileMenu)}
+                        className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#2E5A43] transition-colors hover:bg-[#2E5A43] hover:text-white"
+                        aria-label="Меню личного кабинета"
+                        title={profileUpdateBadge ? "Новое в личном кабинете" : undefined}
+                      >
+                        <User className="h-5 w-5 text-foreground" />
+                      </button>
+                    </ProfileAvatarNewTag>
                     <AnimatePresence>
                       {showProfileMenu && (
                         <motion.div
@@ -265,22 +293,32 @@ export function Navbar() {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -10, scale: 0.95 }}
                           transition={{ duration: 0.2, ease: "easeOut" }}
-                          className="absolute left-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50"
+                          className={`absolute left-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),238px)] ${NAV_DROPDOWN_PANEL}`}
                         >
                           <Link
                             href="/profile"
-                            className="w-full flex items-center gap-2 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
-                            onClick={() => setShowProfileMenu(false)}
+                            className={cn(
+                              NAV_MENU_ROW_PROFILE,
+                              profileUpdateBadge && "items-start"
+                            )}
+                            onClick={() => {
+                              dismissProfileUpdateBadge()
+                              setShowProfileMenu(false)
+                            }}
                           >
-                            <User className="w-4 h-4" />
-                            Профиль
+                            <span className={NAV_MENU_ICON_WRAP} aria-hidden>
+                              <User className="h-4 w-4" strokeWidth={2} />
+                            </span>
+                            <div className="flex min-w-0 flex-1 flex-col items-start gap-0">
+                              <span className={NAV_PROFILE_LABEL}>Личный кабинет</span>
+                              {profileUpdateBadge ? <ProfileMenuUpdateCue /> : null}
+                            </div>
                           </Link>
-                          <button
-                            onClick={handleLogout}
-                            className="w-full flex items-center gap-2 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
-                          >
-                            <LogOut className="w-4 h-4" />
-                            Выйти
+                          <button type="button" onClick={handleLogout} className={NAV_MENU_ROW_LOGOUT}>
+                            <span className={NAV_MENU_ICON_WRAP_LOGOUT} aria-hidden>
+                              <LogOut className="h-4 w-4" strokeWidth={2} />
+                            </span>
+                            <span className={NAV_LOGOUT_LABEL}>Выйти</span>
                           </button>
                         </motion.div>
                       )}
@@ -374,38 +412,42 @@ export function Navbar() {
                   Мастерская
                 </Button>
                 {showStudioMenu && (
-                  <div className="mt-2 ml-4 bg-white rounded-lg shadow-lg border border-gray-200 py-1.5">
+                  <div className={`ml-4 mt-2 ${NAV_DROPDOWN_PANEL}`}>
                     <Link
                       href="/studio?intro=true"
-                      className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#1F4E3D] transition-colors"
+                      className={NAV_MENU_ROW_STUDIO}
                       onClick={() => {
                         setIsOpen(false);
                         setShowStudioMenu(false);
                       }}
                     >
-                      <svg className="w-4 h-4 text-[#1F4E3D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      <div className="flex-1">
-                        <div className="font-medium">Поток</div>
-                        <div className="text-xs text-gray-500 mt-0.5">От идеи до готовой карточки</div>
+                      <span className={NAV_MENU_ICON_WRAP} aria-hidden>
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className={NAV_MENU_TITLE}>Поток</div>
+                        <div className={NAV_MENU_SUBTITLE}>От идеи до готовой карточки</div>
                       </div>
                     </Link>
-                    <div className="h-px bg-gray-100 mx-2 my-1" />
+                    <div className={NAV_MENU_DIVIDER} />
                     <Link
                       href="/studio/free"
-                      className="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#1F4E3D] transition-colors"
+                      className={NAV_MENU_ROW_STUDIO}
                       onClick={() => {
                         setIsOpen(false);
                         setShowStudioMenu(false);
                       }}
                     >
-                      <svg className="w-4 h-4 text-[#1F4E3D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <div className="flex-1">
-                        <div className="font-medium">Свободное творчество</div>
-                        <div className="text-xs text-gray-500 mt-0.5">Карточки без полного потока</div>
+                      <span className={NAV_MENU_ICON_WRAP} aria-hidden>
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className={NAV_MENU_TITLE}>Свободное творчество</div>
+                        <div className={NAV_MENU_SUBTITLE}>Карточки без полного потока</div>
                       </div>
                     </Link>
                   </div>
@@ -413,17 +455,40 @@ export function Navbar() {
               </div>
               {mounted && user ? (
                 <>
-                  <Button
+                  <Link
+                    href="/profile"
+                    onClick={() => {
+                      dismissProfileUpdateBadge()
+                      setIsOpen(false)
+                    }}
+                    className={cn(
+                      "mt-2",
+                      NAV_MENU_ROW_PROFILE,
+                      profileUpdateBadge && "items-start"
+                    )}
+                  >
+                    <span className={NAV_MENU_ICON_WRAP} aria-hidden>
+                      <User className="h-4 w-4" strokeWidth={2} />
+                    </span>
+                    <div className="flex min-w-0 flex-1 flex-col items-start gap-0">
+                      <span className={NAV_PROFILE_LABEL}>Личный кабинет</span>
+                      {profileUpdateBadge ? <ProfileMenuUpdateCue /> : null}
+                    </div>
+                  </Link>
+                  <button
+                    type="button"
                     onClick={() => {
                       handleLogout();
                       setIsOpen(false);
                     }}
-                    className="w-full mt-2 flex items-center justify-center gap-2"
+                    className={`mt-1 w-full ${NAV_MENU_ROW_LOGOUT}`}
                     suppressHydrationWarning
                   >
-                    <LogOut className="w-4 h-4" />
-                    Выйти
-                  </Button>
+                    <span className={NAV_MENU_ICON_WRAP_LOGOUT} aria-hidden>
+                      <LogOut className="h-4 w-4" strokeWidth={2} />
+                    </span>
+                    <span className={NAV_LOGOUT_LABEL}>Выйти</span>
+                  </button>
                 </>
               ) : mounted ? (
                 <Button

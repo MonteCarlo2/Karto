@@ -6,6 +6,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { fetchUserBrandOnboarding } from "@/lib/brand/user-brand-onboarding-db";
+import {
+  FREE_BRAND_CONTEXT_ROWS,
+  FREE_BRAND_TOGGLE_DEFAULTS,
+  type FreeCreativityBrandToggleKey,
+  buildFreeCreativityBrandPromptPrefix,
+  mergeFreeCreativityPrompt,
+} from "@/lib/brand/free-creativity-brand-prompt";
 import { triggerDownloadFromRemoteUrl } from "@/lib/client/media-download";
 import { useToast } from "@/components/ui/toast";
 import { 
@@ -31,6 +39,18 @@ import {
   Layers,
   Video,
 } from "lucide-react";
+import {
+  NAV_DROPDOWN_PANEL,
+  NAV_LOGOUT_LABEL,
+  NAV_MENU_ICON_WRAP,
+  NAV_MENU_ICON_WRAP_LOGOUT,
+  NAV_MENU_ROW_LOGOUT,
+  NAV_MENU_ROW_PROFILE,
+  NAV_PROFILE_LABEL,
+} from "@/components/layout/nav-dropdown-classes";
+import { useProfileUpdateBadge } from "@/hooks/use-profile-update-badge";
+import { cn } from "@/lib/utils";
+import { ProfileAvatarNewTag, ProfileMenuUpdateCue } from "@/components/layout/profile-update-cue";
 import { BugReportModal } from "@/components/ui/bug-report-modal";
 import {
   VideoGenerationGuideModal,
@@ -41,6 +61,7 @@ import {
   PhotoGenerationGuideTrigger,
 } from "@/components/studio/photo-generation-guide-modal";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
+import { IosToggleRow } from "@/components/ui/ios-toggle-row";
 import {
   computeFreeVideoTokenCost,
   computeProductVideoTokenCost,
@@ -55,6 +76,8 @@ function galleryImageUrl(url: string): string {
 
 const LS_VIDEO_GUIDE_OPENED = "karto_seen_video_guide_v1";
 const LS_PHOTO_GUIDE_OPENED = "karto_seen_photo_guide_v1";
+const LS_FREE_BRAND_MASTER = "karto_free_brand_apply";
+const LS_FREE_BRAND_TOGGLES = "karto_free_brand_toggles_v1";
 
 /** Скрываем строку «N сек» первые 4 с; затем показываем отсчёт с 1, 2, 3… (не с «5 сек» и т.п.) */
 const GENERATION_TIMER_SHOW_DELAY_MS = 4000;
@@ -616,7 +639,8 @@ function VideoPlayer({ src, className }: { src: string; className?: string }) {
 export default function FreeGeneration() {
   const router = useRouter();
   const { showToast } = useToast();
-  
+  const { showBadge: profileUpdateBadge, dismissProfileUpdateBadge } = useProfileUpdateBadge();
+
   // Состояние для слайдов
   // Варианты теперь хранят и URL, и aspectRatio, и исходный промпт для каждого изображения
   type Variant = {
@@ -1018,6 +1042,92 @@ export default function FreeGeneration() {
   const [isPhotoGuideOpen, setIsPhotoGuideOpen] = useState(false);
   const [shouldHighlightVideoGuide, setShouldHighlightVideoGuide] = useState(false);
   const [shouldHighlightPhotoGuide, setShouldHighlightPhotoGuide] = useState(false);
+
+  const readFreeBrandMasterLs = () => {
+    if (typeof window === "undefined") return false;
+    try {
+      return localStorage.getItem(LS_FREE_BRAND_MASTER) === "1";
+    } catch {
+      return false;
+    }
+  };
+
+  const [freeBrandMaster, setFreeBrandMaster] = useState(readFreeBrandMasterLs);
+  /** При включённом бренде панель открыта по умолчанию (как в мастере после шага онбординга). */
+  const [freeBrandPanelOpen, setFreeBrandPanelOpen] = useState(readFreeBrandMasterLs);
+  const [freeBrandToggles, setFreeBrandToggles] = useState<
+    Record<FreeCreativityBrandToggleKey, boolean>
+  >(() => ({ ...FREE_BRAND_TOGGLE_DEFAULTS }));
+  const [freeBrandDraftJson, setFreeBrandDraftJson] = useState<Record<string, unknown> | null>(null);
+  const [freeBrandWizardDone, setFreeBrandWizardDone] = useState(false);
+  const freeBrandMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_FREE_BRAND_TOGGLES);
+      if (raw) {
+        const p = JSON.parse(raw) as Partial<Record<FreeCreativityBrandToggleKey, boolean>>;
+        setFreeBrandToggles({ ...FREE_BRAND_TOGGLE_DEFAULTS, ...p });
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_FREE_BRAND_MASTER, freeBrandMaster ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [freeBrandMaster]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_FREE_BRAND_TOGGLES, JSON.stringify(freeBrandToggles));
+    } catch {
+      /* ignore */
+    }
+  }, [freeBrandToggles]);
+
+  useEffect(() => {
+    if (!freeBrandPanelOpen) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      const root = freeBrandMenuRef.current;
+      if (root && !root.contains(e.target as Node)) setFreeBrandPanelOpen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [freeBrandPanelOpen]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setFreeBrandDraftJson(null);
+      setFreeBrandWizardDone(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const supabase = createBrowserClient();
+      const row = await fetchUserBrandOnboarding(supabase, user.id);
+      if (cancelled) return;
+      if (!row) {
+        setFreeBrandDraftJson(null);
+        setFreeBrandWizardDone(false);
+        return;
+      }
+      const dj = row.draft_json;
+      const obj =
+        dj && typeof dj === "object" && !Array.isArray(dj)
+          ? (dj as Record<string, unknown>)
+          : null;
+      setFreeBrandDraftJson(obj);
+      setFreeBrandWizardDone(Boolean(row.wizard_completed_at));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     try {
@@ -1972,6 +2082,26 @@ export default function FreeGeneration() {
     }
   }, [generationMode, mediaMode, videoMode, videoDuration]);
 
+  const freeBrandHasReadyProfile = Boolean(
+    user?.id &&
+      freeBrandWizardDone &&
+      freeBrandDraftJson &&
+      typeof freeBrandDraftJson === "object"
+  );
+
+  /** Бренд в промпте: свободное творчество и «Для товара», фото и видео. */
+  /** Подмешивание онбординга в текст запроса — Studio: free + for-product, фото и видео. */
+  const augmentFreePromptWithBrand = (raw: string) => {
+    const t = raw.trim();
+    if (!freeBrandHasReadyProfile || !freeBrandDraftJson) return t;
+    const prefix = buildFreeCreativityBrandPromptPrefix(
+      freeBrandDraftJson,
+      freeBrandToggles,
+      freeBrandMaster
+    );
+    return mergeFreeCreativityPrompt(raw, prefix);
+  };
+
   return (
     <div
       className="min-h-screen flex flex-col"
@@ -2172,14 +2302,18 @@ export default function FreeGeneration() {
       </div>
 
       {user ? (
-        <div className="fixed top-6 right-6 z-50 profile-menu-container flex flex-col items-center gap-3">
-          <button
-            onClick={() => setShowProfileMenu(!showProfileMenu)}
-            className="flex items-center justify-center w-10 h-10 rounded-full border-2 border-[#2E5A43] hover:bg-gray-100 transition-colors"
-            aria-label="Профиль"
-          >
-            <User className="w-5 h-5 text-foreground" />
-          </button>
+        <div className="fixed top-6 right-6 z-50 profile-menu-container relative flex flex-col items-center gap-3">
+          <ProfileAvatarNewTag show={Boolean(profileUpdateBadge)}>
+            <button
+              type="button"
+              onClick={() => setShowProfileMenu(!showProfileMenu)}
+              className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#2E5A43] transition-colors hover:bg-gray-100"
+              aria-label="Меню личного кабинета"
+              title={profileUpdateBadge ? "Новое в личном кабинете" : undefined}
+            >
+              <User className="h-5 w-5 text-foreground" />
+            </button>
+          </ProfileAvatarNewTag>
           <AnimatePresence>
             {showProfileMenu && (
               <motion.div
@@ -2187,22 +2321,36 @@ export default function FreeGeneration() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -10, scale: 0.95 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
-                className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50"
+                className={`absolute right-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),238px)] ${NAV_DROPDOWN_PANEL}`}
               >
                   <Link
                     href="/profile"
-                    className="w-full flex items-center gap-2 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
-                    onClick={() => setShowProfileMenu(false)}
+                    className={cn(
+                      NAV_MENU_ROW_PROFILE,
+                      profileUpdateBadge && "items-start"
+                    )}
+                    onClick={() => {
+                      dismissProfileUpdateBadge();
+                      setShowProfileMenu(false);
+                    }}
                   >
-                    <User className="w-4 h-4" />
-                    Профиль
+                    <span className={NAV_MENU_ICON_WRAP} aria-hidden>
+                      <User className="h-4 w-4" strokeWidth={2} />
+                    </span>
+                    <div className="flex min-w-0 flex-1 flex-col items-start gap-0">
+                      <span className={NAV_PROFILE_LABEL}>Личный кабинет</span>
+                      {profileUpdateBadge ? <ProfileMenuUpdateCue /> : null}
+                    </div>
                   </Link>
                   <button
+                    type="button"
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-left text-gray-700 hover:bg-gray-100 transition-colors"
+                    className={NAV_MENU_ROW_LOGOUT}
                   >
-                    <LogOut className="w-4 h-4" />
-                    Выйти
+                    <span className={NAV_MENU_ICON_WRAP_LOGOUT} aria-hidden>
+                      <LogOut className="h-4 w-4" strokeWidth={2} />
+                    </span>
+                    <span className={NAV_LOGOUT_LABEL}>Выйти</span>
                   </button>
               </motion.div>
             )}
@@ -2965,22 +3113,152 @@ export default function FreeGeneration() {
             </div>
           )}
 
-          {/* Зона 1: Input Area + референсы */}
-          <div
-            className={`bg-gray-100 rounded-2xl flex ${
-              generationMode === "free" || mediaMode === "video" ? "flex-1" : ""
-            }`}
+          {/* Зона 1: Input Area + референсы (бренд — над серым блоком текста; как во free и для «Для товара») */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2"
             style={
-              mediaMode === "video"
-                ? generationMode === "for-product"
-                  ? { width: "52%", padding: "12px", minHeight: "110px" }
-                  : { padding: "12px", minHeight: "100px" }
-                : generationMode === "free"
-                  ? { padding: "12px", minHeight: "80px" }
-                  : { width: "50%", padding: "12px", minHeight: "80px" }
+              generationMode === "for-product"
+                ? mediaMode === "video"
+                  ? { width: "52%" }
+                  : { width: "50%" }
+                : undefined
             }
           >
-            <div className="flex-1 flex flex-col gap-2">
+            {freeBrandHasReadyProfile && (
+              <div
+                ref={freeBrandMenuRef}
+                className="relative z-20 mb-[-5px] flex flex-wrap items-center gap-x-2 gap-y-1.5 px-2 pt-0"
+              >
+                <div className="flex min-w-0 flex-[1_1_160px] flex-wrap items-center gap-x-2 gap-y-1.5">
+                  <div className="relative flex shrink-0 items-center">
+                    <div
+                      className={`inline-flex shrink-0 items-stretch overflow-hidden rounded-full border shadow-sm transition ${
+                        freeBrandPanelOpen
+                          ? "border-[#2E5A43]/35 bg-[#B9FF4B]/25 text-[#070907] shadow-[0_8px_28px_-18px_rgba(46,90,67,0.45)] backdrop-blur-md"
+                          : freeBrandMaster
+                            ? "border-[#070907]/14 bg-[#eaf8d4]/95 text-[#070907] backdrop-blur-md"
+                            : "border-[#070907]/12 bg-white/72 text-[#070907] shadow-sm backdrop-blur-md ring-1 ring-white/40"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!freeBrandMaster) {
+                            setFreeBrandMaster(true);
+                            setFreeBrandPanelOpen(true);
+                          } else {
+                            setFreeBrandPanelOpen((o) => !o);
+                          }
+                        }}
+                        title="Открыть список полей бренда (когда включено)"
+                        className="inline-flex max-w-[min(100vw-8rem,18rem)] items-center gap-1.5 px-2 py-1 text-left transition hover:bg-black/[0.04] md:gap-2 md:px-2.5 md:py-[0.28rem]"
+                      >
+                        <span className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#070907]/82 md:text-[10px]">
+                          Применить бренд
+                        </span>
+                        <motion.span
+                          transition={{ type: "spring", stiffness: 440, damping: 30 }}
+                          animate={{ rotate: freeBrandPanelOpen ? 180 : 0 }}
+                          className="inline-flex"
+                        >
+                          <ChevronDown className="h-3 w-3 shrink-0 text-neutral-400 md:h-3.5 md:w-3.5" />
+                        </motion.span>
+                      </button>
+                      <div
+                        className="w-px shrink-0 self-stretch bg-[#070907]/12 min-h-[1.55rem]"
+                        aria-hidden
+                      />
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={freeBrandMaster}
+                        aria-label={
+                          freeBrandMaster
+                            ? "Выключить учёт бренда в промпте"
+                            : "Включить учёт бренда в промпте"
+                        }
+                        title={
+                          freeBrandMaster
+                            ? "Выключить бренд в промпте"
+                            : "Включить бренд в промпте"
+                        }
+                        className="flex flex-shrink-0 items-center justify-center px-2 py-1 transition hover:bg-black/[0.05] md:px-2.5"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFreeBrandMaster((m) => {
+                            const next = !m;
+                            if (!next) setFreeBrandPanelOpen(false);
+                            else setFreeBrandPanelOpen(true);
+                            return next;
+                          });
+                        }}
+                      >
+                        <span
+                          className={`relative h-[16px] w-[28px] shrink-0 rounded-full transition-colors duration-200 ${
+                            freeBrandMaster ? "bg-[#34C759]" : "bg-neutral-300/90"
+                          }`}
+                        >
+                          <motion.span
+                            transition={{ type: "spring", stiffness: 520, damping: 34 }}
+                            className="pointer-events-none absolute left-[2px] top-[2px] h-[12px] w-[12px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.18)]"
+                            animate={{ x: freeBrandMaster ? 12 : 0 }}
+                          />
+                        </span>
+                      </button>
+                    </div>
+
+                    <AnimatePresence>
+                      {freeBrandMaster && freeBrandPanelOpen ? (
+                        <motion.div
+                          key="free-brand-context-panel"
+                          initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 8, scale: 0.97 }}
+                          transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                          className="absolute bottom-[calc(100%+10px)] left-0 z-50 w-[min(calc(100vw-4rem),360px)] max-w-[360px] rounded-[1.25rem] border border-[#070907]/12 bg-[#FDFCF9]/98 p-3.5 shadow-[0_24px_64px_-30px_rgba(7,9,7,0.5)] backdrop-blur-lg ring-1 ring-white/60"
+                        >
+                          <p className="border-b border-[#070907]/8 pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 md:text-[11px]">
+                            УЧИТЫВАТЬ
+                          </p>
+                          <div className="mt-2.5 grid max-h-[min(52vh,300px)] grid-cols-2 gap-x-5 gap-y-1 overflow-y-auto overscroll-contain pr-0.5 [-webkit-overflow-scrolling:touch]">
+                            {FREE_BRAND_CONTEXT_ROWS.map((item) => (
+                              <IosToggleRow
+                                key={item.key}
+                                label={item.label}
+                                checked={freeBrandToggles[item.key]}
+                                onChange={(next) =>
+                                  setFreeBrandToggles((prev) => ({ ...prev, [item.key]: next }))
+                                }
+                              />
+                            ))}
+                          </div>
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
+                  </div>
+                  <p className="min-w-[min(100%,16rem)] max-w-xl flex-[1_1_160px] pb-0 text-[9px] leading-snug text-neutral-500 md:text-[10px]">
+                    Одна кнопка: слева список полей, справа — вкл./выкл. Референсы — справа.
+                  </p>
+                </div>
+              </div>
+            )}
+            {user?.id && !freeBrandHasReadyProfile && (
+              <p className="px-3 text-[10px] leading-snug text-neutral-400 md:text-[11px]">
+                Завершите настройку бренда в профиле — тогда здесь можно будет подставлять название, нишу, описание и стиль в промпт.
+              </p>
+            )}
+            <div
+              className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 rounded-2xl bg-gray-100 p-3 ring-1 ring-black/[0.05]"
+              style={{
+                minHeight:
+                  generationMode === "for-product"
+                    ? mediaMode === "video"
+                      ? "110px"
+                      : "80px"
+                    : mediaMode === "video"
+                      ? "100px"
+                      : "80px",
+              }}
+            >
               <textarea
                 value={slidePrompt}
                 onChange={(e) => {
@@ -3801,6 +4079,10 @@ export default function FreeGeneration() {
                   const authHeaders: Record<string, string> = { "Content-Type": "application/json" };
                   if (session?.access_token) authHeaders["Authorization"] = `Bearer ${session.access_token}`;
 
+                  const visibleUserPrompt = slidePrompt.trim();
+                  const outboundPrompt = augmentFreePromptWithBrand(slidePrompt);
+                  const outboundPromptTrimmed = outboundPrompt.trim();
+
                   if (generationMode === "free" && mediaMode === "video") {
                     // ── СВОБОДНАЯ ГЕНЕРАЦИЯ ВИДЕО (Standard=seedance, Pro=kling) ──
                     const durationMapStandard: Record<string, number> = { "4s": 4, "8s": 8, "12s": 12 };
@@ -3834,7 +4116,7 @@ export default function FreeGeneration() {
                     }
 
                     const payload: any = {
-                      prompt: slidePrompt.trim(),
+                      prompt: outboundPrompt,
                       aspectRatio: videoAspect,
                       resolution: videoQuality,
                       videoMode,
@@ -3889,7 +4171,7 @@ export default function FreeGeneration() {
                               pendingVideoAspect: videoAspect,
                               pendingVideoGenerationMode: "free",
                               pendingVideoError: undefined,
-                              prompt: slidePrompt.trim() || null,
+                              prompt: visibleUserPrompt || null,
                             }
                           : s
                       )
@@ -3908,7 +4190,7 @@ export default function FreeGeneration() {
                       method: "POST",
                       headers: authHeaders,
                       body: JSON.stringify({
-                        prompt: slidePrompt.trim(),
+                        prompt: outboundPrompt,
                         aspectRatio: slideAspectRatio,
                         referenceImages,
                       }),
@@ -3954,7 +4236,7 @@ export default function FreeGeneration() {
 
                     await saveImageToSupabase({
                       imageUrl: generatedImageUrl,
-                      prompt: slidePrompt.trim() || null,
+                      prompt: visibleUserPrompt || null,
                       aspectRatio: slideAspectRatio,
                       generationMode: "free",
                       scenario: null,
@@ -3982,7 +4264,7 @@ export default function FreeGeneration() {
                         const newVariants = [{ 
                           url: generatedImageUrl, 
                           aspectRatio: slideAspectRatio,
-                          prompt: slidePrompt.trim() || "",
+                          prompt: visibleUserPrompt || "",
                           mediaType: "image" as const,
                         }, ...existingVariants];
                         
@@ -3990,7 +4272,7 @@ export default function FreeGeneration() {
                           ...s,
                           variants: newVariants,
                           imageUrl: s.imageUrl || generatedImageUrl,
-                          prompt: slidePrompt.trim(),
+                          prompt: visibleUserPrompt || null,
                           scenario: null,
                           aspectRatio: slideAspectRatio, // Оставляем для обратной совместимости
                         };
@@ -4028,7 +4310,7 @@ export default function FreeGeneration() {
                         headers: authHeaders,
                         body: JSON.stringify({
                           productImageDataUrl: productPhotoPreview,
-                          prompt: slidePrompt.trim() || "",
+                          prompt: outboundPromptTrimmed || "",
                           resolution: "1080p",
                           duration: durationNum,
                           staticCamera: videoStaticCameraOn,
@@ -4067,7 +4349,7 @@ export default function FreeGeneration() {
                                 pendingVideoAspect: "9:16",
                                 pendingVideoGenerationMode: "for-product",
                                 pendingVideoError: undefined,
-                                prompt: slidePrompt.trim() || null,
+                                prompt: visibleUserPrompt || null,
                               }
                             : s
                         )
@@ -4085,7 +4367,7 @@ export default function FreeGeneration() {
                       method: "POST",
                       headers: authHeaders,
                       body: JSON.stringify({
-                        prompt: slidePrompt.trim() || null,
+                        prompt: outboundPromptTrimmed || null,
                         aspectRatio: slideAspectRatio,
                         scenario: selectedScenario,
                         productImage: productPhotoPreview,
@@ -4126,7 +4408,7 @@ export default function FreeGeneration() {
                     // Сохраняем в Supabase напрямую с клиента (если пользователь авторизован)
                     await saveImageToSupabase({
                       imageUrl: generatedImageUrl,
-                      prompt: slidePrompt.trim() || null,
+                      prompt: visibleUserPrompt || null,
                       aspectRatio: slideAspectRatio,
                       generationMode: "for-product",
                       scenario: selectedScenario,
@@ -4153,7 +4435,7 @@ export default function FreeGeneration() {
                           
                           // Новые изображения добавляем в начало (сверху)
                           const newVariants = [
-                            { url: generatedImageUrl, aspectRatio: slideAspectRatio, prompt: slidePrompt.trim() || "", mediaType: "image" as const },
+                            { url: generatedImageUrl, aspectRatio: slideAspectRatio, prompt: visibleUserPrompt || "", mediaType: "image" as const },
                             ...existingVariants,
                           ];
 
@@ -4161,7 +4443,7 @@ export default function FreeGeneration() {
                             ...s,
                             variants: newVariants,
                             imageUrl: s.imageUrl || generatedImageUrl,
-                            prompt: slidePrompt.trim() || null,
+                            prompt: visibleUserPrompt || null,
                             scenario: selectedScenario,
                             aspectRatio: slideAspectRatio, // Оставляем для обратной совместимости
                           };

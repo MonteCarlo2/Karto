@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import {
+  getUserFromBearerToken,
+  isTransientAuthFailureHint,
+} from "@/lib/supabase/get-user-from-bearer";
+import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 
 /**
  * GET: список уведомлений текущего пользователя + счётчик непрочитанных.
@@ -12,9 +17,22 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = createServerClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !user) {
-    return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+  const { user, failureHint } = await getUserFromBearerToken(token);
+  if (!user) {
+    const transient = isTransientAuthFailureHint(failureHint);
+    if (transient) {
+      return NextResponse.json({
+        success: true,
+        notifications: [],
+        unreadCount: 0,
+        degraded: true,
+        authUnavailable: true,
+      });
+    }
+    return NextResponse.json(
+      { error: failureHint ?? "Не авторизован" },
+      { status: 401 }
+    );
   }
 
   const { data: rows, error } = await supabase
@@ -28,6 +46,17 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error("[notifications] select:", error);
+    if (isSupabaseNetworkError(error) || String(error.message ?? "").includes("fetch failed")) {
+      return NextResponse.json(
+        {
+          success: true,
+          notifications: [],
+          unreadCount: 0,
+          degraded: true,
+        },
+        { status: 200 }
+      );
+    }
     if (error.message?.includes("does not exist") || error.code === "42P01") {
       return NextResponse.json(
         {

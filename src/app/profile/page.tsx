@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef, Suspense } from "react";
+import { useEffect, useState, useRef, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Unbounded } from "next/font/google";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -22,17 +23,60 @@ import {
   Shield,
   Check,
   Circle,
-  Sparkles,
-  DollarSign
+  DollarSign,
+  Palette,
+  Type,
+  Tags,
+  Layers,
+  MessageSquare,
+  ChevronRight,
+  RotateCcw,
+  Download,
+  Loader2,
 } from "lucide-react";
 import Image from "next/image";
 import { useNotification } from "@/components/ui/notification";
 import type { SubscriptionState } from "@/lib/subscription";
-import {
-  FREE_WELCOME_CREATIVE_LIMIT,
-  FREE_WELCOME_VIDEO_TOKENS,
-} from "@/lib/subscription";
+import { FREE_WELCOME_CREATIVE_LIMIT, FREE_WELCOME_VIDEO_TOKENS } from "@/lib/subscription";
 import { KartoServicesExplainer } from "@/components/ui/karto-services-explainer";
+import {
+  fetchUserBrandOnboarding,
+  hasBrandOnboardingDraftProgress,
+} from "@/lib/brand/user-brand-onboarding-db";
+import { clearBrandLocalStorage } from "@/lib/brand/brand-local-storage";
+import { resolveEffectiveBrandPaletteColors } from "@/lib/brand/brand-preset-palettes";
+import { RainbowButton } from "@/components/ui/rainbow-button";
+import { triggerDownloadFromRemoteUrl } from "@/lib/client/media-download";
+import { acknowledgeProfileUpdate } from "@/hooks/use-profile-update-badge";
+const brandNameDisplayFont = Unbounded({
+  subsets: ["latin", "cyrillic"],
+  weight: ["600", "700"],
+  display: "swap",
+});
+
+function formatPaletteColorLabel(value: string) {
+  const v = value.trim();
+  if (/^#[0-9a-f]{3,8}$/i.test(v)) return v.toUpperCase();
+  return v;
+}
+
+function logoDownloadFilenameBase(brandName: unknown): string {
+  const raw = typeof brandName === "string" ? brandName.trim().slice(0, 48) : "";
+  let slug = raw.replace(/[^\w\u0400-\u04FF\s\-]/gi, "").trim().replace(/\s+/g, "-");
+  slug = slug.replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+  const safe = slug.length > 0 ? slug.slice(0, 40) : "brand";
+  return `karto-brand-logo-${safe}`;
+}
+
+const BRAND_SETTINGS_SECTIONS = [
+  { label: "Название", hint: "Как бренд отображается в материалах", Icon: Type },
+  { label: "Ниша", hint: "Категория и ключевая аудитория", Icon: Tags },
+  { label: "Описание", hint: "Характер, ценности и отличие", Icon: FileText },
+  { label: "Цвета", hint: "Палитра и акценты визуала", Icon: Palette },
+  { label: "Стиль", hint: "Настроение и подача в креативах", Icon: Layers },
+  { label: "Тон", hint: "Как звучит текст общения с клиентом", Icon: MessageSquare },
+  { label: "Логотип", hint: "Загрузка или выбор символа бренда", Icon: ImageIcon },
+] as const;
 
 type Project = {
   id: string;
@@ -58,11 +102,22 @@ function ProfileContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const paymentSuccess = searchParams.get("payment") === "success";
+  const brandUpdated = searchParams.get("brandUpdated") === "1";
   const { showNotification, NotificationComponent } = useNotification();
+
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
+  
+  // Бренд
+  const [brandData, setBrandData] = useState<any>(null);
+  const [brandLoading, setBrandLoading] = useState(true);
+  const [showBrandSettings, setShowBrandSettings] = useState(false);
+  const [showBrandResetConfirm, setShowBrandResetConfirm] = useState(false);
+  const [brandRestarting, setBrandRestarting] = useState(false);
+  const [brandLogoDownloading, setBrandLogoDownloading] = useState(false);
+  const [isFormattingDescription, setIsFormattingDescription] = useState(false);
   
   // Модалки
   const [showNameModal, setShowNameModal] = useState(false);
@@ -163,6 +218,12 @@ function ProfileContent() {
     return () => clearInterval(t);
   }, [user, paymentSuccess]);
 
+  useEffect(() => {
+    if (!brandUpdated) return;
+    showNotification("Изменено", "success");
+    router.replace("/profile", { scroll: false });
+  }, [brandUpdated, router, showNotification]);
+
   // Функции для проверки пароля (как в login/page.tsx)
   const checkPasswordRequirements = (pwd: string) => {
     return {
@@ -205,6 +266,11 @@ function ProfileContent() {
         const u = fullUser || session.user;
         setUser(u);
         setNewName(u?.user_metadata?.name || u?.user_metadata?.full_name || "");
+        
+        // Загружаем данные бренда
+        const brandRow = await fetchUserBrandOnboarding(supabase, u.id);
+        setBrandData(brandRow ?? null);
+        setBrandLoading(false);
       } catch (error) {
         console.error("Ошибка загрузки пользователя:", error);
         router.push("/login");
@@ -215,6 +281,11 @@ function ProfileContent() {
 
     loadUser();
   }, [router]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    acknowledgeProfileUpdate();
+  }, [user?.id]);
 
   // Загружаем проекты только после того, как пользователь установлен
   useEffect(() => {
@@ -227,6 +298,53 @@ function ProfileContent() {
       return () => clearTimeout(timer);
     }
   }, [user, loading]);
+
+  // Автоматическое форматирование описания бренда
+  useEffect(() => {
+    if (!user?.id || !brandData || !brandData.draft_json || !brandData.wizard_completed_at) return;
+    
+    const draft = brandData.draft_json;
+    const desc = draft.description;
+    const formattedDesc = draft.formatted_description;
+    const originalDesc = draft.formatted_description_original;
+
+    // Если описание есть, но оно еще не отформатировано, ИЛИ пользователь изменил описание в мастере
+    if (desc && desc.trim().length >= 10 && (!formattedDesc || originalDesc !== desc) && !isFormattingDescription) {
+      setIsFormattingDescription(true);
+      
+      fetch("/api/brand/format-description", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: draft.name,
+          niche: draft.niche,
+          description: desc
+        }),
+      })
+      .then(res => res.json())
+      .then(async data => {
+        if (data.success && data.formattedDescription) {
+          const supabase = createBrowserClient();
+          const newDraft = { 
+            ...draft, 
+            formatted_description: data.formattedDescription,
+            formatted_description_original: desc
+          };
+          
+          await supabase
+            .from("user_brand_onboarding")
+            .update({ draft_json: newDraft })
+            .eq("user_id", user.id);
+            
+          setBrandData({ ...brandData, draft_json: newDraft });
+        }
+      })
+      .catch(err => console.error("Ошибка при авто-форматировании описания:", err))
+      .finally(() => {
+        setIsFormattingDescription(false);
+      });
+    }
+  }, [brandData, isFormattingDescription, user]);
 
   const loadProjects = async () => {
     // Дополнительная проверка перед началом загрузки
@@ -437,6 +555,86 @@ function ProfileContent() {
     });
   };
 
+  const brandDraft = brandData?.draft_json as Record<string, unknown> | undefined;
+  const profileBrandPalette = useMemo(() => {
+    return resolveEffectiveBrandPaletteColors(
+      brandDraft?.paletteId,
+      brandDraft?.customPaletteColors
+    );
+  }, [brandDraft]);
+
+  const brandLogoSrc = useMemo(() => {
+    const a =
+      typeof brandDraft?.logoApprovedUrl === "string" ? brandDraft.logoApprovedUrl.trim() : "";
+    const b = typeof brandDraft?.logoChosenUrl === "string" ? brandDraft.logoChosenUrl.trim() : "";
+    return a || b || null;
+  }, [brandDraft]);
+
+  const brandPromoContinueCreation = useMemo(
+    () => Boolean(brandData && hasBrandOnboardingDraftProgress(brandData)),
+    [brandData]
+  );
+
+  const userName =
+    user?.user_metadata?.name ||
+    user?.user_metadata?.full_name ||
+    user?.email?.split("@")[0] ||
+    "Пользователь";
+  const userEmail = user?.email || "";
+
+  const executeRestartBrandWizard = async () => {
+    setBrandRestarting(true);
+    try {
+      const supabase = createBrowserClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
+      if (!uid) {
+        showNotification("Войдите в аккаунт", "error");
+        return;
+      }
+      const { error } = await supabase.from("user_brand_onboarding").delete().eq("user_id", uid);
+      if (error) {
+        showNotification(error.message || "Не удалось сбросить бренд", "error");
+        return;
+      }
+      clearBrandLocalStorage(uid);
+      setBrandData(null);
+      setShowBrandSettings(false);
+      setShowBrandResetConfirm(false);
+      showNotification("Бренд сброшен — начните настройку заново.", "success");
+      router.push("/brand");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Ошибка сброса";
+      showNotification(msg, "error");
+    } finally {
+      setBrandRestarting(false);
+    }
+  };
+
+  const handleDownloadBrandLogo = async () => {
+    const src =
+      typeof brandDraft?.logoApprovedUrl === "string" && brandDraft.logoApprovedUrl.trim()
+        ? brandDraft.logoApprovedUrl.trim()
+        : typeof brandDraft?.logoChosenUrl === "string" && brandDraft.logoChosenUrl.trim()
+          ? brandDraft.logoChosenUrl.trim()
+          : "";
+    if (!src) return;
+    setBrandLogoDownloading(true);
+    try {
+      await triggerDownloadFromRemoteUrl({
+        url: src,
+        mediaType: "image",
+        filenameBase: `${logoDownloadFilenameBase(brandDraft?.name)}-${Date.now()}`,
+      });
+    } catch {
+      showNotification("Не удалось скачать логотип. Попробуйте через «Изменить» в мастере.", "error");
+    } finally {
+      setBrandLogoDownloading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f5f3ef]" suppressHydrationWarning>
@@ -444,9 +642,6 @@ function ProfileContent() {
       </div>
     );
   }
-
-  const userName = user?.user_metadata?.name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Пользователь";
-  const userEmail = user?.email || "";
 
   const handleLogout = async () => {
     try {
@@ -475,7 +670,7 @@ function ProfileContent() {
         </button>
       </div>
 
-      <div className="container mx-auto px-6 max-w-6xl pt-8 md:pt-12" suppressHydrationWarning>
+      <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 max-w-[1800px] pt-8 md:pt-12" suppressHydrationWarning>
         {/* Приветствие - по центру, большая надпись */}
         <div className="text-center mb-8 mt-4" suppressHydrationWarning>
           <h1
@@ -500,17 +695,14 @@ function ProfileContent() {
           </p>
         </div>
 
-        {/* Основной контент: две колонки */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" suppressHydrationWarning>
+        {/* Основной контент: три колонки */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start" suppressHydrationWarning>
           {/* Левая колонка: Мои потоки (Проекты) */}
           <div className="lg:col-span-1" suppressHydrationWarning>
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 shadow-xl h-fit"
-              style={{
-                border: "1px solid rgba(255, 255, 255, 0.3)",
-              }}
+              className="bg-white/90 backdrop-blur-xl rounded-2xl p-6 shadow-xl h-fit ring-1 ring-black/[0.03]"
               suppressHydrationWarning
             >
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200">
@@ -737,14 +929,14 @@ function ProfileContent() {
             </motion.div>
           </div>
 
-          {/* Правая колонка: Информация об аккаунте */}
+          {/* Центральная колонка: Информация об аккаунте */}
           <div className="lg:col-span-2" suppressHydrationWarning>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 shadow-xl"
+              className="bg-white/90 backdrop-blur-xl rounded-2xl p-6 shadow-2xl ring-1 ring-[#1F4E3D]/10"
               style={{
-                border: "1px solid rgba(255, 255, 255, 0.3)",
+                border: "1px solid rgba(255, 255, 255, 0.5)",
               }}
               suppressHydrationWarning
             >
@@ -869,14 +1061,15 @@ function ProfileContent() {
                     <p className="text-lg font-medium text-gray-900">{userName}</p>
                   </div>
                   <button
+                    type="button"
                     onClick={() => {
                       setNewName(userName);
                       setShowNameModal(true);
                     }}
-                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                    className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium tracking-tight text-neutral-900 shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-all hover:border-[#1F4E3D]/35 hover:bg-[#1F4E3D]/[0.06] hover:text-[#173d2f] active:scale-[0.98]"
                   >
-                    <Edit2 className="w-4 h-4" />
-                    Изменить имя
+                    <Edit2 className="w-4 h-4 shrink-0 opacity-70" />
+                    Изменить
                   </button>
                 </div>
 
@@ -899,6 +1092,7 @@ function ProfileContent() {
                     <p className="text-lg font-medium text-gray-900">••••••••</p>
                   </div>
                   <button
+                    type="button"
                     onClick={() => {
                       setShowPasswordModal(true);
                       setShowPasswordStep2(false);
@@ -906,10 +1100,10 @@ function ProfileContent() {
                       setNewPassword("");
                       setConfirmPassword("");
                     }}
-                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                    className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium tracking-tight text-neutral-900 shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition-all hover:border-[#1F4E3D]/35 hover:bg-[#1F4E3D]/[0.06] hover:text-[#173d2f] active:scale-[0.98]"
                   >
-                    <Lock className="w-4 h-4" />
-                    Изменить пароль
+                    <Lock className="w-4 h-4 shrink-0 opacity-70" />
+                    Изменить
                   </button>
                 </div>
 
@@ -1011,6 +1205,227 @@ function ProfileContent() {
               </div>
             </motion.div>
           </div>
+
+          {/* Правая колонка: Мой Бренд */}
+          <div className="lg:col-span-1" suppressHydrationWarning>
+            {!brandLoading && brandData && brandData.wizard_completed_at ? (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-neutral-200/70 bg-white shadow-[0_8px_32px_-12px_rgba(15,23,42,0.12)]"
+              >
+                <div
+                  className="pointer-events-none absolute inset-x-0 -top-px h-28 bg-gradient-to-b from-neutral-50/80 to-transparent"
+                  aria-hidden
+                />
+
+                <div className="relative flex flex-1 flex-col px-5 pb-6 pt-5">
+                  <div className="mb-8 flex items-center justify-between gap-3">
+                    <h2 className="text-xl font-semibold tracking-tight text-neutral-900">
+                      Мой бренд
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setShowBrandSettings(true)}
+                      className="group inline-flex shrink-0 items-center gap-2 rounded-full border border-[#1F4E3D]/25 bg-white px-4 py-2 text-sm font-medium tracking-tight text-[#1F4E3D] shadow-[0_1px_2px_rgba(31,78,61,0.08)] transition-all hover:border-[#1F4E3D] hover:bg-[#1F4E3D] hover:text-white hover:shadow-md active:scale-[0.98]"
+                    >
+                      <span>Изменить</span>
+                      <ChevronRight className="h-4 w-4 opacity-70 transition-transform group-hover:translate-x-0.5 group-hover:text-white group-hover:opacity-100" strokeWidth={2} />
+                    </button>
+                  </div>
+
+                  {/* Герой: логотип — только квадрат с маркой, без рамки; крупнее */}
+                  <div className="mb-8 flex flex-col items-center text-center">
+                    <div className="group/logo-download relative mb-5 aspect-square w-[11.5rem] shrink-0 overflow-hidden rounded-2xl bg-transparent">
+                      {brandLogoSrc ? (
+                        <>
+                          <div className="absolute inset-[5%]">
+                            <Image
+                              src={brandLogoSrc}
+                              alt="Логотип бренда"
+                              fill
+                              className="object-contain"
+                              sizes="184px"
+                              unoptimized={brandLogoSrc.startsWith("data:") || brandLogoSrc.startsWith("blob:")}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            aria-label="Скачать логотип"
+                            disabled={brandLogoDownloading}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void handleDownloadBrandLogo();
+                            }}
+                            className="absolute right-2 top-2 z-10 inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/85 bg-neutral-950/60 text-white shadow-[0_4px_14px_-4px_rgba(0,0,0,0.45)] backdrop-blur-[2px] transition hover:bg-neutral-950/78 disabled:cursor-wait md:pointer-events-none md:opacity-0 md:transition-opacity md:group-hover/logo-download:pointer-events-auto md:group-hover/logo-download:opacity-100"
+                          >
+                            {brandLogoDownloading ? (
+                              <Loader2 className="h-[14px] w-[14px] shrink-0 animate-spin" aria-hidden strokeWidth={2.5} />
+                            ) : (
+                              <Download className="h-[14px] w-[14px] shrink-0" aria-hidden strokeWidth={2.5} />
+                            )}
+                          </button>
+                        </>
+                      ) : (
+                        <div
+                          className="flex h-full w-full items-center justify-center rounded-[inherit] px-5"
+                          style={{
+                            background: `linear-gradient(152deg, ${profileBrandPalette[0] || "#2f5f47"} 0%, ${profileBrandPalette[1] || "#1a3829"} 100%)`,
+                          }}
+                        >
+                          <span
+                            className="relative z-[1] font-semibold uppercase tracking-[0.12em] text-white/95"
+                            style={{
+                              fontSize: "clamp(1.125rem, 3vw, 1.5rem)",
+                              textShadow: "0 2px 20px rgba(0,0,0,0.15)",
+                              letterSpacing: "0.18em",
+                            }}
+                          >
+                            {(typeof brandDraft?.name === "string" && brandDraft.name.trim()
+                              ? brandDraft.name.trim().slice(0, 3)
+                              : ""
+                            ).toUpperCase() || "—"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <h3
+                      className={`${brandNameDisplayFont.className} max-w-[min(100%,21rem)] text-balance font-bold leading-[1.05] tracking-[-0.03em] text-neutral-950`}
+                      style={{
+                        fontSize: "clamp(2.05rem, 5.8vw, 2.65rem)",
+                      }}
+                    >
+                      {typeof brandDraft?.name === "string" && brandDraft.name.trim()
+                        ? brandDraft.name.trim()
+                        : "Без названия"}
+                    </h3>
+                    <span className="mt-2.5 inline-flex rounded-full border border-neutral-200/80 bg-neutral-50/90 px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                      {typeof brandDraft?.niche === "string" && brandDraft.niche.trim()
+                        ? brandDraft.niche.trim()
+                        : "Ниша не указана"}
+                    </span>
+                  </div>
+
+                  <div className="space-y-6 border-t border-neutral-100 pt-6">
+                    {/* Владелец */}
+                    <div>
+                      <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-400">
+                        Владелец
+                      </p>
+                      <div className="flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50/85 px-3.5 py-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-neutral-200/90 bg-white text-neutral-400 shadow-inner">
+                          <User className="h-[18px] w-[18px]" strokeWidth={1.6} aria-hidden />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] text-neutral-500">Аккаунт профиля</p>
+                          <p className="truncate text-[15px] font-medium tracking-tight text-neutral-900">
+                            {userName}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Палитра */}
+                    {profileBrandPalette.length > 0 ? (
+                      <div>
+                        <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-400">
+                          Палитра
+                        </p>
+                        <div className="relative z-10 flex h-11 rounded-xl border border-neutral-200/70 bg-neutral-100/40 shadow-inner">
+                          {profileBrandPalette.slice(0, 6).map((color, i) => {
+                            const label = formatPaletteColorLabel(color);
+                            return (
+                              <div
+                                key={`${color}-${i}`}
+                                className="group relative min-h-full min-w-0 flex-1 overflow-visible first:rounded-l-[0.7rem] last:rounded-r-[0.7rem] transition-[flex] duration-200 hover:z-20 hover:flex-[1.12]"
+                                style={{ backgroundColor: color }}
+                              >
+                                <span className="sr-only">Цвет палитры: {label}</span>
+                                <span
+                                  role="tooltip"
+                                  className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-neutral-950/92 px-2 py-1 font-mono text-[10px] font-medium tracking-wide text-white opacity-0 shadow-lg backdrop-blur-[2px] transition-all duration-150 group-hover:translate-y-0 group-hover:opacity-100 translate-y-0.5"
+                                >
+                                  {label}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div>
+                      <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-400">
+                        Описание
+                      </p>
+                      {isFormattingDescription ? (
+                        <div className="space-y-2.5 rounded-xl border border-neutral-100 bg-neutral-50 p-4 animate-pulse">
+                          <div className="h-3 rounded-md bg-neutral-200" />
+                          <div className="h-3 w-[92%] rounded-md bg-neutral-200" />
+                          <div className="h-3 w-3/4 rounded-md bg-neutral-200" />
+                          <div className="h-3 w-full rounded-md bg-neutral-200" />
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-neutral-100 bg-[#fafaf9] px-4 py-3.5 shadow-inner">
+                          <p className="text-[13.5px] leading-relaxed text-neutral-700 line-clamp-[10]">
+                            {(brandDraft?.formatted_description as string | undefined) ||
+                              (brandDraft?.description as string | undefined) ||
+                              "Описание бренда не задано."}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ) : !brandLoading ? (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="relative flex h-full min-h-[330px] flex-col overflow-hidden rounded-2xl border-2 border-[#B9FF4B]/35 bg-gradient-to-b from-[#0d1f16] via-[#163527] to-[#1F4E3D] px-5 pb-7 pt-10 text-center shadow-[0_24px_56px_-28px_rgba(7,9,7,0.75)] ring-1 ring-white/10 sm:min-h-[340px] sm:px-6 sm:pb-8 sm:pt-11"
+              >
+                <div
+                  className="pointer-events-none absolute inset-0 opacity-[0.22]"
+                  style={{
+                    background:
+                      "linear-gradient(115deg, transparent 35%, rgba(185,255,75,0.35) 48%, rgba(56,189,248,0.2) 52%, transparent 65%)",
+                    backgroundSize: "220% 100%",
+                    animation: "rainbow 3.5s linear infinite",
+                  }}
+                  aria-hidden
+                />
+                <div className="pointer-events-none absolute -top-16 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-[#B9FF4B]/30 blur-3xl" aria-hidden />
+                <div className="pointer-events-none absolute bottom-0 right-0 h-36 w-36 rounded-full bg-teal-400/15 blur-3xl" aria-hidden />
+
+                <div
+                  className="relative mx-auto mb-7 h-[3px] w-16 max-w-[70%] rounded-full bg-gradient-to-r from-transparent via-[#B9FF4B] to-transparent shadow-[0_0_20px_rgba(185,255,75,0.45)]"
+                  aria-hidden
+                />
+
+                <h2 className="relative bg-gradient-to-b from-white via-white to-white/75 bg-clip-text text-[2rem] font-extrabold leading-[1.08] tracking-tight text-transparent [-webkit-background-clip:text] sm:text-[2.35rem]">
+                  {brandPromoContinueCreation ? "Продолжить создание" : "Создать бренд"}
+                </h2>
+                <p className="relative mx-auto mt-3.5 max-w-[18rem] text-[13px] leading-snug text-white/68">
+                  Новый бренд или уже свой — пройдите те же шаги мастера и заполните профиль.
+                </p>
+
+                <div className="relative mx-auto mt-9 w-full max-w-[320px]">
+                  <RainbowButton
+                    href="/brand"
+                    className="min-h-[56px] w-full rounded-2xl px-6 py-4 text-[17px] font-bold leading-tight"
+                  >
+                    {brandPromoContinueCreation ? "Продолжить создание" : "Создать бренд"}
+                  </RainbowButton>
+                </div>
+
+                <p className="relative mx-auto mt-7 max-w-[19rem] text-[11.5px] leading-relaxed text-white/[0.58] sm:text-[12px]">
+                  Данные помогают точнее настраивать генерации. Новые сценарии Karto развиваем вместе с продавцами на маркетплейсах.
+                </p>
+              </motion.div>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -1097,6 +1512,165 @@ function ProfileContent() {
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* Модалка: Настройки бренда */}
+      <AnimatePresence>
+        {showBrandSettings && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[6px]"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                setShowBrandSettings(false);
+              }
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0, y: 12 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 12 }}
+              transition={{ type: "spring", damping: 36, stiffness: 420 }}
+              className="relative w-full max-w-[440px] overflow-hidden rounded-[1.375rem] border border-neutral-200/95 bg-white shadow-[0_32px_64px_-16px_rgba(15,23,42,0.28)]"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#1F4E3D]/35 to-transparent" />
+              <div className="pointer-events-none absolute left-0 top-0 h-28 w-full bg-gradient-to-b from-[#1F4E3D]/[0.06] to-transparent" />
+
+              <div className="relative flex items-start justify-between gap-4 border-b border-neutral-100 px-6 pb-4 pt-6 sm:px-7 sm:pb-5 sm:pt-7">
+                <div className="min-w-0 pr-10">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2E5A43]">
+                    Настройка бренда
+                  </p>
+                  <h2 className="mt-2 text-xl font-semibold tracking-tight text-neutral-950">
+                    Параметры бренда
+                  </h2>
+                  <p className="mt-1.5 text-[13px] leading-snug text-neutral-500">
+                    Выберите раздел — откроется мастер на этом шаге. После сохранения вы вернётесь в профиль.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowBrandSettings(false)}
+                  className="absolute right-4 top-4 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 transition hover:border-[#1F4E3D]/25 hover:bg-[#1F4E3D]/[0.06] hover:text-[#1F4E3D]"
+                  aria-label="Закрыть"
+                >
+                  <X className="h-[18px] w-[18px]" strokeWidth={2} />
+                </button>
+              </div>
+
+              <div className="max-h-[min(432px,calc(100vh-300px))] overflow-y-auto overscroll-contain px-3 py-2">
+                <ul className="flex flex-col gap-0.5">
+                  {BRAND_SETTINGS_SECTIONS.map(({ label, hint, Icon }, index) => (
+                    <li key={label}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowBrandSettings(false);
+                          router.push(`/brand?edit=true&step=${index}`);
+                        }}
+                        className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-[#1F4E3D]/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F4E3D]/25 focus-visible:ring-offset-2 sm:px-3.5 sm:py-3.5"
+                      >
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-200/90 bg-neutral-50 text-[#2E5A43] transition group-hover:border-[#1F4E3D]/25 group-hover:bg-white group-hover:text-[#1F4E3D]">
+                          <Icon className="h-[1.05rem] w-[1.05rem]" strokeWidth={2} />
+                        </span>
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="flex items-baseline gap-2">
+                            <span className="text-[12px] font-medium tabular-nums text-neutral-400">
+                              {String(index + 1).padStart(2, "0")}
+                            </span>
+                            <span className="text-[15px] font-semibold tracking-tight text-neutral-900">
+                              {label}
+                            </span>
+                          </span>
+                          <span className="pl-[2rem] text-[12px] leading-snug text-neutral-500 text-pretty sm:pl-[2.125rem]">
+                            {hint}
+                          </span>
+                        </span>
+                        <ChevronRight
+                          className="h-[18px] w-[18px] shrink-0 text-neutral-300 transition-transform group-hover:translate-x-0.5 group-hover:text-[#1F4E3D]/60"
+                          strokeWidth={2}
+                        />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="space-y-2 border-t border-neutral-100 bg-neutral-50/70 px-6 py-4 sm:px-7">
+                <button
+                  type="button"
+                  onClick={() => setShowBrandSettings(false)}
+                  className="w-full rounded-xl border border-neutral-200 bg-white py-3 text-[14px] font-medium text-neutral-800 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-[#1F4E3D]/30 hover:bg-[#1F4E3D]/[0.04] hover:text-[#1F4E3D]"
+                >
+                  Закрыть
+                </button>
+                <button
+                  type="button"
+                  disabled={brandRestarting}
+                  onClick={() => setShowBrandResetConfirm(true)}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-white py-3 text-[14px] font-medium text-red-700 transition hover:border-red-300 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <RotateCcw className="h-4 w-4 shrink-0" strokeWidth={2} />
+                  {brandRestarting ? "Сброс…" : "Пройти заново"}
+                </button>
+                <p className="text-center text-[10px] leading-snug text-neutral-400">
+                  «Пройти заново» удаляет сохранённый бренд; дальше — полная настройка с нуля.
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showBrandResetConfirm ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget && !brandRestarting) {
+                setShowBrandResetConfirm(false);
+              }
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.96, opacity: 0, y: 10 }}
+              transition={{ type: "spring", damping: 34, stiffness: 420 }}
+              className="w-full max-w-[400px] overflow-hidden rounded-[1.25rem] border border-neutral-200/95 bg-white p-6 shadow-[0_28px_64px_-20px_rgba(15,23,42,0.35)]"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold tracking-tight text-neutral-950">Сбросить бренд?</h3>
+              <p className="mt-3 text-[14px] leading-relaxed text-neutral-600">
+                Имя, описание, цвета и логотип будут удалены — вы заново пройдёте настройку, как при первом сценарии.
+              </p>
+              <div className="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end sm:gap-3">
+                <button
+                  type="button"
+                  disabled={brandRestarting}
+                  onClick={() => setShowBrandResetConfirm(false)}
+                  className="rounded-xl border border-neutral-200 bg-white px-5 py-3 text-[14px] font-medium text-neutral-800 transition hover:border-[#1F4E3D]/30 hover:bg-[#1F4E3D]/[0.04] hover:text-[#1F4E3D] disabled:opacity-40"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={brandRestarting}
+                  onClick={() => void executeRestartBrandWizard()}
+                  className="inline-flex items-center justify-center rounded-xl border border-red-600/85 bg-red-600 px-5 py-3 text-[14px] font-semibold text-white shadow-[0_10px_28px_-14px_rgba(220,38,38,0.55)] transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {brandRestarting ? "Удаление…" : "Сбросить бренд"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
       </AnimatePresence>
 
       {/* Модалка: Изменить пароль */}

@@ -5,7 +5,10 @@ import { kieErrorToClient } from "@/lib/services/kie-ai-errors";
 import { getSubscriptionByUserId, getSubscriptionRowsByUserId } from "@/lib/subscription";
 
 /**
- * Свободная генерация изображений через KIE AI (nano-banana-2)
+ * Свободная генерация изображений через KIE AI.
+ * Модель задаётся глобально: `KIE_IMAGE_MODEL` (см. `getDefaultKieImageModel` в `lib/services/kie-ai.ts`).
+ * Откат на nano-banana-2: `KIE_IMAGE_MODEL=nano-banana-2` в `.env`.
+ *
  * Требуется подписка «Свободное творчество» и лимит генераций.
  */
 export async function POST(request: NextRequest) {

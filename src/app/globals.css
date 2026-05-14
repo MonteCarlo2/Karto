@@ -102,7 +102,120 @@
   z-index: 0;
 }
 
+@keyframes logo-cta-rainbow {
+  0% {
+    background-position: 0% 50%;
+    opacity: 0.72;
+  }
+  50% {
+    background-position: 100% 50%;
+    opacity: 0.98;
+  }
+  100% {
+    background-position: 200% 50%;
+    opacity: 0.72;
+  }
+}
+
+.logo-generate-cta {
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+}
+
+.logo-generate-cta::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -28%;
+  z-index: -1;
+  width: 78%;
+  height: 42%;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--color-1)),
+    hsl(var(--color-5)),
+    hsl(var(--color-3)),
+    hsl(var(--color-4)),
+    hsl(var(--color-2)),
+    hsl(var(--color-1))
+  );
+  background-size: 220% 100%;
+  filter: blur(18px);
+  animation: logo-cta-rainbow 4.2s linear infinite;
+  pointer-events: none;
+}
+
+/* Шаг логотипа бренда: плавные цикличные слоты генерации */
+@keyframes karto-logo-slot-wave {
+  0% {
+    transform: translate3d(-24%, -10%, 0);
+  }
+  100% {
+    transform: translate3d(24%, 10%, 0);
+  }
+}
+
+.karto-logo-gen-slot {
+  position: relative;
+  background: linear-gradient(135deg, #f3f1ea 0%, #ece8df 100%);
+  overflow: hidden;
+}
+
+.karto-logo-gen-slot::before,
+.karto-logo-gen-slot::after {
+  content: "";
+  position: absolute;
+  inset: -38%;
+  pointer-events: none;
+}
+
+.karto-logo-gen-slot::before {
+  background: linear-gradient(
+    120deg,
+    rgba(218, 246, 168, 0.05) 8%,
+    rgba(236, 252, 203, 0.88) 36%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(218, 246, 168, 0.62) 64%,
+    rgba(243, 241, 234, 0.05) 92%
+  );
+  animation: karto-logo-slot-wave 3.4s cubic-bezier(0.55, 0.08, 0.45, 0.92) infinite alternate;
+}
+
+.karto-logo-gen-slot::after {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.22) 44%,
+    rgba(218, 246, 168, 0.24) 58%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  animation: karto-logo-slot-wave 4.2s cubic-bezier(0.55, 0.08, 0.45, 0.92) infinite alternate-reverse;
+}
+
+.karto-logo-gen-slot-dark {
+  background: linear-gradient(135deg, #cec5b4 0%, #b8ae9e 100%);
+}
+
+.karto-logo-gen-slot-dark::before {
+  background: linear-gradient(
+    120deg,
+    rgba(190, 210, 144, 0.04) 10%,
+    rgba(203, 223, 159, 0.62) 34%,
+    rgba(236, 230, 217, 0.7) 50%,
+    rgba(174, 194, 136, 0.48) 66%,
+    rgba(199, 188, 169, 0.04) 90%
+  );
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .logo-generate-cta::before,
+  .karto-logo-gen-slot::before,
+  .karto-logo-gen-slot::after {
+    animation: none;
+  }
   .vote-nav-shimmer-btn::after {
     animation: none;
     opacity: 0;

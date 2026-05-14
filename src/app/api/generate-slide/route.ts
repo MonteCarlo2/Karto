@@ -309,7 +309,7 @@ ${scenarioPrompt}${environmentReference}${userDescription}
     console.log("  - Референс обстановки:", environmentImageUrl ? "да" : "нет");
     console.log("═══════════════════════════════════════");
     
-    // Генерируем через KIE (nano-banana-2)
+    // Генерируем через KIE (модель из KIE_IMAGE_MODEL)
     const finalAspectRatio = aspectRatio || "3:4";
     
     console.log("📐 Final Aspect Ratio:", finalAspectRatio);
