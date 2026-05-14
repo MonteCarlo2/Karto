@@ -266,7 +266,7 @@ export function BugReportModal({ isOpen, onClose, user }: BugReportModalProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[218]"
           />
 
           {/* Modal - панель справа как в AIORA */}
@@ -275,7 +275,7 @@ export function BugReportModal({ isOpen, onClose, user }: BugReportModalProps) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 400 }}
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col"
+            className="fixed right-0 top-0 bottom-0 z-[219] w-full max-w-md bg-white shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-full h-full overflow-hidden flex flex-col">

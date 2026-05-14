@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { Logo } from "@/components/ui/logo"
 import { ContactQuestionModal } from "@/components/ui/contact-question-modal"
 import { createBrowserClient } from "@/lib/supabase/client"
@@ -10,6 +11,8 @@ export function Footer() {
   const currentYear = 2026
   const [isContactOpen, setIsContactOpen] = useState(false)
   const [user, setUser] = useState<{ id: string; email?: string; user_metadata?: { name?: string; full_name?: string } } | null>(null)
+  const pathname = usePathname()
+  const hideOnFreeStudio = pathname === "/studio/free"
 
   useEffect(() => {
     let mounted = true
@@ -21,6 +24,10 @@ export function Footer() {
       .catch(() => {})
     return () => { mounted = false }
   }, [])
+
+  if (hideOnFreeStudio) {
+    return null
+  }
 
   return (
     <footer className="border-t border-neutral-200 bg-[#F5F5F0] noise-texture" suppressHydrationWarning>

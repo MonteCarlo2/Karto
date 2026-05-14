@@ -3,5 +3,9 @@
 import FreeGeneration from "@/components/studio/free-generation";
 
 export default function FreeGenerationPage() {
-  return <FreeGeneration />;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <FreeGeneration />
+    </div>
+  );
 }

@@ -109,7 +109,7 @@ export default function RootLayout({
           <AbortErrorSuppressor />
           <Navbar />
           <main
-            className="flex-grow flex flex-col w-full overflow-x-hidden"
+            className="flex min-h-0 flex-grow flex-col w-full overflow-x-hidden"
             style={{ maxWidth: "100vw" }}
           >
             {children}

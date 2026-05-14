@@ -2103,8 +2103,9 @@ export default function FreeGeneration() {
   };
 
   return (
+    <>
     <div
-      className="min-h-screen flex flex-col"
+      className="flex h-full min-h-0 max-h-full flex-col overflow-hidden"
       style={{
         backgroundImage: `
           linear-gradient(rgba(0, 0, 0, 0.02) 1px, transparent 1px),
@@ -2301,194 +2302,12 @@ export default function FreeGeneration() {
         </div>
       </div>
 
-      {user ? (
+      {/* Центральная область: лента — внутренний скролл (обёртка flex + wheel во вложенных flex) */}
+      <div className="relative min-h-0 flex-1 flex flex-col overflow-hidden">
         <div
-          className="profile-menu-container relative fixed z-50 flex w-max shrink-0 flex-col items-center gap-3"
-          style={{
-            top: "1.5rem",
-            right: "1.5rem",
-            left: "auto",
-            maxWidth: "min(22rem, calc(100vw - 19rem))",
-          }}
+          className="studio-feed-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-auto pt-8 pl-80 pr-10 pb-40 [-webkit-overflow-scrolling:touch]"
+          style={{ background: "transparent" }}
         >
-          <ProfileAvatarNewTag show={Boolean(profileUpdateBadge)}>
-            <button
-              type="button"
-              onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#2E5A43] transition-colors hover:bg-gray-100"
-              aria-label="Меню личного кабинета"
-              title={profileUpdateBadge ? "Новое в личном кабинете" : undefined}
-            >
-              <User className="h-5 w-5 text-foreground" />
-            </button>
-          </ProfileAvatarNewTag>
-          <AnimatePresence>
-            {showProfileMenu && (
-              <motion.div
-                initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                transition={{ duration: 0.2, ease: "easeOut" }}
-                className={`absolute right-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),238px)] ${NAV_DROPDOWN_PANEL}`}
-              >
-                  <Link
-                    href="/profile"
-                    className={cn(
-                      NAV_MENU_ROW_PROFILE,
-                      profileUpdateBadge && "items-start"
-                    )}
-                    onClick={() => {
-                      dismissProfileUpdateBadge();
-                      setShowProfileMenu(false);
-                    }}
-                  >
-                    <span className={NAV_MENU_ICON_WRAP} aria-hidden>
-                      <User className="h-4 w-4" strokeWidth={2} />
-                    </span>
-                    <div className="flex min-w-0 flex-1 flex-col items-start gap-0">
-                      <span className={NAV_PROFILE_LABEL}>Личный кабинет</span>
-                      {profileUpdateBadge ? <ProfileMenuUpdateCue /> : null}
-                    </div>
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    className={NAV_MENU_ROW_LOGOUT}
-                  >
-                    <span className={NAV_MENU_ICON_WRAP_LOGOUT} aria-hidden>
-                      <LogOut className="h-4 w-4" strokeWidth={2} />
-                    </span>
-                    <span className={NAV_LOGOUT_LABEL}>Выйти</span>
-                  </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-          <div className="flex flex-row items-end gap-3">
-            {creativeQuota && (
-              <div
-                className="w-fit px-1 py-1"
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  boxShadow: "none",
-                }}
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <span className="text-[10px] font-semibold tracking-wide uppercase" style={{ color: "rgba(0, 0, 0, 0.55)" }}>
-                    Генерации
-                  </span>
-                  <div
-                    className="relative w-7 h-24 rounded-full overflow-hidden"
-                    style={{
-                      background: "linear-gradient(180deg, rgba(226,232,240,0.9) 0%, rgba(203,213,225,0.65) 100%)",
-                      border: "1px solid rgba(15, 23, 42, 0.15)",
-                      boxShadow: "inset 0 2px 6px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(15,23,42,0.12)",
-                    }}
-                  >
-                    <div
-                      className="absolute inset-x-0 bottom-0 transition-all duration-500"
-                      style={{
-                        height: `${Math.max(0, Math.min(100, (creativeQuota.remaining / Math.max(1, creativeQuota.limit || 1)) * 100))}%`,
-                        background:
-                          creativeQuota.remaining > 0
-                            ? "linear-gradient(180deg, rgba(74,222,128,0.95) 0%, rgba(46,90,67,0.95) 100%)"
-                            : "linear-gradient(180deg, rgba(248,113,113,0.9) 0%, rgba(239,68,68,0.95) 100%)",
-                        boxShadow: "inset 0 1px 6px rgba(255,255,255,0.35), 0 0 8px rgba(46,90,67,0.25)",
-                      }}
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-[11px] font-bold leading-none" style={{ color: creativeQuota.remaining > 0 ? "#0f172a" : "#7f1d1d" }}>
-                        {creativeQuota.remaining}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-semibold leading-none" style={{ color: "#2E5A43", opacity: 0.9 }}>
-                    из {creativeQuota.limit}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div
-              className="w-fit px-1 py-1"
-              style={{
-                background: "transparent",
-                border: "none",
-                boxShadow: "none",
-              }}
-            >
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-[10px] font-semibold tracking-wide uppercase" style={{ color: "rgba(0, 0, 0, 0.55)" }}>
-                  Видео
-                </span>
-                <div
-                  className="relative w-7 h-24 rounded-full overflow-hidden"
-                  style={{
-                    background: "linear-gradient(180deg, rgba(226,232,240,0.9) 0%, rgba(203,213,225,0.65) 100%)",
-                    border: "1px solid rgba(163, 230, 53, 0.35)",
-                    boxShadow: "inset 0 2px 6px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(101,163,13,0.15)",
-                  }}
-                >
-                  <div
-                    className="absolute inset-x-0 bottom-0 transition-all duration-500"
-                    style={{
-                      /* Доля от «пакета» (lifetime / текущий баланс как максимум) — полная капсула при полном балансе */
-                      height: `${videoTokenBalance <= 0 ? 0 : Math.min(100, Math.round((videoTokenBalance / Math.max(1, videoTokenCap)) * 100))}%`,
-                      background:
-                        videoTokenBalance > 0
-                          ? "linear-gradient(180deg, #D9F99D 0%, #84CC16 55%, #65A30D 100%)"
-                          : "linear-gradient(180deg, rgba(248,113,113,0.35) 0%, rgba(239,68,68,0.5) 100%)",
-                      boxShadow: "inset 0 1px 6px rgba(255,255,255,0.45), 0 0 10px rgba(132,204,22,0.35)",
-                    }}
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center px-0.5">
-                    <span
-                      className="text-[10px] font-bold leading-none text-center"
-                      style={{ color: videoTokenBalance > 0 ? "#14532d" : "#7f1d1d" }}
-                    >
-                      {videoTokenBalance > 9999
-                        ? `${Math.round(videoTokenBalance / 100) / 10}k`
-                        : videoTokenBalance}
-                    </span>
-                  </div>
-                </div>
-                <span className="text-[9px] font-semibold leading-none text-center max-w-[4.5rem]" style={{ color: "#4d7c0f", opacity: 0.95 }}>
-                  {videoTokenCap > 0
-                    ? `из ${videoTokenCap > 9999 ? `${Math.round(videoTokenCap / 100) / 10}k` : videoTokenCap}`
-                    : "токены"}
-                </span>
-              </div>
-            </div>
-          </div>
-          {mediaMode === "video" && (
-            <VideoGenerationGuideTrigger
-              onOpen={handleOpenVideoGuide}
-              highlight={shouldHighlightVideoGuide}
-            />
-          )}
-          {mediaMode === "photo" && (
-            <PhotoGenerationGuideTrigger
-              onOpen={handleOpenPhotoGuide}
-              highlight={shouldHighlightPhotoGuide}
-            />
-          )}
-        </div>
-      ) : (
-        <Link
-          href="/login"
-          className="fixed z-50 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-[#2E5A43] transition-colors hover:bg-gray-100"
-          style={{ top: "1.5rem", right: "1.5rem", left: "auto" }}
-          aria-label="Войти"
-        >
-          <User className="w-5 h-5 text-foreground" />
-        </Link>
-      )}
-
-      {/* Центральная область: Canvas с сетчатым фоном */}
-      <div
-        className="flex-1 flex items-start pt-8 pl-80 pr-10 pb-40 relative overflow-y-auto"
-        style={{ background: "transparent" }}
-      >
         {activeSlideId !== null && hasLoadedFeed && (() => {
           const activeSlide = slides.find(s => s.id === activeSlideId);
           if (!activeSlide) return null;
@@ -2927,6 +2746,7 @@ export default function FreeGeneration() {
             </div>
           );
         })()}
+      </div>
       </div>
       
       {/* Нижняя панель: Unified Command Capsule - всегда на месте */}
@@ -4701,5 +4521,195 @@ export default function FreeGeneration() {
         onClose={() => setIsPhotoGuideOpen(false)}
       />
     </div>
+
+    {user ? (
+      <div className="fixed top-6 right-6 z-[110] flex w-max max-w-[min(22rem,calc(100vw-2rem))] flex-col items-center gap-3 pointer-events-auto">
+        <div className="profile-menu-container relative flex flex-col items-center">
+          <ProfileAvatarNewTag show={Boolean(profileUpdateBadge)}>
+            <button
+              type="button"
+              onClick={() => setShowProfileMenu(!showProfileMenu)}
+              className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#2E5A43] transition-colors hover:bg-gray-100"
+              aria-label="Меню личного кабинета"
+              title={profileUpdateBadge ? "Новое в личном кабинете" : undefined}
+            >
+              <User className="h-5 w-5 text-foreground" />
+            </button>
+          </ProfileAvatarNewTag>
+          <AnimatePresence>
+            {showProfileMenu && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className={`absolute right-0 top-full z-[115] mt-2 w-[min(calc(100vw-2rem),238px)] ${NAV_DROPDOWN_PANEL}`}
+              >
+              <Link
+                href="/profile"
+                className={cn(NAV_MENU_ROW_PROFILE, profileUpdateBadge && "items-start")}
+                onClick={() => {
+                  dismissProfileUpdateBadge();
+                  setShowProfileMenu(false);
+                }}
+              >
+                <span className={NAV_MENU_ICON_WRAP} aria-hidden>
+                  <User className="h-4 w-4" strokeWidth={2} />
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col items-start gap-0">
+                  <span className={NAV_PROFILE_LABEL}>Личный кабинет</span>
+                  {profileUpdateBadge ? <ProfileMenuUpdateCue /> : null}
+                </div>
+              </Link>
+              <button type="button" onClick={handleLogout} className={NAV_MENU_ROW_LOGOUT}>
+                <span className={NAV_MENU_ICON_WRAP_LOGOUT} aria-hidden>
+                  <LogOut className="h-4 w-4" strokeWidth={2} />
+                </span>
+                <span className={NAV_LOGOUT_LABEL}>Выйти</span>
+              </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+        <div className="flex flex-row items-end gap-3">
+          {creativeQuota && (
+            <div
+              className="w-fit px-1 py-1"
+              style={{
+                background: "transparent",
+                border: "none",
+                boxShadow: "none",
+              }}
+            >
+              <div className="flex flex-col items-center gap-1">
+                <span
+                  className="text-[10px] font-semibold tracking-wide uppercase"
+                  style={{ color: "rgba(0, 0, 0, 0.55)" }}
+                >
+                  Генерации
+                </span>
+                <div
+                  className="relative w-7 h-24 rounded-full overflow-hidden"
+                  style={{
+                    background:
+                      "linear-gradient(180deg, rgba(226,232,240,0.9) 0%, rgba(203,213,225,0.65) 100%)",
+                    border: "1px solid rgba(15, 23, 42, 0.15)",
+                    boxShadow:
+                      "inset 0 2px 6px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(15,23,42,0.12)",
+                  }}
+                >
+                  <div
+                    className="absolute inset-x-0 bottom-0 transition-all duration-500"
+                    style={{
+                      height: `${Math.max(0, Math.min(100, (creativeQuota.remaining / Math.max(1, creativeQuota.limit || 1)) * 100))}%`,
+                      background:
+                        creativeQuota.remaining > 0
+                          ? "linear-gradient(180deg, rgba(74,222,128,0.95) 0%, rgba(46,90,67,0.95) 100%)"
+                          : "linear-gradient(180deg, rgba(248,113,113,0.9) 0%, rgba(239,68,68,0.95) 100%)",
+                      boxShadow:
+                        "inset 0 1px 6px rgba(255,255,255,0.35), 0 0 8px rgba(46,90,67,0.25)",
+                    }}
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span
+                      className="text-[11px] font-bold leading-none"
+                      style={{ color: creativeQuota.remaining > 0 ? "#0f172a" : "#7f1d1d" }}
+                    >
+                      {creativeQuota.remaining}
+                    </span>
+                  </div>
+                </div>
+                <span
+                  className="text-[10px] font-semibold leading-none"
+                  style={{ color: "#2E5A43", opacity: 0.9 }}
+                >
+                  из {creativeQuota.limit}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div
+            className="w-fit px-1 py-1"
+            style={{
+              background: "transparent",
+              border: "none",
+              boxShadow: "none",
+            }}
+          >
+            <div className="flex flex-col items-center gap-1">
+              <span
+                className="text-[10px] font-semibold tracking-wide uppercase"
+                style={{ color: "rgba(0, 0, 0, 0.55)" }}
+              >
+                Видео
+              </span>
+              <div
+                className="relative w-7 h-24 rounded-full overflow-hidden"
+                style={{
+                  background:
+                    "linear-gradient(180deg, rgba(226,232,240,0.9) 0%, rgba(203,213,225,0.65) 100%)",
+                  border: "1px solid rgba(163, 230, 53, 0.35)",
+                  boxShadow:
+                    "inset 0 2px 6px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(101,163,13,0.15)",
+                }}
+              >
+                <div
+                  className="absolute inset-x-0 bottom-0 transition-all duration-500"
+                  style={{
+                    height: `${videoTokenBalance <= 0 ? 0 : Math.min(100, Math.round((videoTokenBalance / Math.max(1, videoTokenCap)) * 100))}%`,
+                    background:
+                      videoTokenBalance > 0
+                        ? "linear-gradient(180deg, #D9F99D 0%, #84CC16 55%, #65A30D 100%)"
+                        : "linear-gradient(180deg, rgba(248,113,113,0.35) 0%, rgba(239,68,68,0.5) 100%)",
+                    boxShadow:
+                      "inset 0 1px 6px rgba(255,255,255,0.45), 0 0 10px rgba(132,204,22,0.35)",
+                  }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center px-0.5">
+                  <span
+                    className="text-[10px] font-bold leading-none text-center"
+                    style={{ color: videoTokenBalance > 0 ? "#14532d" : "#7f1d1d" }}
+                  >
+                    {videoTokenBalance > 9999
+                      ? `${Math.round(videoTokenBalance / 100) / 10}k`
+                      : videoTokenBalance}
+                  </span>
+                </div>
+              </div>
+              <span
+                className="text-[9px] font-semibold leading-none text-center max-w-[4.5rem]"
+                style={{ color: "#4d7c0f", opacity: 0.95 }}
+              >
+                {videoTokenCap > 0
+                  ? `из ${videoTokenCap > 9999 ? `${Math.round(videoTokenCap / 100) / 10}k` : videoTokenCap}`
+                  : "токены"}
+              </span>
+            </div>
+          </div>
+        </div>
+        {mediaMode === "video" && (
+          <VideoGenerationGuideTrigger
+            onOpen={handleOpenVideoGuide}
+            highlight={shouldHighlightVideoGuide}
+          />
+        )}
+        {mediaMode === "photo" && (
+          <PhotoGenerationGuideTrigger
+            onOpen={handleOpenPhotoGuide}
+            highlight={shouldHighlightPhotoGuide}
+          />
+        )}
+      </div>
+    ) : (
+      <Link
+        href="/login"
+        className="fixed top-6 right-6 z-[110] flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-[#2E5A43] transition-colors hover:bg-gray-100"
+        aria-label="Войти"
+      >
+        <User className="w-5 h-5 text-foreground" />
+      </Link>
+    )}
+    </>
   );
 }

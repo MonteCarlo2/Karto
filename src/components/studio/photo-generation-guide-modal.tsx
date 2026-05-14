@@ -45,7 +45,7 @@ export function PhotoGenerationGuideModal({ isOpen, onClose }: PhotoGenerationGu
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-[52] bg-black/50 backdrop-blur-sm"
+            className="fixed inset-0 z-[220] bg-black/50 backdrop-blur-sm"
           />
 
           <motion.div
@@ -56,7 +56,7 @@ export function PhotoGenerationGuideModal({ isOpen, onClose }: PhotoGenerationGu
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 420 }}
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className="fixed right-0 top-0 bottom-0 z-[53] flex w-full max-w-xl flex-col bg-[#FAFAF8] font-sans antialiased shadow-[-12px_0_48px_rgba(15,23,42,0.18)]"
+            className="fixed right-0 top-0 bottom-0 z-[221] flex w-full max-w-xl flex-col bg-[#FAFAF8] font-sans antialiased shadow-[-12px_0_48px_rgba(15,23,42,0.18)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex h-full min-h-0 flex-col">
