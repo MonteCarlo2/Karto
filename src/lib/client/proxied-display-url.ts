@@ -15,8 +15,13 @@ function configuredAppOrigin(): string | null {
   }
 }
 
-function proxyPathFor(encodedUrl: string): string {
-  return `/api/media/proxy-display?u=${encodedUrl}`;
+function proxyPathFor(encodedUrl: string, displayMaxWidth?: number): string {
+  let path = `/api/media/proxy-display?u=${encodedUrl}`;
+  if (typeof displayMaxWidth === "number" && displayMaxWidth > 0) {
+    const mw = Math.min(2048, Math.max(64, Math.round(displayMaxWidth)));
+    path += `&mw=${mw}`;
+  }
+  return path;
 }
 
 function isExistingProxy(displayUrl: string): boolean {
@@ -37,8 +42,16 @@ function isExistingProxy(displayUrl: string): boolean {
   return false;
 }
 
+export type ProxiedHttpsMediaUrlOptions = {
+  /** Прокси уменьшает растровое изображение (меньше байт для галереи); лайтбокс без этого. */
+  maxDisplayWidth?: number;
+};
+
 /** Абсолютный или относительный URL для отображения в UI (<img>/<video src>). */
-export function proxiedHttpsMediaUrl(raw: string): string {
+export function proxiedHttpsMediaUrl(
+  raw: string,
+  opts?: ProxiedHttpsMediaUrlOptions
+): string {
   const t = typeof raw === "string" ? raw.trim() : "";
   if (!t || isExistingProxy(t)) return t;
 
@@ -66,7 +79,7 @@ export function proxiedHttpsMediaUrl(raw: string): string {
      * Раньше на сервере без NEXT_PUBLIC_APP_URL подставлялся прямой CDN URL — браузер
      * сначала грузил его (дубль + ошибки Chromium PNA/CORS), уже потом клиент мог перейти на прокси.
      */
-    return proxyPathFor(encoded);
+    return proxyPathFor(encoded, opts?.maxDisplayWidth);
   } catch {
     return t;
   }

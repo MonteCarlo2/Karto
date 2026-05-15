@@ -3,6 +3,7 @@
 import type { ImgHTMLAttributes, SyntheticEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { proxiedHttpsMediaUrl } from "@/lib/client/proxied-display-url";
+import { withServeFilePreviewParam } from "@/lib/client/gallery-display-url";
 
 /** Документ с «частного» origin (localhost, LAN): прямой https к публичному CDN в Chromium ломается (PNA). */
 function isNonPublicDocumentHost(): boolean {
@@ -30,29 +31,43 @@ function isHttpsRemoteUrl(url: string): boolean {
   }
 }
 
-/** Совпадает с логикой free-generation для /api/serve-file */
-function withServeFilePreviewParam(url: string): string {
-  if (typeof url !== "string" || !url.includes("/api/serve-file")) return url;
-  const sep = url.includes("?") ? "&" : "?";
-  return `${url}${sep}w=400`;
-}
-
-export type GalleryProxiedImgProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> & {
+export type GalleryProxiedImgProps = Omit<
+  ImgHTMLAttributes<HTMLImageElement>,
+  "src"
+> & {
   remoteUrl: string;
+  /**
+   * > 0 — прокси уменьшает превью (меньше байт, быстрее сетка).
+   * Не задавать или 0 — полное разрешение через прокси (лайтбокс).
+   */
+  previewMaxWidth?: number;
 };
 
 /**
  * Галерея: сначала same-origin прокси (обход Chromium PNA/CORS на CDN),
- * при ошибке — прямой URL (локальный dev без VPN может тянуть прокси и CDN по-разному).
+ * при ошибке — прямой URL там, где браузер это допускает.
  */
 export function GalleryProxiedImg({
   remoteUrl,
   alt = "",
   onError,
+  previewMaxWidth,
   ...rest
 }: GalleryProxiedImgProps) {
-  const prepared = useMemo(() => withServeFilePreviewParam(remoteUrl.trim()), [remoteUrl]);
-  const proxied = useMemo(() => proxiedHttpsMediaUrl(prepared), [prepared]);
+  const prepared = useMemo(
+    () => withServeFilePreviewParam(remoteUrl.trim()),
+    [remoteUrl]
+  );
+  const proxied = useMemo(
+    () =>
+      proxiedHttpsMediaUrl(
+        prepared,
+        typeof previewMaxWidth === "number" && previewMaxWidth > 0
+          ? { maxDisplayWidth: previewMaxWidth }
+          : undefined
+      ),
+    [prepared, previewMaxWidth]
+  );
 
   const chain = useMemo(() => {
     const list: string[] = [];
@@ -69,7 +84,7 @@ export function GalleryProxiedImg({
 
   useEffect(() => {
     setIdx(0);
-  }, [remoteUrl]);
+  }, [remoteUrl, previewMaxWidth]);
 
   const src = chain[Math.min(idx, Math.max(chain.length - 1, 0))] ?? "";
 

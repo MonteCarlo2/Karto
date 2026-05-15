@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import sharp from "sharp";
 import { isAllowedRemoteMediaUrl } from "@/lib/media/allowed-remote-media-url";
 
 /** Явный Node — стабильный stream/fetch для долгих ответов CDN. */
@@ -39,6 +40,15 @@ export async function GET(request: NextRequest) {
 
   if (decoded.length > 15000) {
     return NextResponse.json({ error: "URL слишком длинный" }, { status: 400 });
+  }
+
+  const mwParam = request.nextUrl.searchParams.get("mw");
+  let displayMaxWidth = 0;
+  if (mwParam !== null && mwParam !== "") {
+    const parsed = Number.parseInt(mwParam, 10);
+    if (Number.isFinite(parsed)) {
+      displayMaxWidth = Math.min(2048, Math.max(64, parsed));
+    }
   }
 
   const upstreamFetchMs = Math.min(
@@ -122,13 +132,44 @@ export async function GET(request: NextRequest) {
     if (buf.byteLength > IMAGE_BUFFER_CAP) {
       return NextResponse.json({ error: "Файл слишком большой" }, { status: 413 });
     }
-    const ctTrim = upstreamCt.split(";")[0].trim();
-    return new NextResponse(buf, {
+
+    let ctTrim = upstreamCt.split(";")[0].trim();
+    let bytes: Uint8Array = new Uint8Array(buf);
+    let cacheCtrl =
+      displayMaxWidth > 0
+        ? "public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400"
+        : "public, max-age=3600, s-maxage=3600";
+
+    if (displayMaxWidth > 0) {
+      const isGif = ctLower.includes("gif");
+      const isSvg = ctLower.includes("svg");
+      if (!isGif && !isSvg && buf.byteLength > 2048) {
+        try {
+          const meta = await sharp(Buffer.from(bytes)).metadata();
+          const w = meta.width ?? 0;
+          if (w > displayMaxWidth) {
+            const resized = await sharp(Buffer.from(bytes))
+              .resize({ width: displayMaxWidth, withoutEnlargement: true })
+              .webp({ quality: 88, alphaQuality: 92, effort: 3 })
+              .toBuffer();
+            bytes = new Uint8Array(resized);
+            ctTrim = "image/webp";
+          }
+        } catch (e) {
+          console.warn("[proxy-display] sharp:", e);
+          bytes = new Uint8Array(buf);
+          ctTrim = upstreamCt.split(";")[0].trim();
+          cacheCtrl = "public, max-age=3600, s-maxage=3600";
+        }
+      }
+    }
+
+    return new NextResponse(Buffer.from(bytes), {
       status: 200,
       headers: {
         "Content-Type": ctTrim,
-        "Content-Length": String(buf.byteLength),
-        "Cache-Control": "public, max-age=3600, s-maxage=3600",
+        "Content-Length": String(bytes.byteLength),
+        "Cache-Control": cacheCtrl,
       },
     });
   }

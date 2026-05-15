@@ -16,6 +16,11 @@ import {
 } from "@/lib/brand/free-creativity-brand-prompt";
 import { triggerDownloadFromRemoteUrl } from "@/lib/client/media-download";
 import { proxiedHttpsMediaUrl } from "@/lib/client/proxied-display-url";
+import {
+  galleryGridProxiedUrl,
+  GALLERY_GRID_PROXY_MAX_WIDTH,
+  GALLERY_REFERENCE_PROXY_MAX_WIDTH,
+} from "@/lib/client/gallery-display-url";
 import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
 import { useToast } from "@/components/ui/toast";
 import { 
@@ -2044,6 +2049,51 @@ export default function FreeGeneration() {
     }
   }, [hasLoadedFeed, slides, activeSlideId]);
 
+  /** Прогрев кэша превью сетки (те же URL с ?mw=…), чтобы параллельно подготовить байты до отрисовки. */
+  useEffect(() => {
+    if (typeof window === "undefined" || !hasLoadedFeed) return;
+    const slide = slides.find((s) => s.id === activeSlideId);
+    if (!slide?.variants?.length) return;
+
+    const hrefs: string[] = [];
+    for (const v of slide.variants) {
+      if (hrefs.length >= 28) break;
+      const url = typeof v.url === "string" ? v.url.trim() : "";
+      if (!url) continue;
+      if (v.mediaType === "video") continue;
+      hrefs.push(galleryGridProxiedUrl(url));
+    }
+    if (hrefs.length === 0) return;
+
+    let cancelled = false;
+    const kickoff = () => {
+      if (cancelled) return;
+      hrefs.forEach((href, idx) => {
+        window.setTimeout(() => {
+          if (cancelled) return;
+          const img = document.createElement("img");
+          img.decoding = "async";
+          img.fetchPriority = idx < 10 ? "high" : "low";
+          img.src = href;
+        }, idx * 10);
+      });
+    };
+
+    const ric = window.requestIdleCallback;
+    if (typeof ric === "function") {
+      const id = ric.call(window, kickoff, { timeout: 2500 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback?.(id);
+      };
+    }
+    const tid = window.setTimeout(kickoff, 64);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(tid);
+    };
+  }, [slides, activeSlideId, hasLoadedFeed]);
+
   // Закрытие видео-меню по клику вне него
   useEffect(() => {
     if (!videoModeOpen) return;
@@ -2531,6 +2581,7 @@ export default function FreeGeneration() {
                       ) : (
                         <GalleryProxiedImg
                           remoteUrl={variant.url}
+                          previewMaxWidth={GALLERY_GRID_PROXY_MAX_WIDTH}
                           alt={`Вариант ${index + 1}`}
                           className="w-full h-full object-cover rounded-lg"
                           width={baseWidth}
@@ -3538,6 +3589,7 @@ export default function FreeGeneration() {
                           <div className="relative w-full h-full rounded-2xl overflow-hidden border border-gray-300 bg-white">
                             <GalleryProxiedImg
                               remoteUrl={img}
+                              previewMaxWidth={GALLERY_REFERENCE_PROXY_MAX_WIDTH}
                               alt={`Референс ${index + 1}`}
                               className="w-full h-full object-cover"
                               loading="lazy"
@@ -3568,6 +3620,7 @@ export default function FreeGeneration() {
                             <div className="relative rounded-2xl overflow-hidden border-2 border-gray-300 bg-gray-100 shadow-2xl">
                               <GalleryProxiedImg
                                 remoteUrl={img}
+                                previewMaxWidth={GALLERY_REFERENCE_PROXY_MAX_WIDTH}
                                 alt={`Референс ${index + 1} увеличенный`}
                                 className="block max-w-[320px] max-h-[384px] w-auto h-auto"
                                 style={{ display: "block" }}
