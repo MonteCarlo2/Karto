@@ -13,6 +13,9 @@ export const GALLERY_GRID_PROXY_MAX_WIDTH = 1152;
 /** Мини-превью референсов в нижней панели */
 export const GALLERY_REFERENCE_PROXY_MAX_WIDTH = 480;
 
+/** Маленькие превью в шапке студии (цена, описание и т.п.) */
+export const GALLERY_THUMB_PROXY_MAX_WIDTH = 256;
+
 /** Быстрое превью в сетке: прокси уменьшает и отдаёт WebP (лайтбокс — без этого). */
 export function galleryGridProxiedUrl(remoteUrl: string): string {
   const prepared = withServeFilePreviewParam(remoteUrl.trim());

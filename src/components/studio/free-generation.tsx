@@ -684,6 +684,8 @@ export default function FreeGeneration() {
   // Состояние для левой панели и режимов
   const [activeLibraryTab, setActiveLibraryTab] = useState<"my-creativity" | "favorites">("my-creativity");
   const [favoriteImages, setFavoriteImages] = useState<string[]>([]);
+  /** Скачивание вариантов: спиннер только на нажатой карточке; разные файлы — параллельно. */
+  const [mediaDownloadBusyKeys, setMediaDownloadBusyKeys] = useState<string[]>([]);
   // Инициализируем из localStorage — чтобы режим сохранялся после перезагрузки
   // Важно: не читаем localStorage во время SSR/первого рендера, чтобы не ловить hydration-mismatch.
   // Читаем localStorage после mount.
@@ -2701,14 +2703,30 @@ export default function FreeGeneration() {
                         
                         {/* Кнопка скачивания */}
                         <button
+                          type="button"
                           onClick={async (e) => {
                             e.stopPropagation();
+                            const busyKey = `${variant.url}::${index}`;
+                            if (mediaDownloadBusyKeys.includes(busyKey)) return;
+                            setMediaDownloadBusyKeys((prev) =>
+                              prev.includes(busyKey) ? prev : [...prev, busyKey]
+                            );
+                            showToast({
+                              type: "info",
+                              message:
+                                "Готовим файл к скачиванию… Это может занять несколько секунд.",
+                              durationMs: 5000,
+                            });
                             const base = `karto-${variant.mediaType === "video" ? "video" : "slide"}-${Date.now()}`;
                             try {
                               await triggerDownloadFromRemoteUrl({
                                 url: variant.url,
                                 mediaType: variant.mediaType === "video" ? "video" : "image",
                                 filenameBase: base,
+                                onFinally: () =>
+                                  setMediaDownloadBusyKeys((prev) =>
+                                    prev.filter((k) => k !== busyKey)
+                                  ),
                               });
                             } catch (error: unknown) {
                               console.warn("Ошибка скачивания:", error);
@@ -2721,10 +2739,17 @@ export default function FreeGeneration() {
                               });
                             }
                           }}
-                          className="p-2 hover:opacity-80 transition-opacity"
+                          disabled={mediaDownloadBusyKeys.includes(
+                            `${variant.url}::${index}`
+                          )}
+                          className="p-2 hover:opacity-80 transition-opacity disabled:opacity-50 disabled:pointer-events-none"
                           title={variant.mediaType === "video" ? "Скачать видео" : "Скачать изображение"}
                         >
-                          <Download className="w-5 h-5 text-white drop-shadow-lg" />
+                          {mediaDownloadBusyKeys.includes(`${variant.url}::${index}`) ? (
+                            <Loader2 className="w-5 h-5 text-white drop-shadow-lg animate-spin" />
+                          ) : (
+                            <Download className="w-5 h-5 text-white drop-shadow-lg" />
+                          )}
                         </button>
                       </div>
                     </div>

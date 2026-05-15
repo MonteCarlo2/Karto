@@ -2,12 +2,17 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Check, Download, Copy } from "lucide-react";
+import { Check, Download, Copy, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { triggerDownloadFromRemoteUrl } from "@/lib/client/media-download";
 import type { PriceAnalysis } from "@/lib/services/price-analyzer";
 import { formatForCopy } from "@/lib/utils/marketplace-formatter";
 import { ResultsProductDescription } from "@/components/studio/ProductDescriptionDisplay";
+import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
+import {
+  GALLERY_GRID_PROXY_MAX_WIDTH,
+} from "@/lib/client/gallery-display-url";
+import { useToast } from "@/components/ui/toast";
 
 interface VisualSlide {
   id: number;
@@ -20,6 +25,7 @@ interface VisualSlide {
 
 export default function ResultsPage() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [productName, setProductName] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -27,6 +33,7 @@ export default function ResultsPage() {
   const [priceAnalysis, setPriceAnalysis] = useState<PriceAnalysis | null>(null);
   const [visualSlides, setVisualSlides] = useState<VisualSlide[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [downloadBusyKey, setDownloadBusyKey] = useState<string | null>(null);
 
   // Скрываем navbar и footer на этой странице
   useEffect(() => {
@@ -210,17 +217,28 @@ export default function ResultsPage() {
   // Скачивание изображения
   const handleDownloadImage = async (imageUrl: string, index: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    const key = `${imageUrl}::${index}`;
+    if (downloadBusyKey) return;
+    setDownloadBusyKey(key);
+    showToast({
+      type: "info",
+      message: "Готовим файл к скачиванию…",
+      durationMs: 5000,
+    });
     try {
       await triggerDownloadFromRemoteUrl({
         url: imageUrl,
         mediaType: "image",
         filenameBase: `karto-visual-${index + 1}`,
+        onFinally: () => setDownloadBusyKey(null),
       });
     } catch (error) {
       console.warn("Ошибка скачивания:", error);
-      alert(
-        error instanceof Error ? error.message : "Ошибка при скачивании изображения"
-      );
+      showToast({
+        type: "error",
+        message:
+          error instanceof Error ? error.message : "Ошибка при скачивании изображения",
+      });
     }
   };
 
@@ -395,8 +413,9 @@ export default function ResultsPage() {
                   <div className="flex-1 relative group rounded-lg overflow-hidden">
                     {/* Слой 1: Фоновое Размытие (Ambient Layer) - плавное затухание до карточек справа */}
                     <div className="absolute inset-0 overflow-visible">
-                      <img
-                        src={activeImage ?? ""}
+                      <GalleryProxiedImg
+                        remoteUrl={activeImage ?? ""}
+                        previewMaxWidth={480}
                         alt=""
                         className="absolute inset-0 w-full h-full object-cover blur-3xl"
                         style={{
@@ -404,8 +423,7 @@ export default function ResultsPage() {
                           transformOrigin: "center",
                           opacity: 0.6,
                         }}
-                        aria-hidden="true"
-                        suppressHydrationWarning
+                        aria-hidden
                       />
                       <div
                         className="absolute inset-0 pointer-events-none"
@@ -418,20 +436,26 @@ export default function ResultsPage() {
 
                     {/* Слой 2: Четкое Изображение (Foreground Layer) */}
                     <div className="relative z-10 h-full w-full flex items-center justify-center p-4">
-                      <img
-                        src={activeImage ?? ""}
+                      <GalleryProxiedImg
+                        remoteUrl={activeImage ?? ""}
+                        previewMaxWidth={GALLERY_GRID_PROXY_MAX_WIDTH}
                         alt={productName}
                         className="max-h-[90%] max-w-[90%] w-auto h-auto object-contain drop-shadow-2xl"
-                        suppressHydrationWarning
                       />
                     </div>
 
                     {/* Кнопка скачать в углу */}
                     <div
-                      onClick={(e) => { if (activeImage != null) handleDownloadImage(activeImage, activeImageIndex, e); }}
-                      className="absolute top-3 right-3 w-10 h-10 bg-white/95 hover:bg-white rounded-full flex items-center justify-center shadow-lg transition-all opacity-0 group-hover:opacity-100 z-20 cursor-pointer"
+                      onClick={(e) => {
+                        if (activeImage != null) handleDownloadImage(activeImage, activeImageIndex, e);
+                      }}
+                      className={`absolute top-3 right-3 w-10 h-10 bg-white/95 hover:bg-white rounded-full flex items-center justify-center shadow-lg transition-all opacity-0 group-hover:opacity-100 z-20 cursor-pointer ${downloadBusyKey ? "opacity-100 pointer-events-none" : ""}`}
                     >
-                      <Download className="w-5 h-5 text-gray-900" />
+                      {downloadBusyKey === `${activeImage}::${activeImageIndex}` ? (
+                        <Loader2 className="w-5 h-5 text-gray-900 animate-spin" />
+                      ) : (
+                        <Download className="w-5 h-5 text-gray-900" />
+                      )}
                     </div>
                   </div>
 
@@ -448,11 +472,11 @@ export default function ResultsPage() {
                         }`}
                         suppressHydrationWarning
                       >
-                        <img
-                          src={img}
+                        <GalleryProxiedImg
+                          remoteUrl={img}
+                          previewMaxWidth={320}
                           alt={`${productName} ${index + 1}`}
                           className="w-full h-full object-cover"
-                          suppressHydrationWarning
                         />
                         {/* Кнопка скачать в углу */}
                         <div
@@ -460,9 +484,13 @@ export default function ResultsPage() {
                             e.stopPropagation();
                             handleDownloadImage(img, index, e);
                           }}
-                          className="absolute top-1.5 right-1.5 w-7 h-7 bg-white/95 hover:bg-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10"
+                          className={`absolute top-1.5 right-1.5 w-7 h-7 bg-white/95 hover:bg-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10 ${downloadBusyKey ? "opacity-100" : ""}`}
                         >
-                          <Download className="w-3.5 h-3.5 text-gray-900" />
+                          {downloadBusyKey === `${img}::${index}` ? (
+                            <Loader2 className="w-3.5 h-3.5 text-gray-900 animate-spin" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5 text-gray-900" />
+                          )}
                         </div>
                       </div>
                     ))}

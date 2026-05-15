@@ -24,6 +24,11 @@ import {
   Scale
 } from "lucide-react";
 import Image from "next/image";
+import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
+import {
+  GALLERY_REFERENCE_PROXY_MAX_WIDTH,
+  GALLERY_THUMB_PROXY_MAX_WIDTH,
+} from "@/lib/client/gallery-display-url";
 import { useRouter } from "next/navigation";
 import {
   checkStopWords,
@@ -604,26 +609,23 @@ export default function DescriptionPage() {
                         background: "#ffffff",
                       }}
                     >
-                      <Image
-                        src={photoUrl}
+                      <GalleryProxiedImg
+                        remoteUrl={photoUrl}
                         alt={productName}
-                        width={180}
-                        height={180}
+                        previewMaxWidth={GALLERY_REFERENCE_PROXY_MAX_WIDTH}
                         className="object-cover"
                         style={{
                           width: "100%",
                           height: "100%",
                           objectFit: "cover",
                         }}
-                        unoptimized
                       />
                     </div>
                   </div>
-                  <Image
-                    src={photoUrl}
+                  <GalleryProxiedImg
+                    remoteUrl={photoUrl}
                     alt={productName}
-                    width={60}
-                    height={60}
+                    previewMaxWidth={GALLERY_THUMB_PROXY_MAX_WIDTH}
                     className="rounded-lg object-cover transition-transform duration-300 group-hover:scale-105"
                     style={{
                       width: "60px",
@@ -631,7 +633,6 @@ export default function DescriptionPage() {
                       objectFit: "cover",
                       cursor: "zoom-in",
                     }}
-                    unoptimized
                   />
                 </div>
               )}

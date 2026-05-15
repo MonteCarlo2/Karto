@@ -46,11 +46,15 @@ import {
   mergeFreeCreativityPrompt,
 } from "@/lib/brand/free-creativity-brand-prompt";
 import { fetchUserBrandOnboarding } from "@/lib/brand/user-brand-onboarding-db";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { BugReportModal } from "@/components/ui/bug-report-modal";
 import { useToast } from "@/components/ui/toast";
+import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
+import {
+  GALLERY_GRID_PROXY_MAX_WIDTH,
+  GALLERY_REFERENCE_PROXY_MAX_WIDTH,
+} from "@/lib/client/gallery-display-url";
 
 /** 4 слота вариантов; null = нет картинки (ожидание / сбой). Старые сохранения без null дополняем. */
 function normalizeVisualCardSlots(raw: unknown): (string | null)[] {
@@ -501,13 +505,12 @@ function CardModal({
             >
               <div className="relative w-full h-full flex items-center justify-center">
                 <div className="relative max-w-full max-h-[85vh]">
-                  <Image
-                    src={imageUrl}
+                  <GalleryProxiedImg
+                    remoteUrl={imageUrl}
                     alt="Сгенерированная карточка"
-                    width={1200}
-                    height={1600}
                     className="max-w-full max-h-[85vh] w-auto h-auto rounded-lg shadow-2xl object-contain"
-                    unoptimized
+                    loading="eager"
+                    fetchPriority="high"
                   />
                   
                   {/* Кнопка закрытия - внутри контейнера изображения */}
@@ -544,18 +547,32 @@ function ResultCard({
   onSelect?: () => void;
 }) {
   const [isHovered, setIsHovered] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const { showToast } = useToast();
 
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation(); // Предотвращаем открытие модального окна
-    
+    if (downloading) return;
+    setDownloading(true);
+    showToast({
+      type: "info",
+      message: "Готовим файл к скачиванию… Это может занять несколько секунд.",
+      durationMs: 5000,
+    });
     try {
       await triggerDownloadFromRemoteUrl({
         url: imageUrl,
         mediaType: "image",
         filenameBase: `karto-card-${Date.now()}`,
+        onFinally: () => setDownloading(false),
       });
     } catch (error) {
       console.warn("Ошибка скачивания:", error);
+      showToast({
+        type: "error",
+        message:
+          error instanceof Error ? error.message : "Не удалось скачать файл",
+      });
     }
   };
 
@@ -583,13 +600,11 @@ function ResultCard({
         className="absolute inset-0 cursor-pointer"
         onClick={isSelectionMode && onSelect ? onSelect : onOpenModal}
       >
-        <Image
-          src={imageUrl}
+        <GalleryProxiedImg
+          remoteUrl={imageUrl}
+          previewMaxWidth={GALLERY_GRID_PROXY_MAX_WIDTH}
           alt="Сгенерированная карточка"
-          fill
-          className="object-contain"
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-          unoptimized
+          className="absolute inset-0 w-full h-full object-contain"
         />
       </div>
 
@@ -613,11 +628,16 @@ function ResultCard({
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
+            disabled={downloading}
             onClick={handleDownload}
-            className="absolute top-3 right-3 p-2 bg-white/90 hover:bg-white rounded-lg shadow-lg transition-colors z-10"
+            className="absolute top-3 right-3 p-2 bg-white/90 hover:bg-white rounded-lg shadow-lg transition-colors z-10 disabled:opacity-70"
             title="Скачать изображение"
           >
-            <Download className="w-4 h-4 text-gray-900" />
+            {downloading ? (
+              <Loader2 className="w-4 h-4 text-gray-900 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4 text-gray-900" />
+            )}
           </motion.button>
         )}
       </AnimatePresence>
@@ -689,6 +709,8 @@ export default function VisualPage() {
     remaining: 12,
     limit: 12,
   });
+  /** Ключ variantUrl при активном скачивании слайда (анти-спам + спиннер). */
+  const [slideDownloadBusy, setSlideDownloadBusy] = useState<string | null>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false); // Открыта ли подсказка справа
   
   // Настройки панели
@@ -1447,16 +1469,15 @@ export default function VisualPage() {
                 {/* Фото товара с hover эффектом - увеличивается в 2 раза */}
                 <div className="relative rounded-xl bg-gray-100 group overflow-visible" style={{ width: "72px", height: "72px", zIndex: 10 }}>
                   {photoUrl ? (
-                    <>
-                      <Image
-                        src={photoUrl}
+                    <div className="absolute inset-0 overflow-hidden rounded-xl">
+                      <GalleryProxiedImg
+                        remoteUrl={photoUrl}
+                        previewMaxWidth={GALLERY_REFERENCE_PROXY_MAX_WIDTH}
                         alt={productName}
-                        fill
-                        className="object-cover rounded-xl transition-transform duration-300 group-hover:scale-[2]"
+                        className="w-full h-full object-cover rounded-xl transition-transform duration-300 group-hover:scale-[2]"
                         style={{ zIndex: 20 }}
-                        unoptimized
                       />
-                    </>
+                    </div>
                   ) : (
                     <div className="w-full h-full flex items-center justify-center rounded-xl">
                       <ImageIcon className="w-6 h-6 text-gray-400" />
@@ -2075,13 +2096,11 @@ export default function VisualPage() {
                 generatedCards[selectedCardIndex]!.length > 0 ? (
                   <div className="flex justify-center w-full">
                     <div className="relative w-full max-w-xl bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: aspectRatio === "3:4" ? "3 / 4" : "1 / 1" }}>
-                      <img
-                        src={generatedCards[selectedCardIndex]!}
+                      <GalleryProxiedImg
+                        remoteUrl={generatedCards[selectedCardIndex]!}
+                        previewMaxWidth={GALLERY_GRID_PROXY_MAX_WIDTH}
                         alt="Выбранная карточка"
                         className="w-full h-full object-contain"
-                        onError={(e) => {
-                          console.error("Ошибка загрузки изображения:", generatedCards[selectedCardIndex], "Индекс:", selectedCardIndex);
-                        }}
                       />
                     </div>
                   </div>
@@ -2312,8 +2331,9 @@ export default function VisualPage() {
                     }}
                   >
                     {slide.imageUrl ? (
-                      <img
-                        src={slide.imageUrl}
+                      <GalleryProxiedImg
+                        remoteUrl={slide.imageUrl}
+                        previewMaxWidth={360}
                         alt={`Слайд ${slide.id}`}
                         className="w-full h-full object-cover"
                       />
@@ -2420,8 +2440,9 @@ export default function VisualPage() {
                             setViewingImage(variantUrl);
                           }}
                         >
-                          <img
-                            src={variantUrl}
+                          <GalleryProxiedImg
+                            remoteUrl={variantUrl}
+                            previewMaxWidth={GALLERY_GRID_PROXY_MAX_WIDTH}
                             alt={`Вариант ${index + 1}`}
                             className="w-full h-full object-contain rounded-lg transition-transform group-hover:scale-[1.02]"
                           />
@@ -2455,22 +2476,43 @@ export default function VisualPage() {
 
                           {/* Кнопка скачивания как на экране 1 */}
                           <button
+                            type="button"
                             onClick={async (e) => {
                               e.stopPropagation();
+                              if (slideDownloadBusy) return;
+                              setSlideDownloadBusy(variantUrl);
+                              showToast({
+                                type: "info",
+                                message: "Готовим файл к скачиванию…",
+                                durationMs: 5000,
+                              });
                               try {
                                 await triggerDownloadFromRemoteUrl({
                                   url: variantUrl,
                                   mediaType: "image",
                                   filenameBase: `karto-slide-${Date.now()}`,
+                                  onFinally: () => setSlideDownloadBusy(null),
                                 });
                               } catch (error) {
                                 console.warn("Ошибка скачивания слайда:", error);
+                                showToast({
+                                  type: "error",
+                                  message:
+                                    error instanceof Error
+                                      ? error.message
+                                      : "Не удалось скачать",
+                                });
                               }
                             }}
-                            className="absolute top-3 left-3 p-2 bg-white/90 hover:bg-white rounded-lg shadow-lg transition-colors z-20"
+                            disabled={slideDownloadBusy !== null}
+                            className="absolute top-3 left-3 p-2 bg-white/90 hover:bg-white rounded-lg shadow-lg transition-colors z-20 disabled:opacity-60"
                             title="Скачать изображение"
                           >
-                            <Download className="w-4 h-4 text-gray-900" />
+                            {slideDownloadBusy === variantUrl ? (
+                              <Loader2 className="w-4 h-4 text-gray-900 animate-spin" />
+                            ) : (
+                              <Download className="w-4 h-4 text-gray-900" />
+                            )}
                           </button>
                         </motion.div>
                       ))}
@@ -2876,11 +2918,13 @@ export default function VisualPage() {
                 onClick={(e) => e.stopPropagation()}
                 className="relative max-w-3xl max-h-[85vh] bg-white rounded-2xl overflow-hidden shadow-2xl"
               >
-                <img
-                  src={viewingImage}
+                <GalleryProxiedImg
+                  remoteUrl={viewingImage}
                   alt="Просмотр изображения"
                   className="w-full h-full object-contain"
                   style={{ maxHeight: "85vh" }}
+                  loading="eager"
+                  fetchPriority="high"
                 />
                 <button
                   onClick={() => setViewingImage(null)}

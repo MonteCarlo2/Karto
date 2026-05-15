@@ -7,6 +7,8 @@ import { StageMenu } from "@/components/ui/stage-menu";
 import { useRouter } from "next/navigation";
 import type { PriceAnalysis } from "@/lib/services/price-analyzer";
 import Image from "next/image";
+import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
+import { GALLERY_THUMB_PROXY_MAX_WIDTH } from "@/lib/client/gallery-display-url";
 
 const LOGOS = {
   WB: "/logos/wildberries.png",
@@ -396,10 +398,10 @@ export default function PriceStrategyPage() {
           <div className="flex items-center gap-3">
             {photoUrl && (
               <div className="w-12 h-12 rounded-2xl overflow-hidden bg-gray-100 border border-gray-200 shadow-sm">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={photoUrl}
+                <GalleryProxiedImg
+                  remoteUrl={photoUrl}
                   alt={productName || "Фото товара"}
+                  previewMaxWidth={GALLERY_THUMB_PROXY_MAX_WIDTH}
                   className="w-full h-full object-cover"
                 />
               </div>

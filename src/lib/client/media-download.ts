@@ -10,9 +10,70 @@ function resolveAbsoluteMediaUrl(url: string): string {
   return `${window.location.origin}/${t}`;
 }
 
+function triggerBlobDownload(blob: Blob, filenameBase: string, defaultExt: string): void {
+  const ct = blob.type || "";
+  let outExt = defaultExt;
+  if (ct.includes("jpeg")) outExt = "jpg";
+  else if (ct.includes("png")) outExt = "png";
+  else if (ct.includes("webp")) outExt = "webp";
+  else if (ct.includes("gif")) outExt = "gif";
+  else if (ct.includes("mp4")) outExt = "mp4";
+  else if (ct.includes("webm")) outExt = "webm";
+
+  const downloadName = `${filenameBase}.${outExt}`;
+  const objectUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = downloadName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(objectUrl);
+}
+
+/**
+ * Файлы с нашего же origin (`/api/serve-file`, локальные выдачи) — один GET без тяжёлого POST pipeline.
+ */
+async function trySameOriginDownload(
+  absUrl: string,
+  filenameBase: string,
+  defaultExt: string
+): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  try {
+    if (!absUrl.startsWith(window.location.origin)) return false;
+
+    const ctrl = new AbortController();
+    const tid = window.setTimeout(() => ctrl.abort(), 120_000);
+    let res: Response;
+    try {
+      res = await fetch(absUrl, {
+        credentials: "same-origin",
+        cache: "default",
+        signal: ctrl.signal,
+      });
+    } finally {
+      window.clearTimeout(tid);
+    }
+    if (!res.ok || !res.body) return false;
+
+    const blob = await Promise.race([
+      res.blob(),
+      new Promise<never>((_, rej) => {
+        window.setTimeout(() => rej(new Error("sameorigin_blob_timeout")), 110_000);
+      }),
+    ]);
+    if (!blob?.size) return false;
+
+    triggerBlobDownload(blob, filenameBase, defaultExt);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Прямое скачивание с CDN (минуя наш прокси), если хост отдаёт CORS.
- * У многих tempfile это работает быстрее и надёжнее, чем долгий серверный fetch.
  */
 async function tryDirectDownloadImage(absUrl: string, filenameBase: string, defaultExt: string): Promise<boolean> {
   if (typeof window === "undefined") return false;
@@ -50,15 +111,7 @@ async function tryDirectDownloadImage(absUrl: string, filenameBase: string, defa
     else if (ct.includes("webp")) outExt = "webp";
     else if (ct.includes("gif")) outExt = "gif";
 
-    const downloadName = `${filenameBase}.${outExt}`;
-    const objectUrl = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = objectUrl;
-    a.download = downloadName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(objectUrl);
+    triggerBlobDownload(blob, filenameBase, outExt);
     return true;
   } catch {
     return false;
@@ -83,22 +136,37 @@ function alignLoopbackToPageOrigin(abs: string): string {
   return abs;
 }
 
-/**
- * Скачивание медиа: для картинок сначала прямой fetch с CDN (если есть CORS), иначе `/api/media/download`.
- * Видео: только через API — сервер сливает файл на диск и отдаёт бинарь.
- */
-export async function triggerDownloadFromRemoteUrl(params: {
+export type TriggerDownloadFromRemoteUrlParams = {
   url: string;
   mediaType: "image" | "video";
   /** без расширения, например karto-slide-123 */
   filenameBase: string;
-}): Promise<void> {
-  const { url, mediaType, filenameBase } = params;
+  /** Сразу при нажатии (показать спиннер / тост). */
+  onStart?: () => void;
+  /** Всегда в конце — убрать спиннер. */
+  onFinally?: () => void;
+};
+
+/**
+ * Скачивание медиа: same-origin → прямой CDN (картинки) → POST `/api/media/download`.
+ */
+export async function triggerDownloadFromRemoteUrl(
+  params: TriggerDownloadFromRemoteUrlParams
+): Promise<void> {
+  const { onStart, onFinally, url, mediaType, filenameBase } = params;
+  onStart?.();
+  try {
+    await runDownload(url, mediaType, filenameBase);
+  } finally {
+    onFinally?.();
+  }
+}
+
+async function runDownload(url: string, mediaType: "image" | "video", filenameBase: string): Promise<void> {
   const ext = mediaType === "video" ? "mp4" : "png";
   const suggestedName = `${filenameBase}.${ext}`;
   const trimmed = url.trim();
 
-  // data URL — прокси не нужен, браузер отдаст файл сам
   if (trimmed.startsWith("data:")) {
     const a = document.createElement("a");
     a.href = trimmed;
@@ -110,6 +178,9 @@ export async function triggerDownloadFromRemoteUrl(params: {
   }
 
   const absoluteUrl = alignLoopbackToPageOrigin(resolveAbsoluteMediaUrl(url));
+
+  const okSame = await trySameOriginDownload(absoluteUrl, filenameBase, ext);
+  if (okSame) return;
 
   if (mediaType === "image") {
     const ok = await tryDirectDownloadImage(absoluteUrl, filenameBase, ext);
@@ -135,7 +206,6 @@ export async function triggerDownloadFromRemoteUrl(params: {
     filename: suggestedName,
   });
 
-  /** Должно быть ≥ суммы апстрим-попыток на сервере для изображений (до ~120s × попытки + backoff). */
   const proxyFetchMs = mediaType === "video" ? 420_000 : 400_000;
   const blobReadMs = mediaType === "video" ? 420_000 : 140_000;
   const maxAttempts = 2;
@@ -200,13 +270,5 @@ export async function triggerDownloadFromRemoteUrl(params: {
   else if (ct.includes("gif")) outExt = "gif";
   else if (ct.includes("mp4")) outExt = "mp4";
 
-  const downloadName = `${filenameBase}.${outExt}`;
-  const objectUrl = window.URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = objectUrl;
-  a.download = downloadName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  window.URL.revokeObjectURL(objectUrl);
+  triggerBlobDownload(blob, filenameBase, outExt);
 }
