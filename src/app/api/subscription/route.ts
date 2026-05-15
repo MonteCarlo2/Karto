@@ -24,7 +24,21 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = createServerClient();
+    let supabase: ReturnType<typeof createServerClient>;
+    try {
+      supabase = createServerClient();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("⚠️ [SUBSCRIPTION] Серверный Supabase не настроен:", msg);
+      return NextResponse.json({
+        success: true,
+        subscription: null,
+        videoTokenBalance: 0,
+        videoTokensSpent: 0,
+        videoTokensLifetimePurchased: 0,
+        degraded: true,
+      });
+    }
     let user: { id: string; email?: string; user_metadata?: any } | null = null;
     let authError: Error | null = null;
     try {

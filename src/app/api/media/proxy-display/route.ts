@@ -45,7 +45,6 @@ export async function GET(request: NextRequest) {
     900_000,
     Math.max(60_000, Number(process.env.MEDIA_DOWNLOAD_UPSTREAM_MS) || 600_000)
   );
-  /** Долгие ответы CDN (Supabase tempfile и т.д.) */
   const attemptTimeout = Math.min(upstreamFetchMs, 270_000);
   const maxUpstreamAttempts = 4;
 
@@ -103,15 +102,14 @@ export async function GET(request: NextRequest) {
   }
 
   /**
-   * Картинки буферизуем целиком: через dev/proxy chunked-stream к браузеру часто даёт
-   * net::ERR_INCOMPLETE_CHUNKED_ENCODING, если апстрим рвётся посредине.
+   * Картинки буферизуем целиком: chunked-stream к браузеру часто даёт
+   * net::ERR_INCOMPLETE_CHUNKED_ENCODING при обрыве апстрима.
    * Некоторые CDN ставят octet-stream — ориентируемся также на расширение в URL.
    */
   const looksLikeImage = /\.(png|jpe?g|gif|webp|avif|bmp)(\?|$)/i.test(
     target.pathname
   );
   const isImageType = ctLower.startsWith("image/");
-  /** Лимит на один буфер (превью графики; видео остаются stream). */
   const IMAGE_BUFFER_CAP = Math.min(MAX_PROXY_BYTES, 40 * 1024 * 1024);
 
   if (isImageType || looksLikeImage) {
