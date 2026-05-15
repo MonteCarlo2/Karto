@@ -1,0 +1,111 @@
+import { NextRequest, NextResponse } from "next/server";
+import { isAllowedRemoteMediaUrl } from "@/lib/media/allowed-remote-media-url";
+
+/** Явный Node — стабильный stream/fetch для долгих ответов CDN. */
+export const runtime = "nodejs";
+export const maxDuration = 300;
+
+const MAX_PROXY_BYTES = 250 * 1024 * 1024;
+
+/** Описание см. Chromium CORS+PNA («public» vs «unknown» у img src с внешних CDN). Прокси same-origin решает. */
+export async function GET(request: NextRequest) {
+  const sameOrigin = request.nextUrl.origin;
+  const rawU = request.nextUrl.searchParams.get("u");
+  if (!rawU || typeof rawU !== "string") {
+    return NextResponse.json({ error: "Параметр u обязателен" }, { status: 400 });
+  }
+
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(rawU.trim());
+  } catch {
+    return NextResponse.json({ error: "Некорректный параметр u" }, { status: 400 });
+  }
+
+  let target: URL;
+  try {
+    if (decoded.startsWith("http://") || decoded.startsWith("https://")) {
+      target = new URL(decoded);
+    } else {
+      return NextResponse.json({ error: "Только абсолютные http(s) URL" }, { status: 400 });
+    }
+  } catch {
+    return NextResponse.json({ error: "Некорректный URL" }, { status: 400 });
+  }
+
+  if (!isAllowedRemoteMediaUrl(target, sameOrigin)) {
+    return NextResponse.json({ error: "Хост недоступен для прокси" }, { status: 403 });
+  }
+
+  if (decoded.length > 15000) {
+    return NextResponse.json({ error: "URL слишком длинный" }, { status: 400 });
+  }
+
+  const upstreamFetchMs = Math.min(
+    900_000,
+    Math.max(60_000, Number(process.env.MEDIA_DOWNLOAD_UPSTREAM_MS) || 600_000)
+  );
+  /** Долгие ответы CDN (Supabase tempfile и т.д.) */
+  const attemptTimeout = Math.min(upstreamFetchMs, 270_000);
+  const maxUpstreamAttempts = 4;
+
+  let upstream: Response | undefined;
+  for (let attempt = 0; attempt < maxUpstreamAttempts; attempt++) {
+    try {
+      const res = await fetch(target.toString(), {
+        method: "GET",
+        redirect: "follow",
+        signal: AbortSignal.timeout(attemptTimeout),
+        headers: {
+          Accept:
+            "image/avif,image/webp,image/apng,image/*,video/mp4,video/webm,*/*",
+          "User-Agent": "KartoMediaProxyDisplay/2.0",
+        },
+      });
+      if (res.ok && res.body) {
+        upstream = res;
+        break;
+      }
+    } catch {
+      upstream = undefined;
+    }
+    if (attempt < maxUpstreamAttempts - 1) {
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, 600 + attempt * 550)
+      );
+    }
+  }
+
+  if (!upstream?.ok || !upstream.body) {
+    return NextResponse.json({ error: "Не удалось получить файл" }, { status: 502 });
+  }
+
+  const lenHeader = upstream.headers.get("content-length");
+  if (lenHeader) {
+    const n = Number(lenHeader);
+    if (Number.isFinite(n) && n > MAX_PROXY_BYTES) {
+      return NextResponse.json({ error: "Файл слишком большой" }, { status: 413 });
+    }
+  }
+
+  const upstreamCt =
+    upstream.headers.get("content-type") || "application/octet-stream";
+  const ctLower = upstreamCt.toLowerCase();
+  if (
+    ctLower.includes("text/html") ||
+    ctLower.includes("application/json") ||
+    ctLower.includes("text/plain")
+  ) {
+    await upstream.body.cancel().catch(() => {});
+    return NextResponse.json({ error: "Недопустимый тип содержимого" }, { status: 415 });
+  }
+
+  return new NextResponse(upstream.body, {
+    status: 200,
+    headers: {
+      "Content-Type": upstreamCt.split(";")[0].trim(),
+      "Cache-Control": "public, max-age=3600, s-maxage=3600",
+      Vary: "Accept-Encoding",
+    },
+  });
+}

@@ -15,6 +15,8 @@ import {
   mergeFreeCreativityPrompt,
 } from "@/lib/brand/free-creativity-brand-prompt";
 import { triggerDownloadFromRemoteUrl } from "@/lib/client/media-download";
+import { proxiedHttpsMediaUrl } from "@/lib/client/proxied-display-url";
+import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
 import { useToast } from "@/components/ui/toast";
 import { 
   Download,
@@ -67,12 +69,7 @@ import {
   computeProductVideoTokenCost,
 } from "@/lib/video-token-pricing";
 
-/** Для галереи: превью с нашего API — запрашиваем уменьшенную версию для быстрой загрузки. */
-function galleryImageUrl(url: string): string {
-  if (typeof url !== "string" || !url.includes("/api/serve-file")) return url;
-  const sep = url.includes("?") ? "&" : "?";
-  return `${url}${sep}w=400`;
-}
+/** @see GalleryProxiedImg — логика превью и fallback вынесена в компонент. */
 
 const LS_VIDEO_GUIDE_OPENED = "karto_seen_video_guide_v1";
 const LS_PHOTO_GUIDE_OPENED = "karto_seen_photo_guide_v1";
@@ -2037,6 +2034,16 @@ export default function FreeGeneration() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasLoadedFeed]);
 
+  /** Слайд из состояния может пропасть (смена аккаунта, localStorage); иначе галерея даёт `null` на весь экран. */
+  useEffect(() => {
+    if (!hasLoadedFeed || slides.length === 0) return;
+    const exists =
+      activeSlideId != null && slides.some((s) => s.id === activeSlideId);
+    if (!exists) {
+      setActiveSlideId(slides[0].id);
+    }
+  }, [hasLoadedFeed, slides, activeSlideId]);
+
   // Закрытие видео-меню по клику вне него
   useEffect(() => {
     if (!videoModeOpen) return;
@@ -2308,8 +2315,9 @@ export default function FreeGeneration() {
           className="studio-feed-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-auto pt-8 pl-80 pr-10 pb-40 [-webkit-overflow-scrolling:touch]"
           style={{ background: "transparent" }}
         >
-        {activeSlideId !== null && hasLoadedFeed && (() => {
-          const activeSlide = slides.find(s => s.id === activeSlideId);
+        {hasLoadedFeed && slides.length > 0 && (() => {
+          const activeSlide =
+            slides.find((s) => s.id === activeSlideId) ?? slides[0];
           if (!activeSlide) return null;
           
           // Нормализуем варианты: каждый вариант должен иметь url и aspectRatio
@@ -2519,16 +2527,24 @@ export default function FreeGeneration() {
                         }}
                       >
                       {variant.mediaType === "video" ? (
-                        <VideoPlayer src={variant.url} className="w-full h-full rounded-lg" />
+                        <VideoPlayer src={proxiedHttpsMediaUrl(variant.url)} className="w-full h-full rounded-lg" />
                       ) : (
-                        <img
-                          src={galleryImageUrl(variant.url)}
+                        <GalleryProxiedImg
+                          remoteUrl={variant.url}
                           alt={`Вариант ${index + 1}`}
                           className="w-full h-full object-cover rounded-lg"
                           width={baseWidth}
-                          height={variant.aspectRatio === "3:4" ? Math.round(baseWidth * 4 / 3) : variant.aspectRatio === "4:3" ? Math.round(baseWidth * 3 / 4) : variant.aspectRatio === "9:16" ? Math.round(baseWidth * 16 / 9) : baseWidth}
-                          loading="lazy"
-                          decoding="async"
+                          height={
+                            variant.aspectRatio === "3:4"
+                              ? Math.round((baseWidth * 4) / 3)
+                              : variant.aspectRatio === "4:3"
+                                ? Math.round((baseWidth * 3) / 4)
+                                : variant.aspectRatio === "9:16"
+                                  ? Math.round((baseWidth * 16) / 9)
+                                  : baseWidth
+                          }
+                          loading={index < 12 ? "eager" : "lazy"}
+                          fetchPriority={index < 4 ? "high" : "auto"}
                         />
                       )}
                       
@@ -3520,7 +3536,12 @@ export default function FreeGeneration() {
                         <div key={`${img}-${index}`} className="relative group flex-shrink-0 w-24 h-16">
                           {/* Маленькое превью - всегда видимо */}
                           <div className="relative w-full h-full rounded-2xl overflow-hidden border border-gray-300 bg-white">
-                            <img src={img} alt={`Референс ${index + 1}`} className="w-full h-full object-cover" />
+                            <GalleryProxiedImg
+                              remoteUrl={img}
+                              alt={`Референс ${index + 1}`}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
                             {/* Крест на маленьком превью при наведении */}
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
                               <button
@@ -3545,11 +3566,12 @@ export default function FreeGeneration() {
                           {/* Увеличенная версия (как у фото) */}
                           <div className="absolute bottom-full left-0 mb-2 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity duration-200 z-50">
                             <div className="relative rounded-2xl overflow-hidden border-2 border-gray-300 bg-gray-100 shadow-2xl">
-                              <img
-                                src={img}
+                              <GalleryProxiedImg
+                                remoteUrl={img}
                                 alt={`Референс ${index + 1} увеличенный`}
                                 className="block max-w-[320px] max-h-[384px] w-auto h-auto"
                                 style={{ display: "block" }}
+                                loading="eager"
                               />
                             </div>
                           </div>
@@ -4412,10 +4434,12 @@ export default function FreeGeneration() {
                 className="relative max-w-[95vw] max-h-[95vh] flex flex-col"
               >
                 <div className="flex-1 flex items-center justify-center min-h-0">
-                  <img
-                    src={viewingImage}
+                  <GalleryProxiedImg
+                    remoteUrl={viewingImage}
                     alt="Просмотр изображения"
                     className="max-w-full max-h-[85vh] w-auto h-auto object-contain"
+                    loading="eager"
+                    fetchPriority="high"
                   />
                 </div>
                 {viewingPrompt && (
