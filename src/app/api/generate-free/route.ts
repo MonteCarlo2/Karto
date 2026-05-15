@@ -3,20 +3,58 @@ import { createServerClient } from "@/lib/supabase/server";
 import { generateWithKieAi } from "@/lib/services/kie-ai";
 import { kieErrorToClient } from "@/lib/services/kie-ai-errors";
 import { getSubscriptionByUserId, getSubscriptionRowsByUserId } from "@/lib/subscription";
+import { getFreeGenImageProvider } from "@/lib/services/free-gen-provider";
+import { generateWithEvolinkGemini } from "@/lib/services/evolink-images";
+import { generateWithWaveSpeedNanoBanana2 } from "@/lib/services/wavespeed-images";
 
 /**
- * Свободная генерация изображений через KIE AI.
- * Модель KIE: см. `getDefaultKieImageModel()` (`KIE_IMAGE_MODEL`), по умолчанию nano-banana-2, разрешение 4K через `generateWithKieAi`.
+ * Свободная генерация изображений.
  *
- * Требуется подписка «Свободное творчество» и лимит генераций.
+ * Провайдер:
+ * - по умолчанию **WaveSpeed**, если задан `WAVESPEED_API_KEY`, иначе **KIE**;
+ * - или явно `FREE_GEN_IMAGE_PROVIDER` = `kie` | `evolink` | `wavespeed`.
  */
 export async function POST(request: NextRequest) {
-  if (!process.env.KIE_AI_API_KEY && !process.env.KIE_API_KEY) {
-    return NextResponse.json({
-      success: false,
-      error: "KIE_AI_API_KEY не настроен",
-      details: "Добавьте KIE_AI_API_KEY (или KIE_API_KEY) в файл .env.local",
-    }, { status: 500 });
+  const tRequest = Date.now();
+  const provider = getFreeGenImageProvider();
+
+  if (provider === "kie") {
+    if (!process.env.KIE_AI_API_KEY && !process.env.KIE_API_KEY) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "KIE_AI_API_KEY не настроен",
+          details: "Добавьте KIE_AI_API_KEY (или KIE_API_KEY) в файл .env.local",
+        },
+        { status: 500 }
+      );
+    }
+  } else if (provider === "wavespeed") {
+    if (!process.env.WAVESPEED_API_KEY?.trim()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "WAVESPEED_API_KEY не настроен",
+          details:
+            "WaveSpeed включён для свободного творчества: добавьте WAVESPEED_API_KEY (кабинет WaveSpeed). Вернуть KIE без ключа можно так: удалите WAVESPEED_API_KEY или задайте FREE_GEN_IMAGE_PROVIDER=kie.",
+        },
+        { status: 500 }
+      );
+    }
+  } else {
+    const evoKey =
+      process.env.EVOLINK_API_KEY?.trim() || process.env.WAVESPEED_API_KEY?.trim();
+    if (!evoKey) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "EVOLINK_API_KEY не настроен",
+          details:
+            "Для FREE_GEN_IMAGE_PROVIDER=evolink добавьте EVOLINK_API_KEY в .env.local (временно можно WAVESPEED_API_KEY, если так назван ключ EvoLink).",
+        },
+        { status: 500 }
+      );
+    }
   }
 
   try {
@@ -78,7 +116,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("🎨 [FREE GENERATION] Начинаем свободную генерацию...");
+    const providerLabel =
+      provider === "evolink"
+        ? "EvoLink"
+        : provider === "wavespeed"
+          ? "WaveSpeed (Nano Banana 2)"
+          : "KIE";
+    console.log(`🎨 [FREE GENERATION] Старт (провайдер: ${providerLabel})…`);
     console.log("📝 Промпт:", prompt);
     console.log("📐 Соотношение сторон:", aspectRatio);
     console.log(
@@ -92,13 +136,32 @@ export async function POST(request: NextRequest) {
       imageInput = referenceImages.slice(0, 4); // ограничимся 4, как в UI
     }
 
-    const { imageUrl: generatedImageUrl, referenceUsed } = await generateWithKieAi(
-      prompt.trim(),
-      imageInput,
-      aspectRatio,
-      "png",
-      "4K"
-    );
+    console.log(`⏱️ [FREE] до вызова провайдера (${provider}), с начала запроса: ${Date.now() - tRequest} ms`);
+
+    let generatedImageUrl: string;
+    let referenceUsed: boolean;
+
+    if (provider === "evolink") {
+      const out = await generateWithEvolinkGemini(
+        prompt.trim(),
+        imageInput as string[] | undefined,
+        aspectRatio
+      );
+      generatedImageUrl = out.imageUrl;
+      referenceUsed = out.referenceUsed;
+    } else if (provider === "wavespeed") {
+      const out = await generateWithWaveSpeedNanoBanana2(
+        prompt.trim(),
+        imageInput as string[] | undefined,
+        aspectRatio
+      );
+      generatedImageUrl = out.imageUrl;
+      referenceUsed = out.referenceUsed;
+    } else {
+      const out = await generateWithKieAi(prompt.trim(), imageInput, aspectRatio, "png", "4K");
+      generatedImageUrl = out.imageUrl;
+      referenceUsed = out.referenceUsed;
+    }
 
     const creativeRows = await getSubscriptionRowsByUserId(supabase as any, user.id);
     const creativeRow = creativeRows.find((r) => r.plan_type === "creative");
@@ -122,6 +185,17 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error("❌ [FREE GENERATION] Ошибка:", error);
+    if (provider === "evolink" || provider === "wavespeed") {
+      const msg = error instanceof Error ? error.message : String(error);
+      const providerName = provider === "wavespeed" ? "WaveSpeed" : "EvoLink";
+      return NextResponse.json(
+        {
+          success: false,
+          error: msg || `Ошибка генерации (${providerName})`,
+        },
+        { status: 500 }
+      );
+    }
     const { message, code } = kieErrorToClient(error);
     const status = code === "CONTENT_FILTER" ? 422 : 500;
     return NextResponse.json(

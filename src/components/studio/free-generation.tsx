@@ -4004,13 +4004,14 @@ export default function FreeGeneration() {
                   setIsGeneratingSlide(true);
                 }
                 try {
-                  const { data: { session } } = await createBrowserClient().auth.getSession();
-                  const authHeaders: Record<string, string> = { "Content-Type": "application/json" };
-                  if (session?.access_token) authHeaders["Authorization"] = `Bearer ${session.access_token}`;
-
+                  const supabaseAuth = createBrowserClient();
+                  const sessionPromise = supabaseAuth.auth.getSession();
                   const visibleUserPrompt = slidePrompt.trim();
                   const outboundPrompt = augmentFreePromptWithBrand(slidePrompt);
                   const outboundPromptTrimmed = outboundPrompt.trim();
+                  const { data: { session } } = await sessionPromise;
+                  const authHeaders: Record<string, string> = { "Content-Type": "application/json" };
+                  if (session?.access_token) authHeaders["Authorization"] = `Bearer ${session.access_token}`;
 
                   if (generationMode === "free" && mediaMode === "video") {
                     // ── СВОБОДНАЯ ГЕНЕРАЦИЯ ВИДЕО (Standard=seedance, Pro=kling) ──
