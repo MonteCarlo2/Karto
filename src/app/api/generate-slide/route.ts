@@ -309,7 +309,7 @@ ${scenarioPrompt}${environmentReference}${userDescription}
     console.log("  - Референс обстановки:", environmentImageUrl ? "да" : "нет");
     console.log("═══════════════════════════════════════");
     
-    // Генерируем через KIE (модель из KIE_IMAGE_MODEL)
+    // Генерируем через KIE (модель из getDefaultKieImageModel, по умолчанию nano-banana-2)
     const finalAspectRatio = aspectRatio || "3:4";
     
     console.log("📐 Final Aspect Ratio:", finalAspectRatio);
@@ -324,7 +324,8 @@ ${scenarioPrompt}${environmentReference}${userDescription}
         finalPrompt,
         imagesForApi.length > 0 ? (imagesForApi.length === 1 ? imagesForApi[0] : imagesForApi) : undefined,
         finalAspectRatio,
-        "png"
+        "png",
+        "4K"
       );
       generatedImageUrl = result.imageUrl;
       console.log("✅ Генерация успешна");

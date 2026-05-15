@@ -6,8 +6,7 @@ import { getSubscriptionByUserId, getSubscriptionRowsByUserId } from "@/lib/subs
 
 /**
  * Свободная генерация изображений через KIE AI.
- * Модель задаётся глобально: `KIE_IMAGE_MODEL` (см. `getDefaultKieImageModel` в `lib/services/kie-ai.ts`).
- * Откат на nano-banana-2: `KIE_IMAGE_MODEL=nano-banana-2` в `.env`.
+ * Модель KIE: см. `getDefaultKieImageModel()` (`KIE_IMAGE_MODEL`), по умолчанию nano-banana-2, разрешение 4K через `generateWithKieAi`.
  *
  * Требуется подписка «Свободное творчество» и лимит генераций.
  */
@@ -97,7 +96,8 @@ export async function POST(request: NextRequest) {
       prompt.trim(),
       imageInput,
       aspectRatio,
-      "png"
+      "png",
+      "4K"
     );
 
     const creativeRows = await getSubscriptionRowsByUserId(supabase as any, user.id);

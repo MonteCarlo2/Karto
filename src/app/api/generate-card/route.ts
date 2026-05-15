@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildProductCardPrompt, CARD_STYLES } from "@/lib/services/nanobanana";
-import { generateWithKieAi, KIE_MODEL_NANO_BANANA_2 } from "@/lib/services/kie-ai";
+import { generateWithKieAi } from "@/lib/services/kie-ai";
 import { KieAiContentFilteredError, kieErrorToClient } from "@/lib/services/kie-ai-errors";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { 
@@ -153,8 +153,6 @@ export async function POST(request: NextRequest) {
       aspectRatio, // "3:4" или "1:1"
       variation = 0, // Номер вариации (0-3) для разных концепций
       designConcept, // Готовая дизайн-концепция (если передана)
-      /** true только из /api/generate-cards-batch (Поток → визуал) — фиксированная модель nano-banana-2. */
-      flowBatch,
     } = body;
 
     // Проверяем обязательные поля
@@ -548,7 +546,7 @@ ${finalTextPresentation}
     }
     console.log("═══════════════════════════════════════");
     
-    // Генерируем через KIE (модель из KIE_IMAGE_MODEL)
+    // Генерируем через KIE (модель: getDefaultKieImageModel / KIE_IMAGE_MODEL, по умолчанию nano-banana-2)
     // Убеждаемся, что aspectRatio в правильном формате (3:4 или 1:1)
     const finalAspectRatio = aspectRatio === "1:1" ? "1:1" : "3:4";
     
@@ -565,8 +563,7 @@ ${finalTextPresentation}
         imageForApi,
         finalAspectRatio,
         "png",
-        "4K",
-        flowBatch === true ? { model: KIE_MODEL_NANO_BANANA_2 } : undefined
+        "4K"
       );
       generatedImageUrl = result.imageUrl;
       console.log("✅ Генерация успешна");

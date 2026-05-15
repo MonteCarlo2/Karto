@@ -184,7 +184,8 @@ ${editRequest}
         editPrompt,
         imageForKie,
         finalAspectRatio,
-        "png"
+        "png",
+        "4K"
       );
       editedImageUrl = result.imageUrl;
       console.log("✅ [EDIT] Редактирование успешно");

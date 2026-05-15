@@ -40,12 +40,12 @@ export const KIE_MODEL_GPT_IMAGE_2 = "gpt-image-2-text-to-image";
 export const KIE_MODEL_NANO_BANANA_2 = "nano-banana-2";
 
 /**
- * Единая модель изображений для всей платформы (свободное творчество, поток, товар, карточки, логотип, правки).
- * В .env: `KIE_IMAGE_MODEL=gpt-image-2-text-to-image` (по умолчанию в коде то же).
- * Откат на nano-banana-2 без правки кода: `KIE_IMAGE_MODEL=nano-banana-2`
+ * Единая модель изображений для всей платформы (свободное творчество, поток, товар, карточки и т.д.).
+ * По умолчанию: **nano-banana-2** (4K там, где поддерживается; см. effectiveKieResolutionForModel для gpt fallback).
+ * Другая модель: `KIE_IMAGE_MODEL=gpt-image-2-text-to-image` в `.env`.
  */
 export function getDefaultKieImageModel(): string {
-  return process.env.KIE_IMAGE_MODEL ?? KIE_MODEL_GPT_IMAGE_2;
+  return process.env.KIE_IMAGE_MODEL ?? KIE_MODEL_NANO_BANANA_2;
 }
 
 /** У gpt-image-2-text-to-image для 1:1 в KIE максимум 2K, не 4K. */
@@ -237,7 +237,7 @@ export type GenerateWithKieAiOptions = {
 };
 
 /**
- * Генерация изображения через KIE AI. Модель по умолчанию — `KIE_IMAGE_MODEL` (см. getDefaultKieImageModel).
+ * Генерация изображения через KIE AI. Модель по умолчанию — nano-banana-2 (`KIE_IMAGE_MODEL` переопределяет).
  * По умолчанию resolution 4K; для gpt-image-2 при 1:1 принудительно не выше 2K.
  */
 export async function generateWithKieAi(

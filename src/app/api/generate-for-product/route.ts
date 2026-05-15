@@ -7,7 +7,7 @@ import { getPublicUrl, saveBase64Image } from "@/lib/services/image-processing";
 
 /**
  * Генерация изображения для режима "Для товара" в свободной генерации.
- * Модель KIE: env `KIE_IMAGE_MODEL` (см. lib/services/kie-ai.ts).
+ * Модель KIE: см. `getDefaultKieImageModel()` (по умолчанию nano-banana-2; переопределение через `KIE_IMAGE_MODEL`).
  * Требуется подписка «Свободное творчество» и лимит генераций.
  */
 export async function POST(request: NextRequest) {
@@ -158,7 +158,8 @@ export async function POST(request: NextRequest) {
       finalPrompt,
       imageForApi,
       aspectRatio,
-      "png"
+      "png",
+      "4K"
     );
 
     const creativeRows = await getSubscriptionRowsByUserId(supabase as any, user.id);
