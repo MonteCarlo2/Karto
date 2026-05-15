@@ -63,9 +63,10 @@ export async function GET(request: NextRequest) {
         },
       });
       if (res.ok && res.body) {
-        upstream = res;
+        upstream = res.clone();
         break;
       }
+      upstream = undefined;
     } catch {
       upstream = undefined;
     }
@@ -80,14 +81,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Не удалось получить файл" }, { status: 502 });
   }
 
-  const lenHeader = upstream.headers.get("content-length");
-  if (lenHeader) {
-    const n = Number(lenHeader);
-    if (Number.isFinite(n) && n > MAX_PROXY_BYTES) {
-      return NextResponse.json({ error: "Файл слишком большой" }, { status: 413 });
-    }
-  }
-
   const upstreamCt =
     upstream.headers.get("content-type") || "application/octet-stream";
   const ctLower = upstreamCt.toLowerCase();
@@ -100,10 +93,53 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Недопустимый тип содержимого" }, { status: 415 });
   }
 
+  const lenHeader = upstream.headers.get("content-length");
+  if (lenHeader) {
+    const n = Number(lenHeader);
+    if (Number.isFinite(n) && n > MAX_PROXY_BYTES) {
+      await upstream.body.cancel().catch(() => {});
+      return NextResponse.json({ error: "Файл слишком большой" }, { status: 413 });
+    }
+  }
+
+  /**
+   * Картинки буферизуем целиком: через dev/proxy chunked-stream к браузеру часто даёт
+   * net::ERR_INCOMPLETE_CHUNKED_ENCODING, если апстрим рвётся посредине.
+   * Некоторые CDN ставят octet-stream — ориентируемся также на расширение в URL.
+   */
+  const looksLikeImage = /\.(png|jpe?g|gif|webp|avif|bmp)(\?|$)/i.test(
+    target.pathname
+  );
+  const isImageType = ctLower.startsWith("image/");
+  /** Лимит на один буфер (превью графики; видео остаются stream). */
+  const IMAGE_BUFFER_CAP = Math.min(MAX_PROXY_BYTES, 40 * 1024 * 1024);
+
+  if (isImageType || looksLikeImage) {
+    let buf: ArrayBuffer;
+    try {
+      buf = await upstream.arrayBuffer();
+    } catch {
+      return NextResponse.json({ error: "Не удалось прочитать файл" }, { status: 502 });
+    }
+    if (buf.byteLength > IMAGE_BUFFER_CAP) {
+      return NextResponse.json({ error: "Файл слишком большой" }, { status: 413 });
+    }
+    const ctTrim = upstreamCt.split(";")[0].trim();
+    return new NextResponse(buf, {
+      status: 200,
+      headers: {
+        "Content-Type": ctTrim,
+        "Content-Length": String(buf.byteLength),
+        "Cache-Control": "public, max-age=3600, s-maxage=3600",
+      },
+    });
+  }
+
+  const ctTrim = upstreamCt.split(";")[0].trim();
   return new NextResponse(upstream.body, {
     status: 200,
     headers: {
-      "Content-Type": upstreamCt.split(";")[0].trim(),
+      "Content-Type": ctTrim,
       "Cache-Control": "public, max-age=3600, s-maxage=3600",
       Vary: "Accept-Encoding",
     },
