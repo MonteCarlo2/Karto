@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { validatePromoForCheckout, type PromoPaymentKind } from "@/lib/promo/checkout";
 import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
+import { AUTO_REPLY_PACKAGES } from "@/lib/auto-replies-pricing";
 
 /**
  * POST: проверить промокод для текущего выбора тарифа (без создания платежа).
@@ -25,25 +26,38 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const mode = body?.mode === "1" ? "1" : "0";
+    const mode = body?.mode === "2" ? "2" : body?.mode === "1" ? "1" : "0";
     const rawKind = String(body?.paymentKind ?? "").trim();
     const paymentKind: PromoPaymentKind =
-      rawKind === "video_tokens"
-        ? "video_tokens"
-        : rawKind === "creative"
-          ? "creative"
-          : rawKind === "flow"
-            ? "flow"
-            : mode === "1"
-              ? "creative"
-              : "flow";
+      rawKind === "auto_replies"
+        ? "auto_replies"
+        : rawKind === "video_tokens"
+          ? "video_tokens"
+          : rawKind === "creative"
+            ? "creative"
+            : rawKind === "flow"
+              ? "flow"
+              : mode === "2"
+                ? "auto_replies"
+                : mode === "1"
+                  ? "creative"
+                  : "flow";
 
     const tariffCreativeOrFlow = Math.min(2, Math.max(0, Number(body?.tariffIndex) || 0));
     const tariffVideo = Math.min(
       VIDEO_TOKEN_PACKAGES.length - 1,
       Math.max(0, Number(body?.videoTariff ?? body?.tariffIndex) || 0)
     );
-    const tariffIdx = paymentKind === "video_tokens" ? tariffVideo : tariffCreativeOrFlow;
+    const tariffAutoReplies = Math.min(
+      AUTO_REPLY_PACKAGES.length - 1,
+      Math.max(0, Number(body?.tariffIndex) || 0)
+    );
+    const tariffIdx =
+      paymentKind === "video_tokens"
+        ? tariffVideo
+        : paymentKind === "auto_replies"
+          ? tariffAutoReplies
+          : tariffCreativeOrFlow;
 
     const rawCode = typeof body?.promoCode === "string" ? body.promoCode : "";
     const res = await validatePromoForCheckout(supabase, {

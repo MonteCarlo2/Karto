@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { X, Send, Loader2 } from "lucide-react";
@@ -15,8 +16,11 @@ interface ContactQuestionModalProps {
 export function ContactQuestionModal({ isOpen, onClose, user }: ContactQuestionModalProps) {
   const [question, setQuestion] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { showToast } = useToast();
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!isOpen) {
@@ -68,7 +72,9 @@ export function ContactQuestionModal({ isOpen, onClose, user }: ContactQuestionM
 
   const contactEmail = process.env.NEXT_PUBLIC_CONTACT_EMAIL || "aiora.help@mail.ru";
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <>
@@ -77,14 +83,14 @@ export function ContactQuestionModal({ isOpen, onClose, user }: ContactQuestionM
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+            className="fixed inset-0 z-[230] bg-black/55 backdrop-blur-sm"
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 bg-[#F5F5F0] shadow-2xl rounded-2xl border border-neutral-200 overflow-hidden"
+            className="fixed left-1/2 top-1/2 z-[231] w-full max-w-md -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-neutral-200 bg-[#F5F5F0] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex flex-col">
@@ -183,6 +189,7 @@ export function ContactQuestionModal({ isOpen, onClose, user }: ContactQuestionM
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

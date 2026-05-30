@@ -4,6 +4,7 @@ import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
 import { creditSubscription } from "@/lib/payment-credit";
 import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
 import { addVideoTokens } from "@/lib/video-tokens";
+import { creditAutoReplyFromPayment, parseAutoRenewFromMetadata } from "@/lib/auto-reply-payment-credit";
 import { capturePayment } from "@/lib/yookassa-capture";
 import { parsePromoFromPaymentMetadata, recordPromoRedemption } from "@/lib/promo/record-redemption";
 
@@ -26,7 +27,13 @@ export async function POST(request: NextRequest) {
     let body: {
       type?: string;
       event?: string;
-      object?: { id?: string; status?: string; metadata?: Record<string, unknown>; amount?: { value?: string; currency?: string } };
+      object?: {
+        id?: string;
+        status?: string;
+        metadata?: Record<string, unknown>;
+        amount?: { value?: string; currency?: string };
+        payment_method?: { id?: string; saved?: boolean };
+      };
     };
     try {
       body = JSON.parse(raw);
@@ -39,14 +46,24 @@ export async function POST(request: NextRequest) {
     const typ = (body?.type ?? "").trim();
     console.log("[PAYMENT WEBHOOK] type=%s event=%s", typ, ev);
 
-    const payment = body.object as { id?: string; status?: string; metadata?: Record<string, unknown>; amount?: { value?: string; currency?: string } } | undefined;
+    const payment = body.object as {
+      id?: string;
+      status?: string;
+      metadata?: Record<string, unknown>;
+      amount?: { value?: string; currency?: string };
+      payment_method?: { id?: string; saved?: boolean };
+    } | undefined;
     if (!payment) {
       console.warn("[PAYMENT WEBHOOK] skip: no object");
       return new NextResponse(null, { status: 200 });
     }
 
     // Двухстадийная оплата: приходит waiting_for_capture — делаем capture, затем обрабатываем как succeeded
-    let paymentToProcess: { id: string; metadata?: Record<string, unknown> } = { id: payment.id!, metadata: payment.metadata };
+    let paymentToProcess: {
+      id: string;
+      metadata?: Record<string, unknown>;
+      payment_method?: { id?: string; saved?: boolean };
+    } = { id: payment.id!, metadata: payment.metadata, payment_method: payment.payment_method };
     if (ev === "payment.waiting_for_capture" && payment.status === "waiting_for_capture") {
       const amount = payment.amount;
       const value = amount?.value ?? "0";
@@ -132,6 +149,13 @@ export async function POST(request: NextRequest) {
       );
       const addTokens = VIDEO_TOKEN_PACKAGES[idx].tokens;
       result = await addVideoTokens(supabase, userId, addTokens);
+    } else if (paymentKind === "auto_replies") {
+      const autoRenew = parseAutoRenewFromMetadata(meta);
+      const paymentMethodId = paymentToProcess.payment_method?.id ?? null;
+      result = await creditAutoReplyFromPayment(supabase, userId, tariffIndex, {
+        autoRenew,
+        paymentMethodId,
+      });
     } else if (paymentKind === "flow") {
       const idx = Math.min(2, Math.max(0, tariffIndex));
       result = await creditSubscription(supabase, userId, "flow", FLOW_VOLUMES[idx]);

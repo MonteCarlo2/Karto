@@ -126,6 +126,68 @@ WHERE user_id = '<USER_UUID>'::uuid AND plan_type = 'video_tokens';
 
 ---
 
-## 5. После правок
+## 6. Отзывы (автоответы): `plan_type = auto_replies`
+
+**Четвёртая строка** в `user_subscriptions` — рядом с `flow`, `creative`, `video_tokens`.
+
+| Поле | Значение |
+|------|----------|
+| `plan_type` | **`auto_replies`** |
+| `plan_volume` | Остаток **оплаченного** месячного пакета |
+| `auto_reply_welcome_remaining` | **30 бесплатных** (без срока); нужна миграция / `ADMIN_AUTO_REPLIES_GRANT.sql` |
+| `period_start` | Начало 30-дневного периода для `plan_volume` — **всегда `NOW()`** при выдаче |
+
+**Частая ошибка:** `UPDATE ... WHERE plan_type = 'auto_replies'` — если строки ещё нет, PostgreSQL пишет «Success», но **0 rows affected** и в таблице ничего не появляется. Нужен **`INSERT ... ON CONFLICT`**.
+
+Готовый скрипт (схема + начисление): **`supabase/ADMIN_AUTO_REPLIES_GRANT.sql`**
+
+Кратко — начислить 100 оплаченных + 30 бесплатных:
+
+```sql
+INSERT INTO public.user_subscriptions (
+  user_id,
+  plan_type,
+  plan_volume,
+  auto_reply_welcome_remaining,
+  period_start,
+  flows_used,
+  creative_used,
+  video_tokens_spent,
+  video_tokens_lifetime_purchased
+)
+VALUES (
+  '<USER_UUID>'::uuid,
+  'auto_replies',
+  100,
+  30,
+  NOW(),
+  0, 0, 0, 0
+)
+ON CONFLICT (user_id, plan_type) DO UPDATE SET
+  plan_volume = EXCLUDED.plan_volume,
+  auto_reply_welcome_remaining = EXCLUDED.auto_reply_welcome_remaining,
+  period_start = EXCLUDED.period_start,
+  updated_at = NOW();
+```
+
+Только оплаченные (без бесплатных):
+
+```sql
+-- то же, но auto_reply_welcome_remaining = 0
+```
+
+Проверка:
+
+```sql
+SELECT plan_type, plan_volume, auto_reply_welcome_remaining, period_start
+FROM public.user_subscriptions
+WHERE user_id = '<USER_UUID>'::uuid AND plan_type = 'auto_replies';
+```
+
+В профиле и в автоответах общий остаток = `auto_reply_welcome_remaining` + `plan_volume` (если период активен).
+
+---
+
+## 7. После правок
 
 Пусть человек **выйдет и зайдёт** или обновит страницу профиля / студии — подтянется актуальное состояние из API.

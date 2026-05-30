@@ -33,6 +33,20 @@ const TeamResultSection = dynamic(
   () => import("@/components/landing/team-result-section").then((m) => ({ default: m.TeamResultSection })),
   { loading: () => <section className="min-h-[30vh] bg-background" aria-hidden /> }
 )
+const AutoRepliesIntroSection = dynamic(
+  () =>
+    import("@/components/landing/auto-replies-intro-section").then((m) => ({
+      default: m.AutoRepliesIntroSection,
+    })),
+  { loading: () => <section className="min-h-[50vh] bg-[#F5F5F0]" aria-hidden /> }
+)
+const AutoRepliesCapabilitiesSection = dynamic(
+  () =>
+    import("@/components/landing/auto-replies-capabilities-section").then((m) => ({
+      default: m.AutoRepliesCapabilitiesSection,
+    })),
+  { loading: () => <section className="min-h-[50vh] bg-[#F5F5F0]" aria-hidden /> }
+)
 const PricingSectionKarto = dynamic(
   () => import("@/components/ui/pricing-section-karto").then((m) => ({ default: m.default })),
   { loading: () => <section className="min-h-[50vh] bg-muted/20" aria-hidden /> }
@@ -90,7 +104,7 @@ function HomeContent() {
   // Обновление URL при прокрутке по секциям (как это работает, цена, вопросы), чтобы при повторном клике «Цена» происходил переход
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const sectionIds = ["hero", "how-it-works", "pricing", "faq"];
+    const sectionIds = ["hero", "how-it-works", "auto-replies", "pricing", "faq"];
     let ticking = false;
     const updateHash = () => {
       if (urlHasPendingSupabaseAuth()) return;
@@ -177,7 +191,7 @@ function HomeContent() {
           </h1>
               
               <p className="text-xl md:text-2xl leading-relaxed" style={{ color: '#666666', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>
-                Сборка карточки товара в одном потоке.
+                Карточки, креатив и автоответы на отзывы — полный помощник продавца на маркетплейсе.
               </p>
               
               <div className="flex flex-col sm:flex-row gap-4 pt-6">
@@ -200,11 +214,15 @@ function HomeContent() {
       {/* Sticky Scroll Reveal — как у Framer: слева текст по шагам, справа «запись экрана» с курсором */}
       <StickyScrollReveal />
 
-      {/* Секция Свободной Генерации (Новая) */}
       <FreeGenSection />
 
-      <MarketplaceLogoTicker />
+      <AutoRepliesIntroSection />
+
+      <AutoRepliesCapabilitiesSection />
+
       <TeamResultSection />
+
+      <MarketplaceLogoTicker />
 
       {/* Раздел цен — интерактивные тарифы (режим + объём) */}
       <PricingSectionKarto user={user} />

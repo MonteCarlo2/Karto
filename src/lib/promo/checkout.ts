@@ -1,10 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CREATIVE_PRICES, FLOW_PRICES } from "@/lib/subscription";
 import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
+import { AUTO_REPLY_PACKAGES } from "@/lib/auto-replies-pricing";
 
-export type PromoPaymentKind = "flow" | "creative" | "video_tokens";
+export type PromoPaymentKind = "flow" | "creative" | "video_tokens" | "auto_replies";
 
 export function basePriceRub(kind: PromoPaymentKind, tariffIndex: number): number {
+  if (kind === "auto_replies") {
+    const i = Math.min(AUTO_REPLY_PACKAGES.length - 1, Math.max(0, tariffIndex));
+    return AUTO_REPLY_PACKAGES[i].priceRub;
+  }
   if (kind === "flow") {
     const i = Math.min(FLOW_PRICES.length - 1, Math.max(0, tariffIndex));
     return FLOW_PRICES[i];

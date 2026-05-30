@@ -41,7 +41,8 @@ export function Navbar() {
   const pathname = usePathname()
   const router = useRouter()
   const isHome = pathname === "/"
-  const isFreeGeneration = pathname === "/studio/free"
+  const hideImmersiveStudio =
+    pathname === "/studio/free" || pathname.startsWith("/studio/auto-replies");
   const { showBadge: profileUpdateBadge, dismissProfileUpdateBadge } = useProfileUpdateBadge()
 
   // Предотвращаем гидратацию до монтирования на клиенте
@@ -187,8 +188,8 @@ export function Navbar() {
     }
   }
 
-  // Скрываем navbar на странице свободной генерации
-  if (isFreeGeneration) {
+  // Без глобальной шапки на полноэкранных инструментах мастерской
+  if (hideImmersiveStudio) {
     return null;
   }
 
@@ -264,6 +265,27 @@ export function Navbar() {
                       <div className="min-w-0 flex-1">
                         <div className={NAV_MENU_TITLE}>Свободное творчество</div>
                         <div className={NAV_MENU_SUBTITLE}>Карточки без полного потока</div>
+                      </div>
+                    </Link>
+                    <div className={NAV_MENU_DIVIDER} />
+                    <Link
+                      href="/studio/auto-replies"
+                      className={NAV_MENU_ROW_STUDIO}
+                      onClick={() => setShowStudioMenu(false)}
+                    >
+                      <span className={NAV_MENU_ICON_WRAP} aria-hidden>
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"
+                          />
+                        </svg>
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className={NAV_MENU_TITLE}>Автоответы</div>
+                        <div className={NAV_MENU_SUBTITLE}>Ответы на отзывы с ИИ</div>
                       </div>
                     </Link>
                   </motion.div>
@@ -448,6 +470,30 @@ export function Navbar() {
                       <div className="min-w-0 flex-1">
                         <div className={NAV_MENU_TITLE}>Свободное творчество</div>
                         <div className={NAV_MENU_SUBTITLE}>Карточки без полного потока</div>
+                      </div>
+                    </Link>
+                    <div className={NAV_MENU_DIVIDER} />
+                    <Link
+                      href="/studio/auto-replies"
+                      className={NAV_MENU_ROW_STUDIO}
+                      onClick={() => {
+                        setIsOpen(false);
+                        setShowStudioMenu(false);
+                      }}
+                    >
+                      <span className={NAV_MENU_ICON_WRAP} aria-hidden>
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"
+                          />
+                        </svg>
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className={NAV_MENU_TITLE}>Автоответы</div>
+                        <div className={NAV_MENU_SUBTITLE}>Ответы на отзывы с ИИ</div>
                       </div>
                     </Link>
                   </div>

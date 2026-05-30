@@ -5,7 +5,7 @@ import { motion } from "framer-motion"
 import { Marquee } from "@/components/ui/marquee"
 import { cn } from "@/lib/utils"
 
-type PatternType = "studio" | "retouch" | "copywriter" | "infographic"
+type PatternType = "studio" | "retouch" | "copywriter" | "infographic" | "reviews"
 
 type BentoCardProps = {
   title: string
@@ -154,7 +154,6 @@ function PatternInfographic() {
           <stop offset="100%" stopColor="#1F4E3D" />
         </linearGradient>
       </defs>
-      {/* Плавные параллельные волнистые линии во всю длину — как на скриншоте 3 */}
       {paths.map((d, i) => (
         <path
           key={i}
@@ -170,6 +169,51 @@ function PatternInfographic() {
   )
 }
 
+function PatternReviews() {
+  const stars = ["★", "☆", "★", "☆", "★", "☆", "★", "★", "☆", "★"]
+  const snippets = ["5★", "спасибо", "отлично", "ответ", "отзыв", "WB", "Ozon"]
+  return (
+    <div className="absolute inset-0 overflow-hidden" aria-hidden>
+      {Array.from({ length: 48 }).map((_, i) => {
+        const isStar = i % 3 !== 2
+        const glyph = isStar ? stars[i % stars.length]! : snippets[i % snippets.length]!
+        return (
+          <span
+            key={i}
+            className={cn(
+              "absolute select-none font-medium",
+              isStar ? "text-[#F5B800]/55" : "font-serif text-[#1F4E3D]/20"
+            )}
+            style={{
+              fontSize: isStar ? 14 + (i % 4) * 5 : 10 + (i % 3) * 3,
+              left: `${(i * 9.7 + (i % 4) * 5) % 96}%`,
+              top: `${(i * 6.3 + (i % 5) * 2) % 94}%`,
+              transform: `rotate(${-8 + (i % 7) * 5}deg)`,
+            }}
+          >
+            {glyph}
+          </span>
+        )
+      })}
+      <svg className="absolute inset-0 h-full w-full opacity-[0.14]" preserveAspectRatio="none" aria-hidden>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <rect
+            key={i}
+            x={24 + i * 72}
+            y={40 + (i % 2) * 48}
+            width={56}
+            height={34}
+            rx={10}
+            fill="none"
+            stroke="#1F4E3D"
+            strokeWidth="1.2"
+          />
+        ))}
+      </svg>
+    </div>
+  )
+}
+
 function CardPattern({ type }: { type: PatternType }) {
   switch (type) {
     case "studio":
@@ -180,6 +224,8 @@ function CardPattern({ type }: { type: PatternType }) {
       return <PatternCopywriter />
     case "infographic":
       return <PatternInfographic />
+    case "reviews":
+      return <PatternReviews />
     default:
       return null
   }
@@ -373,15 +419,27 @@ export function TeamResultSection() {
                 title="Копирайтер и SEO"
                 description="Генерация смыслов, которые продают. Полное соответствие алгоритмам маркетплейсов."
               />
-              <BentoCard
-                className="sm:col-span-2"
-                pattern="infographic"
-                tag="Инфографика"
-                accent="И"
-                accentGradient="linear-gradient(135deg, transparent 50%, rgba(132,204,22,0.04) 100%)"
-                title="Дизайнер инфографики"
-                description="Сборка инфографики по законам маркетинга. Минимум правок — максимум конверсии."
-              />
+              <div className="grid grid-cols-1 gap-2 sm:col-span-2 sm:grid-cols-5">
+                <BentoCard
+                  className="sm:col-span-2"
+                  pattern="infographic"
+                  tag="Инфографика"
+                  accent="И"
+                  accentGradient="linear-gradient(135deg, transparent 50%, rgba(132,204,22,0.04) 100%)"
+                  title="Дизайнер инфографики"
+                  description="Сборка инфографики по законам маркетинга. Минимум правок — максимум конверсии."
+                />
+                <BentoCard
+                  className="sm:col-span-3"
+                  glow
+                  pattern="reviews"
+                  tag="Отзывы"
+                  accent="О"
+                  accentGradient="linear-gradient(135deg, transparent 45%, rgba(132,204,22,0.06) 100%)"
+                  title="Менеджер отзывов"
+                  description="Автоответы на отзывы с двумя ИИ: один пишет, второй проверяет. Вы спите спокойно — KARTO отвечает за вас."
+                />
+              </div>
             </BentoGrid>
           </motion.div>
 

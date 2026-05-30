@@ -1,8 +1,45 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+
+function PolicyBlock({
+  id,
+  title,
+  children,
+}: {
+  id: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section suppressHydrationWarning>
+      <h2
+        className="text-xl font-bold text-gray-900 mb-5"
+        style={{ fontFamily: "var(--font-playfair), serif" }}
+        suppressHydrationWarning
+      >
+        {id}. {title}
+      </h2>
+      <div className="space-y-5" suppressHydrationWarning>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function Clause({ n, children }: { n: string; children: ReactNode }) {
+  return (
+    <div suppressHydrationWarning>
+      <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>
+        {n}
+      </p>
+      <div className="text-[15px] leading-6">{children}</div>
+    </div>
+  );
+}
 
 export default function PaymentsPolicyPage() {
   const router = useRouter();
@@ -10,7 +47,6 @@ export default function PaymentsPolicyPage() {
   return (
     <div className="min-h-screen bg-[#f5f3ef] relative" suppressHydrationWarning>
       <div className="container mx-auto px-6 py-12 max-w-4xl" suppressHydrationWarning>
-        {/* Header with back button and small title */}
         <div className="flex items-start justify-between mb-12" suppressHydrationWarning>
           <button
             onClick={() => router.back()}
@@ -20,8 +56,8 @@ export default function PaymentsPolicyPage() {
             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
             <span>Назад</span>
           </button>
-          
-          <Link 
+
+          <Link
             href="/policy-and-terms"
             className="text-xs text-gray-400 uppercase tracking-wider hover:text-gray-600 transition-colors"
             suppressHydrationWarning
@@ -30,208 +66,377 @@ export default function PaymentsPolicyPage() {
           </Link>
         </div>
 
-        {/* Main title */}
-        <h1 className="text-4xl font-bold text-gray-900 mb-6 text-center" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-          Политика платежей и подписок платформы KARTO
+        <h1
+          className="text-4xl font-bold text-gray-900 mb-6 text-center"
+          style={{ fontFamily: "var(--font-playfair), serif" }}
+          suppressHydrationWarning
+        >
+          Политика платежей платформы KARTO
         </h1>
 
-        {/* Sub-information */}
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mb-16 text-sm text-gray-600 max-w-3xl mx-auto" suppressHydrationWarning>
-          <p suppressHydrationWarning>Версия 1.1</p>
+        <div
+          className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mb-16 text-sm text-gray-600 max-w-3xl mx-auto"
+          suppressHydrationWarning
+        >
+          <p suppressHydrationWarning>Версия 1.2</p>
           <span className="text-gray-400">•</span>
-          <p suppressHydrationWarning>Дата вступления в силу: 13 февраля 2026 года</p>
+          <p suppressHydrationWarning>Дата вступления в силу: 28 мая 2026 года</p>
           <span className="text-gray-400">•</span>
-          <p suppressHydrationWarning>Оператор: Самозанятый Симонян Эрик Каренович (ИНН 231142064831)</p>
+          <p suppressHydrationWarning>
+            Оператор: Самозанятый Симонян Эрик Каренович (ИНН 231142064831)
+          </p>
         </div>
 
-        {/* Content */}
-        <div className="max-w-3xl mx-auto space-y-8 text-gray-800" style={{ fontFamily: 'var(--font-geist-sans), system-ui, sans-serif' }} suppressHydrationWarning>
-          {/* Section 1 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              1. Общие положения
-            </h2>
-            <div className="space-y-5" suppressHydrationWarning>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.1</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Настоящая Политика регулирует порядок оплаты, использования лимитов и возврата средств на платформе KARTO (далее — «Сервис»).
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.2</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Оплата услуг Сервиса является подтверждением того, что Пользователь ознакомлен и согласен с настоящей Политикой и Условиями использования.
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.3</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Все расчеты на территории РФ производятся в российских рублях.
-                </p>
-              </div>
-            </div>
-          </section>
+        <div
+          className="max-w-3xl mx-auto space-y-8 text-gray-800"
+          style={{ fontFamily: "var(--font-geist-sans), system-ui, sans-serif" }}
+          suppressHydrationWarning
+        >
+          <PolicyBlock id="1" title="Общие положения">
+            <Clause n="1.1">
+              <p>
+                Настоящая Политика регулирует порядок оплаты, использования лимитов,
+                автопродления пакетов, сохранения способа оплаты и возврата средств на
+                платформе KARTO (далее — «Сервис»).
+              </p>
+            </Clause>
+            <Clause n="1.2">
+              <p>
+                Оплата услуг Сервиса является подтверждением того, что Пользователь
+                ознакомлен и согласен с настоящей Политикой и{" "}
+                <Link href="/terms" className="text-[#1F4E3D] underline underline-offset-2">
+                  Условиями использования
+                </Link>
+                .
+              </p>
+            </Clause>
+            <Clause n="1.3">
+              <p>Все расчёты на территории РФ производятся в российских рублях.</p>
+            </Clause>
+            <Clause n="1.4">
+              <p>
+                KARTO не является банком или платёжной организацией. Приём платежей и
+                хранение данных банковских карт осуществляет лицензированный оператор
+                ЮKassa.
+              </p>
+            </Clause>
+          </PolicyBlock>
 
-          {/* Section 2 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              2. Формат предоставления услуг
-            </h2>
-            <div className="space-y-5" suppressHydrationWarning>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>2.1</p>
-                <p className="mb-2 text-[15px] leading-6" suppressHydrationWarning>
-                  Сервис предоставляет услуги по двум моделям:
-                </p>
-                <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning><strong>Пакетная покупка (Top-ups):</strong> Разовое приобретение определенного количества «Потоков» или генераций в Мастерской.</li>
-                  <li suppressHydrationWarning><strong>Подписка (Recurrent):</strong> Периодический доступ к расширенному функционалу с ежемесячным списанием средств.</li>
-                </ul>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>2.2. Срок действия лимитов</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Все приобретенные пакеты генераций и «Потоков» активны в течение 30 (тридцати) календарных дней с момента оплаты. По истечении этого срока неиспользованные лимиты аннулируются без возврата средств и возможности переноса на следующий период.
-                </p>
-              </div>
-            </div>
-          </section>
+          <PolicyBlock id="2" title="Формат предоставления услуг">
+            <Clause n="2.1">
+              <p className="mb-2">
+                Сервис предоставляет услуги в форме{" "}
+                <strong>разовой покупки пакета</strong> с фиксированным объёмом и сроком
+                действия 30 (тридцати) календарных дней. Это не абонемент на неограниченный
+                доступ к Сервису.
+              </p>
+              <p className="mb-2">Виды пакетов:</p>
+              <ul className="list-disc list-inside space-y-1.5 ml-5">
+                <li>
+                  <strong>Поток</strong> — комплексная генерация контента для карточки
+                  товара (фото, SEO-текст и связанные операции в рамках одного «Потока»).
+                </li>
+                <li>
+                  <strong>Свободное творчество</strong> — генерации изображений в
+                  Мастерской по запросу Пользователя.
+                </li>
+                <li>
+                  <strong>Видео-кредиты</strong> — токены для генерации видео в Мастерской
+                  (списание по правилам тарификации видео).
+                </li>
+                <li>
+                  <strong>Отзывы</strong> — пакет ответов на отзывы покупателей на
+                  маркетплейсах (Wildberries, Ozon, Яндекс Маркет) через модуль
+                  автоответов.
+                </li>
+              </ul>
+            </Clause>
+            <Clause n="2.2">
+              <p>
+                Для пакетов <strong>Поток</strong>, <strong>Свободное творчество</strong> и{" "}
+                <strong>Видео-кредиты</strong> автопродление и сохранение карты{" "}
+                <strong>не применяются</strong>. Каждая покупка — отдельный разовый платёж.
+              </p>
+            </Clause>
+            <Clause n="2.3">
+              <p>
+                Для пакета <strong>Отзывы</strong> Пользователь может дополнительно включить{" "}
+                <strong>автопродление пакета</strong> — рекуррентное (повторяющееся)
+                списание за тот же объём ответов каждые 30 дней с сохранённой карты через
+                ЮKassa. Это не подписка на доступ к Сервису, а автоматическое продление
+                оплаченного пакета услуг на следующий период.
+              </p>
+            </Clause>
+            <Clause n="2.4. Срок действия лимитов">
+              <p>
+                Все приобретённые пакеты (кроме бесплатных пробных лимитов, если они
+                предоставлены отдельно) активны в течение 30 (тридцати) календарных дней с
+                момента оплаты. По истечении срока неиспользованные лимиты аннулируются без
+                возврата средств и без переноса на следующий период.
+              </p>
+            </Clause>
+          </PolicyBlock>
 
-          {/* Section 3 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              3. Порядок оплаты и безопасность
-            </h2>
-            <div className="space-y-5" suppressHydrationWarning>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>3.1</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Прием платежей осуществляется через лицензированный российский платежный агрегатор ЮKassa (ООО НКО «Яндекс.Деньги»).
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>3.2</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Оператор не хранит и не обрабатывает данные банковских карт пользователей. Безопасность транзакций обеспечивается платежным оператором по стандарту PCI DSS.
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>3.3</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  В соответствии с законом №54-ФЗ, после совершения оплаты на электронную почту Пользователя отправляется кассовый чек, сформированный через сервис Мой Налог.
-                </p>
-              </div>
-            </div>
-          </section>
+          <PolicyBlock id="3" title="Тарифы (актуальные на дату Политики)">
+            <Clause n="3.1. Поток">
+              <ul className="list-disc list-inside space-y-1 ml-5">
+                <li>1 Поток — 299 ₽</li>
+                <li>5 Потоков — 1 190 ₽</li>
+                <li>15 Потоков — 2 990 ₽</li>
+              </ul>
+            </Clause>
+            <Clause n="3.2. Свободное творчество">
+              <ul className="list-disc list-inside space-y-1 ml-5">
+                <li>10 генераций — 249 ₽</li>
+                <li>30 генераций — 590 ₽</li>
+                <li>100 генераций — 1 490 ₽</li>
+              </ul>
+            </Clause>
+            <Clause n="3.3. Видео-кредиты">
+              <ul className="list-disc list-inside space-y-1 ml-5">
+                <li>1 250 токенов — 390 ₽</li>
+                <li>2 850 токенов — 790 ₽</li>
+                <li>6 250 токенов — 1 599 ₽</li>
+                <li>12 500 токенов — 2 999 ₽</li>
+              </ul>
+              <p className="mt-2 text-gray-600">
+                Правила списания токенов за ролик указаны в интерфейсе Сервиса («Ценовая
+                политика видео»).
+              </p>
+            </Clause>
+            <Clause n="3.4. Отзывы (автоответы)">
+              <ul className="list-disc list-inside space-y-1 ml-5">
+                <li>50 ответов — 249 ₽</li>
+                <li>100 ответов — 429 ₽</li>
+                <li>250 ответов — 990 ₽</li>
+                <li>500 ответов — 1 750 ₽</li>
+                <li>1 500 ответов — 4 350 ₽</li>
+                <li>5 000 ответов — 9 500 ₽</li>
+                <li>12 000 ответов — 14 400 ₽</li>
+              </ul>
+              <p className="mt-2 text-gray-600">
+                1 успешно отправленный ответ = 1 списание с пакета. Перегенерация черновика
+                ответа до отправки не списывает лимит.
+              </p>
+            </Clause>
+            <Clause n="3.5">
+              <p>
+                Оператор вправе изменять стоимость пакетов. Новая цена применяется к
+                платежам, совершённым после публикации изменений в интерфейсе Сервиса.
+                Автопродление действующего пакета «Отзывы» продлевается по тарифу,
+                действовавшему на момент последней успешной оплаты этого пакета, до момента
+                изменения тарифа Пользователем при следующей покупке.
+              </p>
+            </Clause>
+          </PolicyBlock>
 
-          {/* Section 4 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              4. Автоматическое продление (Для тарифов с подпиской)
-            </h2>
-            <div className="space-y-5" suppressHydrationWarning>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>4.1</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  При оформлении подписки Пользователь соглашается на автоматическое списание средств за следующий период (рекуррентный платеж).
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>4.2</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Отключить автопродление можно в любой момент в Личном кабинете Сервиса не позднее чем за 24 часа до даты следующего списания.
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>4.3</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  При отмене подписки оплаченный лимит остается доступным до конца 30-дневного периода, после чего сгорает.
-                </p>
-              </div>
-            </div>
-          </section>
+          <PolicyBlock id="4" title="Порядок оплаты и безопасность">
+            <Clause n="4.1">
+              <p>
+                Приём платежей осуществляется через лицензированный российский платёжный
+                агрегатор ЮKassa (ООО НКО «ЮMoney»).
+              </p>
+            </Clause>
+            <Clause n="4.2">
+              <p>
+                Оператор не хранит и не обрабатывает полные данные банковских карт
+                Пользователей. Безопасность транзакций обеспечивается платёжным оператором
+                по стандарту PCI DSS.
+              </p>
+            </Clause>
+            <Clause n="4.3">
+              <p>
+                В соответствии с законом № 54-ФЗ после совершения оплаты на электронную
+                почту Пользователя отправляется кассовый чек, сформированный через сервис
+                «Мой Налог».
+              </p>
+            </Clause>
+          </PolicyBlock>
 
-          {/* Section 5 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              5. Условия возврата денежных средств
-            </h2>
-            <div className="space-y-5" suppressHydrationWarning>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.1. Специфика цифрового контента</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  В соответствии со ст. 26.1 Закона «О защите прав потребителей» и учитывая специфику ИИ-технологий, услуга считается оказанной в полном объеме в момент успешного завершения генерации (создания изображения или текста) нейросетью по запросу Пользователя.
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.2. Затраты на вычисления</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Денежные средства за успешно сгенерированные единицы контента возврату не подлежат, так как на их создание были затрачены невозвратные вычислительные мощности (GPU).
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.3</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Возврат возможен только в случае технического сбоя на стороне Сервиса (например, двойное списание), подтвержденного логами системы.
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>5.4. Отказ в возврате производится, если:</p>
-                <ul className="list-disc list-inside space-y-1.5 ml-5 text-[15px] leading-6" suppressHydrationWarning>
-                  <li suppressHydrationWarning>Результат генерации не соответствует эстетическим ожиданиям Пользователя («некрасиво», «не тот стиль»).</li>
-                  <li suppressHydrationWarning>Пользователь не использовал оплаченные лимиты в течение установленного срока (30 дней).</li>
-                  <li suppressHydrationWarning>Аккаунт Пользователя заблокирован за нарушение правил (генерация запрещенного контента, мультиаккаунтинг).</li>
-                </ul>
-              </div>
-            </div>
-          </section>
+          <PolicyBlock id="5" title="Автопродление пакета «Отзывы»">
+            <Clause n="5.1">
+              <p>
+                Автопродление доступно только для пакета <strong>Отзывы</strong>. При
+                оформлении оплаты Пользователь может включить автопродление (галочка в окне
+                подтверждения). При включении Пользователь соглашается на сохранение
+                способа оплаты в ЮKassa и на регулярное списание указанной суммы за тот же
+                объём ответов каждые 30 (тридцати) календарных дней, пока автопродление не
+                отключено.
+              </p>
+            </Clause>
+            <Clause n="5.2">
+              <p className="mb-2">Условия рекуррентного платежа:</p>
+              <ul className="list-disc list-inside space-y-1.5 ml-5">
+                <li>
+                  <strong>Предмет:</strong> продление пакета «Отзывы» выбранного объёма.
+                </li>
+                <li>
+                  <strong>Период:</strong> 30 календарных дней с даты успешной оплаты (или
+                  с даты предыдущего продления).
+                </li>
+                <li>
+                  <strong>Регулярность списания:</strong> 1 раз в 30 дней при включённом
+                  автопродлении и наличии сохранённого способа оплаты.
+                </li>
+                <li>
+                  <strong>Сумма:</strong> фиксированная цена выбранного пакета (раздел 3.4).
+                </li>
+                <li>
+                  <strong>Момент списания:</strong> в дату, указанную как дата следующего
+                  продления в Личном кабинете (раздел «Профиль»), либо по истечении 30 дней
+                  с начала текущего оплаченного периода.
+                </li>
+              </ul>
+            </Clause>
+            <Clause n="5.3">
+              <p>
+                При успешном автопродлении лимит ответов обновляется на полный объём
+                выбранного пакета на новый 30-дневный период (остаток предыдущего периода
+                не суммируется).
+              </p>
+            </Clause>
+            <Clause n="5.4">
+              <p>
+                Информация о статусе автопродления, сумме следующего списания и дате
+                следующего продления отображается в Личном кабинете (раздел «Профиль» → блок
+                «Автопродление · Отзывы»). Отдельная email-рассылка о предстоящем списании
+                на дату Политики не осуществляется; Пользователь самостоятельно контролирует
+                настройки в интерфейсе Сервиса.
+              </p>
+            </Clause>
+            <Clause n="5.5">
+              <p className="mb-2">
+                Пользователь может в любой момент без штрафов и без обращения в поддержку:
+              </p>
+              <ul className="list-disc list-inside space-y-1.5 ml-5">
+                <li>
+                  <strong>отключить автопродление</strong> — следующие списания не
+                  выполняются; текущий оплаченный пакет действует до конца 30-дневного
+                  периода; сохранённая карта остаётся привязанной и может быть использована
+                  для повторного включения автопродления;
+                </li>
+                <li>
+                  <strong>удалить сохранённую карту из KARTO</strong> — автопродление
+                  отключается, идентификатор способа оплаты удаляется из учётной записи
+                  KARTO; для повторного автопродления потребуется новая оплата с сохранением
+                  карты. Данные карты физически хранятся у платёжного оператора; KARTO
+                  хранит только технический идентификатор для повторных списаний.
+                </li>
+              </ul>
+              <p className="mt-2">
+                Обе функции доступны в Личном кабинете в блоке «Автопродление · Отзывы».
+              </p>
+            </Clause>
+            <Clause n="5.6">
+              <p>
+                При неуспешном списании (недостаточно средств, отказ банка и т.п.)
+                автопродление может быть приостановлено до успешной оплаты. Неиспользованный
+                остаток текущего периода сохраняется до его окончания.
+              </p>
+            </Clause>
+          </PolicyBlock>
 
-          {/* Section 6 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              6. Ограничение ответственности
-            </h2>
-            <div className="space-y-5" suppressHydrationWarning>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.1</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Оператор не несет ответственности за невозможность использования Сервиса по причинам, не зависящим от Оператора (отсутствие интернета у пользователя, блокировка банковской карты).
-                </p>
-              </div>
-              <div suppressHydrationWarning>
-                <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>6.2</p>
-                <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Оператор вправе изменять стоимость услуг, уведомляя об этом пользователей через интерфейс сайта или email.
-                </p>
-              </div>
-            </div>
-          </section>
+          <PolicyBlock id="6" title="Условия возврата денежных средств">
+            <Clause n="6.1. Общий принцип">
+              <p>
+                Услуги Сервиса носят цифровой характер и оказываются в момент фактического
+                потребления лимита. Возврат за неиспользованные лимиты по истечении срока
+                пакета или при отказе Пользователя от использования Сервиса{" "}
+                <strong>не производится</strong>.
+              </p>
+            </Clause>
+            <Clause n="6.2. Поток и Свободное творчество">
+              <p className="mb-2">
+                В соответствии со ст. 26.1 Закона «О защите прав потребителей» и с учётом
+                специфики ИИ-технологий услуга считается оказанной в полном объёме в момент
+                успешного завершения генерации по запросу Пользователя.
+              </p>
+              <p>
+                Денежные средства за успешно сгенерированные единицы контента возврату не
+                подлежат, так как на их создание затрачены невозвратные вычислительные
+                мощности.
+              </p>
+            </Clause>
+            <Clause n="6.3. Видео-кредиты">
+              <p>
+                Списание токенов за успешно сгенерированное видео является оказанием услуги.
+                Возврат за израсходованные токены не производится. Неиспользованные токены
+                по истечении 30-дневного срока пакета возврату не подлежат.
+              </p>
+            </Clause>
+            <Clause n="6.4. Отзывы (автоответы)">
+              <p className="mb-2">
+                1 успешно отправленный ответ на отзыв покупателя = 1 оказанная услуга.
+                Возврат за использованные ответы не производится.
+              </p>
+              <p className="mb-2">
+                Возврат за неиспользованные ответы (Пользователь не воспользовался частью или
+                всем пакетом) <strong>не производится</strong>, в том числе при отключении
+                автопродления или удалении сохранённой карты.
+              </p>
+              <p>
+                Индивидуальный возврат или компенсация возможны только при документально
+                подтверждённом техническом сбое на стороне Сервиса, из‑за которого услуга
+                фактически не была оказана в оплаченном периоде (например, двойное
+                списание, ошибочное списание без начисления пакета, длительная полная
+                недоступность модуля автоответов по вине Сервиса при включённом автоматическом
+                режиме и отсутствии ни одного успешно сформированного ответа за оплаченный
+                период — по результатам проверки логов). Решение принимается Оператором
+                индивидуально в течение срока, указанного в разделе 8.
+              </p>
+            </Clause>
+            <Clause n="6.5. Отказ в возврате">
+              <p className="mb-2">Возврат не производится, если:</p>
+              <ul className="list-disc list-inside space-y-1.5 ml-5">
+                <li>
+                  результат генерации или ответа не соответствует субъективным ожиданиям
+                  Пользователя («некрасиво», «не тот стиль», «не понравился текст»);
+                </li>
+                <li>
+                  Пользователь не использовал оплаченные лимиты в течение 30-дневного срока;
+                </li>
+                <li>
+                  аккаунт заблокирован за нарушение правил Сервиса или законодательства РФ.
+                </li>
+              </ul>
+            </Clause>
+          </PolicyBlock>
 
-          {/* Section 7 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              7. Контакты по финансовым вопросам
-            </h2>
-            <p className="text-[15px] leading-6" suppressHydrationWarning>
-              Все обращения по вопросам платежей и возвратов принимаются на электронную почту: aiora.help@mail.ru.
+          <PolicyBlock id="7" title="Ограничение ответственности">
+            <Clause n="7.1">
+              <p>
+                Оператор не несёт ответственности за невозможность использования Сервиса по
+                причинам, не зависящим от Оператора (отсутствие интернета, блокировка карты
+                банком, ограничения API маркетплейсов).
+              </p>
+            </Clause>
+            <Clause n="7.2">
+              <p>
+                Оператор вправе изменять стоимость и состав пакетов, уведомляя об этом через
+                интерфейс Сервиса. Изменения не распространяются на уже оплаченные периоды.
+              </p>
+            </Clause>
+          </PolicyBlock>
+
+          <PolicyBlock id="8" title="Контакты по финансовым вопросам">
+            <p className="text-[15px] leading-6">
+              Обращения по вопросам платежей, автопродления, удаления сохранённой карты и
+              возвратов:{" "}
+              <a href="mailto:aiora.help@mail.ru" className="text-[#1F4E3D] underline">
+                aiora.help@mail.ru
+              </a>
+              .
             </p>
-            <p className="text-[15px] leading-6 mt-2" suppressHydrationWarning>
-              Срок рассмотрения заявки — до 10 рабочих дней.
-            </p>
-          </section>
+            <p className="text-[15px] leading-6 mt-2">Срок рассмотрения заявки — до 10 рабочих дней.</p>
+          </PolicyBlock>
 
-          {/* Section 8 */}
-          <section suppressHydrationWarning>
-            <h2 className="text-xl font-bold text-gray-900 mb-5" style={{ fontFamily: 'var(--font-playfair), serif' }} suppressHydrationWarning>
-              8. Реквизиты
-            </h2>
-            <div className="space-y-2 text-[15px] leading-6" suppressHydrationWarning>
-              <p suppressHydrationWarning>Исполнитель: Самозанятый Симонян Эрик Каренович</p>
-              <p suppressHydrationWarning>ИНН: 231142064831</p>
-              <p suppressHydrationWarning>Юридический статус: Плательщик налога на профессиональный доход</p>
+          <PolicyBlock id="9" title="Реквизиты">
+            <div className="space-y-2 text-[15px] leading-6">
+              <p>Исполнитель: Самозанятый Симонян Эрик Каренович</p>
+              <p>ИНН: 231142064831</p>
+              <p>Юридический статус: Плательщик налога на профессиональный доход</p>
             </div>
-          </section>
+          </PolicyBlock>
         </div>
       </div>
     </div>

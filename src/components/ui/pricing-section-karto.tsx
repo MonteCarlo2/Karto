@@ -8,6 +8,12 @@ import { TimelineContent } from "@/components/ui/timeline-animation"
 import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal"
 import { cn } from "@/lib/utils"
 import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing"
+import {
+  AUTO_REPLY_OPTION_LABELS,
+  AUTO_REPLY_PACKAGES,
+  autoReplyPricePerUnit,
+  formatAutoReplyVolume,
+} from "@/lib/auto-replies-pricing"
 import NumberFlow from "@number-flow/react"
 import { CheckCheck, Loader2, Check, X } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
@@ -86,6 +92,57 @@ const PricingSwitch2 = ({
   )
 }
 
+/** Селектор пакетов автоответов: шире стандартной строки, салатовая таблетка. */
+const ReviewsPackageSwitch = ({
+  options,
+  value,
+  onSwitch,
+  layoutId,
+  className,
+}: {
+  options: readonly string[]
+  value: string
+  onSwitch: (value: string) => void
+  layoutId?: string
+  className?: string
+}) => {
+  const uniqueId = useId()
+  const switchLayoutId = layoutId ?? `reviews-switch-${uniqueId}`
+  const parsed = Number.parseInt(value, 10)
+  const index =
+    Number.isFinite(parsed) && parsed >= 0 && parsed < options.length ? parsed : 0
+
+  return (
+    <div
+      className={cn(
+        "relative z-10 flex w-full rounded-full border border-neutral-300/80 bg-neutral-200/80 p-1.5",
+        className
+      )}
+    >
+      {options.map((label, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => onSwitch(String(i))}
+          className={cn(
+            "relative z-10 min-h-14 flex-1 rounded-full px-1 py-3 text-base font-bold tabular-nums transition-colors touch-manipulation sm:px-1.5 sm:text-lg",
+            index === i ? "text-white" : "text-neutral-600 hover:text-neutral-900"
+          )}
+        >
+          {index === i && (
+            <motion.span
+              layoutId={switchLayoutId}
+              className="absolute inset-0 rounded-full bg-[#84CC16] shadow-lg shadow-[#84CC16]/30"
+              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            />
+          )}
+          <span className="relative block text-center leading-tight">{label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /** Одна строка сегментов (как «генерации изображений»): лайм #84CC16, активный текст белый. Поддерживает 3–4 и больше опций. */
 const PricingSwitchRow = ({
   options,
@@ -93,12 +150,17 @@ const PricingSwitchRow = ({
   onSwitch,
   className,
   layoutId,
+  compact,
+  largeLabels,
 }: {
   options: readonly string[]
   value: string
   onSwitch: (value: string) => void
   className?: string
   layoutId?: string
+  compact?: boolean
+  /** Чуть крупнее подписи (переключатель «Режим»). */
+  largeLabels?: boolean
 }) => {
   const uniqueId = useId()
   const switchLayoutId = layoutId ?? `switch-row-${uniqueId}`
@@ -110,6 +172,7 @@ const PricingSwitchRow = ({
     <div
       className={cn(
         "relative z-10 w-full flex rounded-full bg-neutral-200/80 border border-neutral-300/80 p-1.5",
+        compact ? "flex-wrap gap-1.5 rounded-2xl" : "",
         className
       )}
     >
@@ -119,14 +182,21 @@ const PricingSwitchRow = ({
           type="button"
           onClick={() => onSwitch(String(i))}
           className={cn(
-            "relative z-10 flex-1 min-h-14 rounded-full px-1.5 py-3 text-sm font-semibold transition-colors touch-manipulation sm:px-2",
+            compact
+              ? "relative z-10 min-h-11 flex-1 min-w-[calc(25%-0.5rem)] rounded-xl px-1 py-2 text-[11px] font-semibold transition-colors touch-manipulation sm:min-w-0 sm:flex-1 sm:rounded-full sm:px-1.5 sm:py-3 sm:text-xs"
+              : largeLabels
+                ? "relative z-10 flex-1 min-h-14 rounded-full px-2 py-3 text-base font-semibold transition-colors touch-manipulation sm:px-3 sm:text-lg"
+                : "relative z-10 flex-1 min-h-14 rounded-full px-1.5 py-3 text-sm font-semibold transition-colors touch-manipulation sm:px-2",
             index === i ? "text-white" : "text-neutral-600 hover:text-neutral-900"
           )}
         >
           {index === i && (
             <motion.span
               layoutId={switchLayoutId}
-              className="absolute inset-0 rounded-full bg-[#84CC16] shadow-lg shadow-[#84CC16]/30"
+              className={cn(
+                "absolute inset-0 bg-[#84CC16] shadow-lg shadow-[#84CC16]/30",
+                compact ? "rounded-xl sm:rounded-full" : "rounded-full"
+              )}
               transition={{ type: "spring", stiffness: 500, damping: 30 }}
             />
           )}
@@ -154,6 +224,15 @@ const CREATIVE_FEATURES = [
   "Скачивайте в высоком разрешении",
 ]
 
+const REVIEWS_FEATURES = [
+  "Два ИИ на каждый ответ: один пишет, второй проверяет",
+  "Wildberries, Ozon и Яндекс Маркет — одно окно",
+  "Режимы: по тексту, полуавтомат и автомат",
+  "Купленные ответы действуют 30 дней; автопродление пакета можно включить или отключить в профиле",
+  "Перегенерация ответа бесплатна",
+  "API, аналитика и настройки под ваш бренд",
+]
+
 const FLOW_OPTIONS: [string, string, string] = ["1 Поток", "5 Потоков", "15 Потоков"]
 const CREATIVE_OPTIONS: [string, string, string] = ["10 ген.", "30 ген.", "100 ген."]
 /** Пакеты видео-кредитов (токены только на видео) */
@@ -178,7 +257,7 @@ interface PricingSectionKartoProps {
 
 export default function PricingSectionKarto({ user }: PricingSectionKartoProps) {
   const router = useRouter()
-  const [mode, setMode] = useState<"0" | "1">("0")
+  const [mode, setMode] = useState<"0" | "1" | "2">("0")
   const [tariff, setTariff] = useState("0")
   /** Индекс пакета видео-кредитов (0–3) */
   const [videoTariff, setVideoTariff] = useState("0")
@@ -199,6 +278,8 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
   } | null>(null)
   /** Поле ввода промокода показываем только после «Есть промокод». */
   const [promoFieldsOpen, setPromoFieldsOpen] = useState(false)
+  /** Автопродление пакета «Отзывы» — по умолчанию включено. */
+  const [autoRenewEnabled, setAutoRenewEnabled] = useState(true)
 
   useEffect(() => {
     setPromoApplied(null)
@@ -206,7 +287,10 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
   }, [mode, tariff, videoTariff, creativeMediaSub])
 
   useEffect(() => {
-    if (!confirmOpen) setPromoFieldsOpen(false)
+    if (!confirmOpen) {
+      setPromoFieldsOpen(false)
+      setAutoRenewEnabled(true)
+    }
   }, [confirmOpen])
 
   const applyPromo = useCallback(async () => {
@@ -225,7 +309,13 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
       }
       const isFl = mode === "0"
       const paymentKind =
-        isFl ? "flow" : creativeMediaSub === "1" ? "video_tokens" : "creative"
+        mode === "2"
+          ? "auto_replies"
+          : isFl
+            ? "flow"
+            : creativeMediaSub === "1"
+              ? "video_tokens"
+              : "creative"
       const res = await fetch("/api/payment/promo-preview", {
         method: "POST",
         headers: {
@@ -236,7 +326,10 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
           promoCode: promoCodeInput.trim(),
           paymentKind,
           mode,
-          tariffIndex: Number.parseInt(tariff, 10) || 0,
+          tariffIndex:
+            paymentKind === "video_tokens"
+              ? Number.parseInt(videoTariff, 10) || 0
+              : Number.parseInt(tariff, 10) || 0,
           videoTariff: Number.parseInt(videoTariff, 10) || 0,
         }),
       })
@@ -269,8 +362,14 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
       const headers: Record<string, string> = { "Content-Type": "application/json" }
       if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`
       const isFlow = mode === "0"
-      const paymentKind =
-        isFlow ? "flow" : creativeMediaSub === "1" ? "video_tokens" : "creative"
+      const isReviews = mode === "2"
+      const paymentKind = isReviews
+        ? "auto_replies"
+        : isFlow
+          ? "flow"
+          : creativeMediaSub === "1"
+            ? "video_tokens"
+            : "creative"
       const tariffIndex =
         paymentKind === "video_tokens"
           ? Number.parseInt(videoTariff, 10) || 0
@@ -283,6 +382,7 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
           mode,
           paymentKind,
           tariffIndex,
+          ...(isReviews ? { autoRenew: autoRenewEnabled } : {}),
           ...(promoApplied && promoCodeInput.trim()
             ? { promoCode: promoCodeInput.trim() }
             : {}),
@@ -327,17 +427,28 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
   }, [confirmOpen])
 
   const isFlow = mode === "0"
-  const isCreativeVideo = !isFlow && creativeMediaSub === "1"
-  const tariffIndex = Number.parseInt(tariff, 10) || 0
+  const isReviews = mode === "2"
+  const isCreativeVideo = mode === "1" && creativeMediaSub === "1"
+  const tariffIndex = Math.min(
+    isReviews ? AUTO_REPLY_PACKAGES.length - 1 : 2,
+    Math.max(0, Number.parseInt(tariff, 10) || 0)
+  )
   const videoTariffIndex = Number.parseInt(videoTariff, 10) || 0
-  const features = isFlow ? FLOW_FEATURES : CREATIVE_FEATURES
+  const reviewsPack = AUTO_REPLY_PACKAGES[tariffIndex] ?? AUTO_REPLY_PACKAGES[0]
+  const features = isFlow ? FLOW_FEATURES : isReviews ? REVIEWS_FEATURES : CREATIVE_FEATURES
   const bonuses = isFlow ? FLOW_BONUS : CREATIVE_BONUS
   const currentPrice = isFlow
     ? FLOW_PRICES[tariffIndex] ?? FLOW_PRICES[0]
-    : isCreativeVideo
-      ? VIDEO_TOKEN_PRICES[videoTariffIndex] ?? VIDEO_TOKEN_PRICES[0]
-      : CREATIVE_PRICES[tariffIndex] ?? CREATIVE_PRICES[0]
-  const bonusLabel = isFlow || isCreativeVideo ? null : bonuses[tariffIndex]
+    : isReviews
+      ? reviewsPack.priceRub
+      : isCreativeVideo
+        ? VIDEO_TOKEN_PRICES[videoTariffIndex] ?? VIDEO_TOKEN_PRICES[0]
+        : CREATIVE_PRICES[tariffIndex] ?? CREATIVE_PRICES[0]
+  const bonusLabel = isReviews
+    ? `${autoReplyPricePerUnit(reviewsPack.replies, reviewsPack.priceRub)} ₽ за ответ`
+    : isFlow || isCreativeVideo
+      ? null
+      : bonuses[tariffIndex]
 
   const revealVariants = {
     visible: (i: number) => ({
@@ -414,10 +525,10 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
           customVariants={revealVariants}
           className="mb-10 text-center text-sm text-neutral-500"
         >
-          Пакеты «Поток» и «Свободное творчество» не суммируются: покупка генераций не даёт доступа к Потоку и наоборот — выберите один формат. В свободном творчестве сначала выберите фото или видео: видео-кредиты (токены) только на видео и не тратят пакет кадров изображений.
+          Пакеты «Поток», «Свободное творчество» и «Отзывы» не суммируются — выберите нужный режим. В творчестве отдельно покупаются фото и видео-кредиты. Пакеты ответов действуют один месяц.
         </TimelineContent>
 
-        <div className="grid gap-14 md:grid-cols-[1fr_1.2fr] md:gap-16 lg:gap-20">
+        <div className="grid gap-14 overflow-visible md:grid-cols-[1fr_1.2fr] md:gap-16 lg:gap-20">
           {/* Левая колонка: особенности левее, анимация только при первом появлении в viewport */}
           <div className="md:max-w-sm md:justify-self-start pl-0">
             <TimelineContent
@@ -446,7 +557,7 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
           </div>
 
           {/* Правая колонка: переключатели, цена, кнопка; больше отступ между блоками */}
-          <div className="flex flex-col justify-center space-y-12">
+          <div className="flex flex-col justify-center space-y-12 overflow-visible">
             <TimelineContent
               animationNum={4}
               timelineRef={pricingRef}
@@ -455,21 +566,21 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
               <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
                 Режим
               </h4>
-              <PricingSwitch2
-                button1="Поток"
-                button2="Свободное творчество"
-                selectedKey={mode}
+              <PricingSwitchRow
+                options={["Поток", "Свободное творчество", "Отзывы"]}
+                value={mode}
                 onSwitch={(v) => {
-                  setMode(v as "0" | "1")
+                  setMode(v as "0" | "1" | "2")
                   setTariff("0")
                   setVideoTariff("0")
                   setCreativeMediaSub("0")
                 }}
                 layoutId="karto-mode"
+                largeLabels
               />
             </TimelineContent>
 
-            {!isFlow && (
+            {mode === "1" && (
               <>
                 <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
                   Формат
@@ -504,6 +615,23 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                     onSwitch={setTariff}
                     layoutId="karto-tariff"
                   />
+                </>
+              ) : isReviews ? (
+                <>
+                  <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
+                    Пакет ответов
+                  </h4>
+                  <div className="relative -mx-2 w-[calc(100%+1rem)] sm:-mx-3 sm:w-[calc(100%+1.5rem)] md:-ml-4 md:-mr-14 md:w-[calc(100%+4.5rem)] lg:-mr-20 lg:w-[calc(100%+5.5rem)] xl:-mr-28 xl:w-[calc(100%+7rem)]">
+                    <ReviewsPackageSwitch
+                      options={AUTO_REPLY_OPTION_LABELS}
+                      value={tariff}
+                      onSwitch={setTariff}
+                      layoutId="karto-reviews-tariff"
+                    />
+                  </div>
+                  <p className="mt-3 text-sm text-neutral-500">
+                    {formatAutoReplyVolume(reviewsPack.replies)} — на месяц
+                  </p>
                 </>
               ) : isCreativeVideo ? (
                 <>
@@ -586,7 +714,9 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                 )}
               </div>
               <p className="text-sm text-neutral-500">
-                Без скрытых платежей. Пакеты действуют 30 дней с даты оплаты; неиспользованные остатки по истечении периода аннулируются.
+                {isReviews
+                  ? "Без скрытых платежей. Пакет действует один месяц; неиспользованные ответы аннулируются. Перегенерация бесплатна."
+                  : "Без скрытых платежей. Пакеты действуют 30 дней с даты оплаты; неиспользованные остатки по истечении периода аннулируются."}
               </p>
             </TimelineContent>
           </div>
@@ -654,10 +784,10 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                     <div className="flex justify-between text-sm">
                       <span className="text-neutral-500">Режим</span>
                       <span className="font-medium text-neutral-900">
-                        {isFlow ? "Поток" : "Свободное творчество"}
+                        {isFlow ? "Поток" : isReviews ? "Отзывы" : "Свободное творчество"}
                       </span>
                     </div>
-                    {!isFlow && (
+                    {mode === "1" && (
                       <div className="flex justify-between text-sm">
                         <span className="text-neutral-500">Формат</span>
                         <span className="font-medium text-neutral-900">
@@ -672,9 +802,11 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                       <span className="font-medium text-neutral-900 text-right max-w-[60%]">
                         {isCreativeVideo
                           ? VIDEO_TOKEN_OPTIONS[videoTariffIndex]
-                          : isFlow
-                            ? FLOW_OPTIONS[tariffIndex]
-                            : CREATIVE_OPTIONS[tariffIndex]}
+                          : isReviews
+                            ? formatAutoReplyVolume(reviewsPack.replies)
+                            : isFlow
+                              ? FLOW_OPTIONS[tariffIndex]
+                              : CREATIVE_OPTIONS[tariffIndex]}
                       </span>
                     </div>
                     {!promoFieldsOpen ? (
@@ -753,6 +885,40 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                         )}
                       </div>
                     </div>
+                    {isReviews && (
+                      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-neutral-200/80 bg-white/60 px-3 py-3">
+                        <input
+                          type="checkbox"
+                          checked={autoRenewEnabled}
+                          onChange={(e) => setAutoRenewEnabled(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 shrink-0 rounded border-neutral-300 text-[#1F4E3D] focus:ring-[#1F4E3D]/30"
+                        />
+                        <span className="text-sm leading-snug text-neutral-700">
+                          <span className="block font-semibold text-neutral-900">
+                            Включить автопродление пакета
+                          </span>
+                          <span className="mt-0.5 block text-xs text-neutral-500">
+                            {autoRenewEnabled
+                              ? `Раз в 30 дней с карты будет списываться ${promoApplied?.finalRub ?? currentPrice} ₽ за тот же объём ответов. Отключить или удалить карту можно в профиле в любой момент.`
+                              : "Пакет не продлится автоматически — по истечении 30 дней остаток ответов аннулируется."}
+                          </span>
+                        </span>
+                      </label>
+                    )}
+                    <p className="text-xs leading-relaxed text-neutral-500">
+                      Нажимая «Подтверждаю», вы соглашаетесь с{" "}
+                      <a
+                        href="/payments-policy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-[#1F4E3D] underline decoration-[#1F4E3D]/35 underline-offset-2"
+                      >
+                        Политикой платежей
+                      </a>
+                      {isReviews && autoRenewEnabled
+                        ? `, включая автопродление пакета «Отзывы» на сумму ${promoApplied?.finalRub ?? currentPrice} ₽ каждые 30 дней до отключения в профиле.`
+                        : "."}
+                    </p>
                   </div>
                 </div>
                 <div className="flex gap-3 px-6 pb-6">

@@ -12,7 +12,8 @@ export function Footer() {
   const [isContactOpen, setIsContactOpen] = useState(false)
   const [user, setUser] = useState<{ id: string; email?: string; user_metadata?: { name?: string; full_name?: string } } | null>(null)
   const pathname = usePathname()
-  const hideOnFreeStudio = pathname === "/studio/free"
+  const hideOnImmersiveStudio =
+    pathname === "/studio/free" || pathname.startsWith("/studio/auto-replies");
 
   useEffect(() => {
     let mounted = true
@@ -25,7 +26,7 @@ export function Footer() {
     return () => { mounted = false }
   }, [])
 
-  if (hideOnFreeStudio) {
+  if (hideOnImmersiveStudio) {
     return null
   }
 

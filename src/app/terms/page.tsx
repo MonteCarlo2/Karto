@@ -75,7 +75,7 @@ export default function TermsPage() {
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>1.4</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Условия действуют независимо от того, используете ли вы Сервис в рамках бесплатного пробного периода или платной подписки.
+                  Условия действуют независимо от того, используете ли вы Сервис в рамках бесплатного пробного периода или платных пакетов услуг (в том числе с автопродлением пакета «Отзывы»).
                 </p>
               </div>
               <div suppressHydrationWarning>
@@ -310,13 +310,17 @@ export default function TermsPage() {
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>8.2</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  KARTO оставляет за собой право удалить аккаунт без возврата средств (при наличии подписки) в случае грубого нарушения правил (например, генерация запрещенного законодательством контента).
+                  KARTO оставляет за собой право удалить аккаунт без возврата средств (при наличии активных оплаченных пакетов) в случае грубого нарушения правил (например, генерация запрещенного законодательством контента).
                 </p>
               </div>
               <div suppressHydrationWarning>
                 <p className="font-semibold text-gray-900 mb-2" suppressHydrationWarning>8.3</p>
                 <p className="text-[15px] leading-6" suppressHydrationWarning>
-                  Приобретенные пакеты «Потоков» и генераций в Мастерской имеют ограниченный срок действия — 30 (тридцать) календарных дней с момента оплаты. По истечении этого срока неиспользованные остатки аннулируются без возврата средств.
+                  Приобретённые пакеты «Потоков», генераций в Мастерской, видео-кредитов и ответов «Отзывы» имеют ограниченный срок действия — 30 (тридцать) календарных дней с момента оплаты (если иное не указано для бесплатных лимитов). По истечении срока неиспользованные остатки аннулируются без возврата средств. Управление автопродлением пакета «Отзывы» — в разделе «Профиль» и в{" "}
+                  <Link href="/payments-policy" className="text-[#1F4E3D] underline underline-offset-2">
+                    Политике платежей
+                  </Link>
+                  .
                 </p>
               </div>
             </div>

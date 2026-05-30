@@ -5,6 +5,7 @@ import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
 import { creditSubscription } from "@/lib/payment-credit";
 import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
 import { addVideoTokens } from "@/lib/video-tokens";
+import { creditAutoReplyFromPayment, parseAutoRenewFromMetadata } from "@/lib/auto-reply-payment-credit";
 import { capturePayment } from "@/lib/yookassa-capture";
 import { parsePromoFromPaymentMetadata, recordPromoRedemption } from "@/lib/promo/record-redemption";
 
@@ -62,6 +63,7 @@ export async function POST(request: NextRequest) {
       status?: string;
       metadata?: Record<string, unknown>;
       amount?: { value?: string; currency?: string };
+      payment_method?: { id?: string; saved?: boolean };
     };
     if (payment?.status === "waiting_for_capture") {
       const amount = payment.amount;
@@ -128,6 +130,13 @@ export async function POST(request: NextRequest) {
         Math.max(0, tariffIndex)
       );
       result = await addVideoTokens(supabase, userId, VIDEO_TOKEN_PACKAGES[idx].tokens);
+    } else if (paymentKind === "auto_replies") {
+      const autoRenew = parseAutoRenewFromMetadata(meta);
+      const paymentMethodId = payment.payment_method?.id ?? null;
+      result = await creditAutoReplyFromPayment(supabase, userId, tariffIndex, {
+        autoRenew,
+        paymentMethodId,
+      });
     } else if (paymentKind === "flow") {
       const idx = Math.min(2, Math.max(0, tariffIndex));
       result = await creditSubscription(supabase, userId, "flow", FLOW_VOLUMES[idx]);

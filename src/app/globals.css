@@ -418,6 +418,125 @@ html {
   animation: shimmer 3s ease-in-out infinite;
 }
 
+/* Чёрный Shiny CTA: диагональный блик + внешние ореолы «Погнали» */
+@keyframes shiny-black-cta {
+  0% {
+    transform: translateX(-135%) skewX(-13deg);
+  }
+  100% {
+    transform: translateX(255%) skewX(-13deg);
+  }
+}
+@keyframes shiny-black-cta-soft {
+  0% {
+    transform: translateX(-120%) skewX(-10deg);
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateX(230%) skewX(-10deg);
+    opacity: 0.9;
+  }
+}
+.animate-shiny-black-cta {
+  animation: shiny-black-cta 2.75s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+.animate-shiny-black-cta-soft {
+  animation: shiny-black-cta-soft 3.6s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+  animation-delay: -1.1s;
+}
+
+@keyframes pognali-halo-salad {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: translate(-4%, -2%) scale(1);
+  }
+  50% {
+    opacity: 0.78;
+    transform: translate(2%, 1%) scale(1.06);
+  }
+}
+@keyframes pognali-halo-forest {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: translate(3%, 2%) scale(1.02);
+  }
+  48% {
+    opacity: 0.72;
+    transform: translate(-4%, -1%) scale(1.08);
+  }
+}
+@keyframes manual-glitter-fall {
+  0% {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: translateY(260px);
+    opacity: 0;
+  }
+}
+
+.manual-glitter-particle {
+  top: -8px;
+  animation-name: manual-glitter-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes manual-compose-skeleton-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+.manual-compose-skeleton-line {
+  background: linear-gradient(
+    90deg,
+    rgba(46, 90, 67, 0.08) 0%,
+    rgba(185, 255, 75, 0.24) 48%,
+    rgba(46, 90, 67, 0.08) 100%
+  );
+  background-size: 220% 100%;
+  animation: manual-compose-skeleton-shimmer 1.7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manual-compose-skeleton-line {
+    animation: none;
+  }
+}
+
+@keyframes pognali-halo-accent {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translate(-2%, 3%) scale(1);
+  }
+  55% {
+    opacity: 0.62;
+    transform: translate(3%, -2%) scale(1.07);
+  }
+}
+.animate-pognali-halo-salad {
+  animation: pognali-halo-salad 5.2s ease-in-out infinite;
+}
+.animate-pognali-halo-forest {
+  animation: pognali-halo-forest 6.4s ease-in-out infinite;
+  animation-delay: -2s;
+}
+.animate-pognali-halo-accent {
+  animation: pognali-halo-accent 4.8s ease-in-out infinite;
+  animation-delay: -1.2s;
+}
+
 /* Video Quality Enhancement - Максимальная резкость */
 video {
   /* Аппаратное ускорение */
@@ -468,5 +587,142 @@ video {
   .video-sharp {
     filter: contrast(1.15) brightness(1.08) saturate(1.2);
     -webkit-filter: contrast(1.15) brightness(1.08) saturate(1.2);
+  }
+}
+
+/* KARTO AI orb — адаптация Siri Orb под палитру бренда */
+@property --karto-orb-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes karto-orb-rotate {
+  to {
+    --karto-orb-angle: 360deg;
+  }
+}
+
+@keyframes karto-ai-stream-flow {
+  to {
+    stroke-dashoffset: -56;
+  }
+}
+
+@keyframes karto-ai-scan {
+  0%,
+  100% {
+    transform: translateX(-130%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.55;
+  }
+  50% {
+    transform: translateX(130%);
+    opacity: 0.28;
+  }
+  88% {
+    opacity: 0;
+  }
+}
+
+.karto-ai-orb {
+  display: grid;
+  grid-template-areas: "stack";
+  overflow: hidden;
+  border-radius: 50%;
+  position: relative;
+  background: radial-gradient(
+    circle,
+    rgba(185, 255, 75, 0.16) 0%,
+    rgba(255, 255, 255, 0.35) 42%,
+    transparent 72%
+  );
+}
+
+.karto-ai-orb::before {
+  content: "";
+  display: block;
+  grid-area: stack;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background:
+    conic-gradient(
+      from calc(var(--karto-orb-angle) * 1.15) at 30% 65%,
+      rgba(185, 255, 75, 0.95) 0deg,
+      transparent 48deg 312deg,
+      rgba(185, 255, 75, 0.95) 360deg
+    ),
+    conic-gradient(
+      from calc(var(--karto-orb-angle) * -0.85) at 72% 34%,
+      rgba(46, 90, 67, 0.9) 0deg,
+      transparent 58deg 302deg,
+      rgba(46, 90, 67, 0.9) 360deg
+    ),
+    conic-gradient(
+      from calc(var(--karto-orb-angle) * 1.55) at 58% 78%,
+      rgba(168, 228, 118, 0.82) 0deg,
+      transparent 86deg 274deg,
+      rgba(168, 228, 118, 0.82) 360deg
+    ),
+    conic-gradient(
+      from calc(var(--karto-orb-angle) * -1.2) at 22% 28%,
+      rgba(46, 90, 67, 0.55) 0deg,
+      transparent 40deg 320deg,
+      rgba(46, 90, 67, 0.55) 360deg
+    ),
+    radial-gradient(ellipse 115% 85% at 40% 58%, rgba(185, 255, 75, 0.45) 0%, transparent 54%);
+  filter: blur(var(--karto-orb-blur, 6px)) contrast(var(--karto-orb-contrast, 1.6)) saturate(1.22);
+  animation: karto-orb-rotate var(--karto-orb-duration, 16s) linear infinite;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.karto-ai-orb::after {
+  content: "";
+  display: block;
+  grid-area: stack;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 44% 36%,
+    rgba(255, 255, 255, 0.72) 0%,
+    rgba(255, 255, 255, 0.12) 38%,
+    transparent 64%
+  );
+  mix-blend-mode: overlay;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+
+.karto-ai-stream-path {
+  stroke-dasharray: 7 20;
+  animation: karto-ai-stream-flow 5s linear infinite;
+}
+
+.karto-ai-stream-path--slow {
+  animation-duration: 8s;
+  animation-direction: reverse;
+}
+
+.karto-ai-scan-line {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(185, 255, 75, 0.14) 45%,
+    rgba(255, 255, 255, 0.22) 50%,
+    rgba(185, 255, 75, 0.1) 55%,
+    transparent 100%
+  );
+  animation: karto-ai-scan 9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .karto-ai-orb::before,
+  .karto-ai-stream-path,
+  .karto-ai-scan-line {
+    animation: none;
   }
 }

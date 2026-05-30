@@ -54,6 +54,34 @@ export interface SubscriptionState {
   expiredFlowVolume?: number;
   expiredFlowsUsed?: number;
   expiredFlowPeriodStart?: string;
+  /** Пакет creative был, но 30-дневный period_start истёк. */
+  creativePackExpired?: boolean;
+  expiredCreativeVolume?: number;
+  expiredCreativeUsed?: number;
+  expiredCreativePeriodStart?: string;
+  /** Все месячные пакеты (flow/creative/video) в БД есть, но период истёк — лимиты не действуют. */
+  servicesPeriodExpired?: boolean;
+  /** Сроки пакета creative (если строка в БД была). */
+  creativePeriodStart?: string;
+  creativePeriodEnd?: string;
+  /** Сроки пакета flow. */
+  flowPeriodStart?: string;
+  flowPeriodEnd?: string;
+  /** Сроки пакета video_tokens. */
+  videoPeriodStart?: string;
+  videoPeriodEnd?: string;
+  /** Пакет автоответов (Отзывы). */
+  autoReplyBalance?: number;
+  autoReplyWelcomeRemaining?: number;
+  autoReplyPaidRemaining?: number;
+  autoReplyPeriodStart?: string;
+  autoReplyPeriodEnd?: string;
+  autoReplyPackExpired?: boolean;
+  autoReplyAutoRenew?: boolean;
+  autoReplyHasSavedCard?: boolean;
+  autoReplyNextRenewAt?: string;
+  autoReplyTariffIndex?: number;
+  autoReplyMonthlyPriceRub?: number;
 }
 
 export function subscriptionToState(row: SubscriptionRow): SubscriptionState {
@@ -140,6 +168,52 @@ export function getSubscriptionExpiryIso(row: Pick<SubscriptionRow, "period_star
   return new Date(startedAtMs + SUBSCRIPTION_PERIOD_DAYS * 24 * 60 * 60 * 1000).toISOString();
 }
 
+const PERIOD_DATE_FMT = new Intl.DateTimeFormat("ru-RU", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+/** «12 марта 2026 г. — 11 апреля 2026 г.» */
+export function formatSubscriptionPeriodRu(
+  periodStart?: string,
+  periodEnd?: string
+): string | null {
+  if (!periodStart) return null;
+  const startMs = new Date(periodStart).getTime();
+  const endMs = periodEnd ? new Date(periodEnd).getTime() : NaN;
+  if (!Number.isFinite(startMs)) return null;
+  const endIso = Number.isFinite(endMs)
+    ? periodEnd!
+    : getSubscriptionExpiryIso({ period_start: periodStart });
+  const endParsed = new Date(endIso).getTime();
+  if (!Number.isFinite(endParsed)) return null;
+  return `${PERIOD_DATE_FMT.format(new Date(startMs))} — ${PERIOD_DATE_FMT.format(new Date(endParsed))}`;
+}
+
+function enrichWithServicePeriods(
+  state: SubscriptionState,
+  rows: SubscriptionRow[]
+): SubscriptionState {
+  const flowRow = rows.find((r) => r.plan_type === "flow");
+  const creativeRow = rows.find((r) => r.plan_type === "creative");
+  const videoRow = rows.find((r) => r.plan_type === "video_tokens");
+
+  if (flowRow?.period_start && flowRow.plan_volume > 0) {
+    state.flowPeriodStart = flowRow.period_start;
+    state.flowPeriodEnd = getSubscriptionExpiryIso(flowRow);
+  }
+  if (creativeRow?.period_start && creativeRow.plan_volume > 0) {
+    state.creativePeriodStart = creativeRow.period_start;
+    state.creativePeriodEnd = getSubscriptionExpiryIso(creativeRow);
+  }
+  if (videoRow?.period_start && (videoRow.plan_volume > 0 || (videoRow.video_tokens_lifetime_purchased ?? 0) > 0)) {
+    state.videoPeriodStart = videoRow.period_start;
+    state.videoPeriodEnd = getSubscriptionExpiryIso(videoRow);
+  }
+  return state;
+}
+
 export function isSubscriptionExpired(
   row: Pick<SubscriptionRow, "period_start" | "plan_type">,
   now = new Date()
@@ -154,6 +228,65 @@ export function filterActiveSubscriptionRows(rows: SubscriptionRow[]): Subscript
   return rows.filter((r) => !isSubscriptionExpired(r));
 }
 
+/** Собрать состояние подписки для UI (в т.ч. когда месячный период истёк). */
+export function buildSubscriptionStateFromRows(
+  rows: SubscriptionRow[],
+  active: SubscriptionRow[]
+): SubscriptionState {
+  if (active.length > 0) {
+    const merged = mergeSubscriptionRows(active);
+    const flowRow = rows.find((r) => r.plan_type === "flow");
+    let state = enrichWithServicePeriods(merged, rows);
+    if (flowRow && isSubscriptionExpired(flowRow) && flowRow.plan_volume > 0) {
+      state = {
+        ...state,
+        flowsLimit: 0,
+        flowPackExpired: true,
+        expiredFlowVolume: flowRow.plan_volume,
+        expiredFlowsUsed: flowRow.flows_used,
+        expiredFlowPeriodStart: flowRow.period_start,
+      };
+    }
+    return state;
+  }
+
+  const flowRow = rows.find((r) => r.plan_type === "flow");
+  const creativeRow = rows.find((r) => r.plan_type === "creative");
+  const videoRow = rows.find((r) => r.plan_type === "video_tokens");
+
+  const state: SubscriptionState = {
+    planType: flowRow && flowRow.plan_volume > 0 ? "flow" : "creative",
+    planVolume: 0,
+    flowsUsed: flowRow?.flows_used ?? 0,
+    flowsLimit: 0,
+    creativeUsed: creativeRow?.creative_used ?? 0,
+    creativeLimit: 0,
+    videoTokenBalance: 0,
+    videoTokensSpent: videoRow ? Math.max(0, Number(videoRow.video_tokens_spent) || 0) : 0,
+    videoTokensLifetimePurchased: videoRow
+      ? Math.max(0, Number(videoRow.video_tokens_lifetime_purchased) || 0)
+      : 0,
+    servicesPeriodExpired: true,
+  };
+
+  if (flowRow && flowRow.plan_volume > 0) {
+    state.flowPackExpired = true;
+    state.expiredFlowVolume = flowRow.plan_volume;
+    state.expiredFlowsUsed = flowRow.flows_used;
+    state.expiredFlowPeriodStart = flowRow.period_start;
+    state.planVolume = flowRow.plan_volume;
+  }
+
+  if (creativeRow && creativeRow.plan_volume > 0) {
+    state.creativePackExpired = true;
+    state.expiredCreativeVolume = creativeRow.plan_volume;
+    state.expiredCreativeUsed = creativeRow.creative_used;
+    state.expiredCreativePeriodStart = creativeRow.period_start;
+  }
+
+  return enrichWithServicePeriods(state, rows);
+}
+
 /** Получить подписку по user_id. Не удаляем строки по сроку — только выборка и объединение. */
 export async function getSubscriptionByUserId(supabase: any, userId: string): Promise<SubscriptionState | null> {
   const { data, error } = await supabase
@@ -164,23 +297,7 @@ export async function getSubscriptionByUserId(supabase: any, userId: string): Pr
   const rows = (data ?? []) as SubscriptionRow[];
   if (rows.length === 0) return null;
   const active = filterActiveSubscriptionRows(rows);
-  if (active.length === 0) return null;
-  const merged = mergeSubscriptionRows(active);
-  const flowRow = rows.find((r) => r.plan_type === "flow");
-  if (
-    flowRow &&
-    isSubscriptionExpired(flowRow) &&
-    flowRow.plan_volume > 0
-  ) {
-    return {
-      ...merged,
-      flowPackExpired: true,
-      expiredFlowVolume: flowRow.plan_volume,
-      expiredFlowsUsed: flowRow.flows_used,
-      expiredFlowPeriodStart: flowRow.period_start,
-    };
-  }
-  return merged;
+  return buildSubscriptionStateFromRows(rows, active);
 }
 
 /** Получить сырые строки подписки по user_id (для списания потока/генераций). */

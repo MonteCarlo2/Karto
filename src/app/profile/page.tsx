@@ -37,8 +37,11 @@ import {
 import Image from "next/image";
 import { useNotification } from "@/components/ui/notification";
 import type { SubscriptionState } from "@/lib/subscription";
-import { FREE_WELCOME_CREATIVE_LIMIT, FREE_WELCOME_VIDEO_TOKENS } from "@/lib/subscription";
+import {
+  formatSubscriptionPeriodRu,
+} from "@/lib/subscription";
 import { KartoServicesExplainer } from "@/components/ui/karto-services-explainer";
+import { ProfileAutoReplyBillingPanel } from "@/components/profile/profile-auto-reply-billing";
 import {
   fetchUserBrandOnboarding,
   hasBrandOnboardingDraftProgress,
@@ -97,6 +100,54 @@ type Project = {
     nextStage: "understanding" | "description" | "visual" | "price" | "results" | null;
   };
 };
+
+function subscriptionServiceRemaining(
+  sub: SubscriptionState,
+  kind: "creative" | "video" | "flow" | "auto_replies"
+): number {
+  if (kind === "auto_replies") {
+    return Math.max(0, sub.autoReplyBalance ?? 0);
+  }
+  if (kind === "creative") {
+    if (sub.creativePackExpired || sub.servicesPeriodExpired || sub.creativeLimit <= 0) return 0;
+    return Math.max(0, sub.creativeLimit - sub.creativeUsed);
+  }
+  if (kind === "video") {
+    if (sub.servicesPeriodExpired) return 0;
+    return Math.max(0, sub.videoTokenBalance ?? 0);
+  }
+  if (sub.flowPackExpired || sub.servicesPeriodExpired || sub.flowsLimit <= 0) return 0;
+  return Math.max(0, sub.flowsLimit - sub.flowsUsed);
+}
+
+function ProfileServiceRow({
+  label,
+  remaining,
+  periodStart,
+  periodEnd,
+  unit,
+  detail,
+}: {
+  label: string;
+  remaining: number;
+  periodStart?: string;
+  periodEnd?: string;
+  unit: string;
+  detail?: string;
+}) {
+  const period = formatSubscriptionPeriodRu(periodStart, periodEnd);
+  return (
+    <div className="rounded-lg bg-white/50 px-3 py-2">
+      <p className="text-sm text-gray-800">
+        {label}: <strong>{remaining}</strong> {unit}
+      </p>
+      {detail ? <p className="mt-0.5 text-xs text-gray-500">{detail}</p> : null}
+      {period ? (
+        <p className="mt-0.5 text-xs text-gray-500">Период: {period}</p>
+      ) : null}
+    </div>
+  );
+}
 
 function ProfileContent() {
   const router = useRouter();
@@ -964,74 +1015,67 @@ function ProfileContent() {
                     <p className="text-sm text-gray-500">Загрузка данных о тарифах…</p>
                   ) : subscription ? (
                     <>
-                      <div className="space-y-1.5">
-                        <p className="text-sm text-gray-800">
-                          Свободное творчество: осталось{" "}
-                          <strong>
-                            {subscription.creativeLimit > 0
-                              ? Math.max(0, subscription.creativeLimit - subscription.creativeUsed)
-                              : 0}
-                          </strong>
-                          {subscription.creativeLimit > 0 ? (
-                            <> из {subscription.creativeLimit} генераций.</>
-                          ) : (
-                            <> генераций — активного пакета нет (0).</>
-                          )}
+                      {subscription.servicesPeriodExpired ? (
+                        <p className="mb-3 rounded-lg border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 text-sm leading-relaxed text-amber-950">
+                          30-дневный период ваших пакетов завершился — лимиты обнулились. Оформите
+                          новый пакет в{" "}
+                          <Link href="/#pricing" className="font-semibold text-[#2E5A43] underline">
+                            разделе «Цена»
+                          </Link>
+                          .
                         </p>
-                        <p className="text-sm text-gray-800">
-                          Видео-кредиты: осталось{" "}
-                          <strong className="text-lime-700">{subscription.videoTokenBalance ?? 0}</strong>
-                          {(() => {
-                            const lim = subscription.videoTokensLifetimePurchased ?? 0;
-                            const bal = subscription.videoTokenBalance ?? 0;
-                            const denom = lim > 0 ? lim : bal > 0 ? bal : 0;
-                            return denom > 0 ? (
-                              <> из {denom} ток.</>
-                            ) : (
-                              <> (на счёте 0).</>
-                            );
-                          })()}
-                        </p>
-                        <p className="text-sm text-gray-800">
-                          Поток:{" "}
-                          {subscription.flowPackExpired ? (
-                            <>
-                              в учёте указано до <strong>{subscription.expiredFlowVolume}</strong>{" "}
-                              потоков, но <strong>истёк 30-дневный период</strong> пакета (отсчёт от даты
-                              активации). Пока лимит не действует — оформите новый пакет в{" "}
-                              <Link href="/#pricing" className="font-semibold text-[#2E5A43] underline">
-                                разделе «Цена»
-                              </Link>
-                              {" "}или при ручном начислении в Supabase обновите у строки{" "}
-                              <code className="text-xs bg-white/80 px-1 rounded">flow</code> поле{" "}
-                              <code className="text-xs bg-white/80 px-1 rounded">period_start</code> на{" "}
-                              <code className="text-xs bg-white/80 px-1 rounded">NOW()</code>.
-                            </>
-                          ) : subscription.flowsLimit > 0 ? (
-                            <>
-                              осталось{" "}
-                              <strong>
-                                {Math.max(0, subscription.flowsLimit - subscription.flowsUsed)}
-                              </strong>{" "}
-                              из {subscription.flowsLimit}.
-                            </>
-                          ) : (
-                            <>
-                              не подключён — <strong>0</strong> доступных потоков. Пакет Потока
-                              оформляется отдельно от пакетов свободного творчества.
-                            </>
-                          )}
-                        </p>
+                      ) : null}
+                      <div className="space-y-2">
+                        <ProfileServiceRow
+                          label="Свободное творчество"
+                          remaining={subscriptionServiceRemaining(subscription, "creative")}
+                          periodStart={subscription.creativePeriodStart}
+                          periodEnd={subscription.creativePeriodEnd}
+                          unit="ген."
+                        />
+                        <ProfileServiceRow
+                          label="Видео-кредиты"
+                          remaining={subscriptionServiceRemaining(subscription, "video")}
+                          periodStart={subscription.videoPeriodStart}
+                          periodEnd={subscription.videoPeriodEnd}
+                          unit="ток."
+                        />
+                        <ProfileServiceRow
+                          label="Поток"
+                          remaining={subscriptionServiceRemaining(subscription, "flow")}
+                          periodStart={subscription.flowPeriodStart}
+                          periodEnd={subscription.flowPeriodEnd}
+                          unit="поток."
+                        />
+                        <ProfileServiceRow
+                          label="Отзывы"
+                          remaining={subscriptionServiceRemaining(subscription, "auto_replies")}
+                          periodStart={
+                            (subscription.autoReplyPaidRemaining ?? 0) > 0
+                              ? subscription.autoReplyPeriodStart
+                              : undefined
+                          }
+                          periodEnd={
+                            (subscription.autoReplyPaidRemaining ?? 0) > 0
+                              ? subscription.autoReplyPeriodEnd
+                              : undefined
+                          }
+                          detail={
+                            (subscription.autoReplyWelcomeRemaining ?? 0) > 0
+                              ? `из них ${subscription.autoReplyWelcomeRemaining} бесплатных (без срока)`
+                              : undefined
+                          }
+                          unit="ответ."
+                        />
+                        <ProfileAutoReplyBillingPanel
+                          subscription={subscription}
+                          onUpdated={async () => {
+                            const sub = await fetchSubscription();
+                            setSubscription(sub);
+                          }}
+                        />
                       </div>
-                      <p className="mt-3 text-xs leading-relaxed text-gray-600 border-t border-[#2E5A43]/10 pt-3">
-                        <strong className="text-gray-800">Стартовый бонус:</strong> при первом открытии
-                        аккаунта начисляются до{" "}
-                        <strong>{FREE_WELCOME_CREATIVE_LIMIT}</strong> бесплатных генераций изображений в{" "}
-                        <strong>свободном творчестве</strong> и{" "}
-                        <strong>{FREE_WELCOME_VIDEO_TOKENS}</strong> видео-кредитов — они отображаются в
-                        строках выше, пока не израсходованы. Поток в бонус не входит.
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-[#2E5A43]/10 pt-3">
                         <Link
                           href="/#pricing"
                           className="text-xs font-semibold text-[#2E5A43] hover:underline"
@@ -1569,6 +1613,7 @@ function ProfileContent() {
                         type="button"
                         onClick={() => {
                           setShowBrandSettings(false);
+                          window.sessionStorage.setItem("karto-brand-edit-step", String(index));
                           router.push(`/brand?edit=true&step=${index}`);
                         }}
                         className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-[#1F4E3D]/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F4E3D]/25 focus-visible:ring-offset-2 sm:px-3.5 sm:py-3.5"

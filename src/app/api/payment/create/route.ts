@@ -9,6 +9,10 @@ import {
   CREATIVE_PRICES,
 } from "@/lib/subscription";
 import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
+import {
+  AUTO_REPLY_PACKAGES,
+  formatAutoReplyVolume,
+} from "@/lib/auto-replies-pricing";
 import { ATTR_COOKIE_NAME, isAttributionActive, readAttributionCookie } from "@/lib/attribution";
 import { validatePromoForCheckout } from "@/lib/promo/checkout";
 
@@ -83,19 +87,25 @@ export async function POST(request: NextRequest) {
     const mode = body?.mode === "1" ? "1" : "0";
     const rawKind = String(body?.paymentKind ?? "").trim();
     const paymentKind =
-      rawKind === "video_tokens"
-        ? "video_tokens"
-        : rawKind === "creative"
-          ? "creative"
-          : rawKind === "flow"
-            ? "flow"
-            : mode === "1"
-              ? "creative"
-              : "flow";
+      rawKind === "auto_replies"
+        ? "auto_replies"
+        : rawKind === "video_tokens"
+          ? "video_tokens"
+          : rawKind === "creative"
+            ? "creative"
+            : rawKind === "flow"
+              ? "flow"
+              : mode === "1"
+                ? "creative"
+                : "flow";
 
     const tariffIndexCreativeOrFlow = Math.min(2, Math.max(0, Number(body?.tariffIndex) || 0));
     const tariffIndexVideo = Math.min(
       VIDEO_TOKEN_PACKAGES.length - 1,
+      Math.max(0, Number(body?.tariffIndex) || 0)
+    );
+    const tariffIndexAutoReplies = Math.min(
+      AUTO_REPLY_PACKAGES.length - 1,
       Math.max(0, Number(body?.tariffIndex) || 0)
     );
 
@@ -108,6 +118,11 @@ export async function POST(request: NextRequest) {
       amountRub = pack.priceRub;
       description = `KARTO: Видео-кредиты — ${pack.name} (${pack.tokens} ток.)`;
       metadataTariffIndex = tariffIndexVideo;
+    } else if (paymentKind === "auto_replies") {
+      const pack = AUTO_REPLY_PACKAGES[tariffIndexAutoReplies];
+      amountRub = pack.priceRub;
+      description = `KARTO: Автоответы — ${formatAutoReplyVolume(pack.replies)}`;
+      metadataTariffIndex = tariffIndexAutoReplies;
     } else if (paymentKind === "flow") {
       amountRub = FLOW_PRICES[tariffIndexCreativeOrFlow];
       const planVolume = FLOW_VOLUMES[tariffIndexCreativeOrFlow];
@@ -128,7 +143,11 @@ export async function POST(request: NextRequest) {
 
     if (rawPromo) {
       const promoTariffIdx =
-        paymentKind === "video_tokens" ? tariffIndexVideo : tariffIndexCreativeOrFlow;
+        paymentKind === "video_tokens"
+          ? tariffIndexVideo
+          : paymentKind === "auto_replies"
+            ? tariffIndexAutoReplies
+            : tariffIndexCreativeOrFlow;
       const promoCheck = await validatePromoForCheckout(supabase, {
         userId: user.id,
         rawCode: rawPromo,
@@ -152,9 +171,12 @@ export async function POST(request: NextRequest) {
         : "https://karto.pro");
     const returnUrl = `${baseUrl.replace(/\/$/, "")}/profile?payment=success`;
 
+    const autoRenew =
+      paymentKind === "auto_replies" ? body?.autoRenew !== false : false;
+
     const idempotenceRaw = `karto-${user.id}-${paymentKind}-${metadataTariffIndex}-${Date.now()}`;
     const idempotenceKey = createHash("sha256").update(idempotenceRaw).digest("hex").slice(0, IDEMPOTENCE_KEY_MAX_LENGTH);
-    const yookassaBody = {
+    const yookassaBody: Record<string, unknown> = {
       amount: {
         value: amountRub.toFixed(2),
         currency: "RUB",
@@ -171,6 +193,9 @@ export async function POST(request: NextRequest) {
         tariffIndex: String(metadataTariffIndex),
         blogger_code: bloggerCode || undefined,
         blogger_source: bloggerSource || undefined,
+        ...(paymentKind === "auto_replies"
+          ? { auto_renew: autoRenew ? "true" : "false" }
+          : {}),
         ...(promoCampaignId
           ? {
               promo_campaign_id: promoCampaignId,
@@ -183,6 +208,10 @@ export async function POST(request: NextRequest) {
           : {}),
       },
     };
+
+    if (paymentKind === "auto_replies" && autoRenew) {
+      yookassaBody.save_payment_method = true;
+    }
 
     const auth = Buffer.from(`${shopId}:${secretKey}`).toString("base64");
     const res = await fetch(YOOKASSA_API, {

@@ -110,7 +110,7 @@ export default function PolicyAndTermsPage() {
                 suppressHydrationWarning
               >
                 <span className="text-lg text-gray-900 group-hover:text-[#1F4E3D] transition-colors">
-                  Политика платежей и подписок
+                  Политика платежей
                 </span>
                 <ArrowUpRight className="w-5 h-5 text-gray-400 group-hover:text-[#1F4E3D] transition-colors flex-shrink-0" />
               </Link>

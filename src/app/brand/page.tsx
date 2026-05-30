@@ -97,6 +97,22 @@ const steps = [
   "Логотип",
 ] as const;
 
+const BRAND_EDIT_STEP_STORAGE_KEY = "karto-brand-edit-step";
+
+function readPendingBrandEditStep(): number | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.sessionStorage.getItem(BRAND_EDIT_STEP_STORAGE_KEY);
+  if (raw == null) return null;
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n) || n < 0 || n >= steps.length) return null;
+  return n;
+}
+
+function clearPendingBrandEditStep() {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(BRAND_EDIT_STEP_STORAGE_KEY);
+}
+
 const brandNameExamples = [
   "PlayStation",
   "Икея",
@@ -362,9 +378,22 @@ export default function BrandPage() {
             legacyPickedSkip = true;
           }
 
-          const step = legacyPickedSkip
-            ? firstIncompleteIndex(restored)
-            : metaStep ?? firstIncompleteIndex(restored);
+          const pendingEditStep = readPendingBrandEditStep();
+          const entryFromRef = profileEditEntryStepRef.current;
+
+          let step: number;
+          if (entryFromRef !== null && entryFromRef >= 0 && entryFromRef < steps.length) {
+            step = entryFromRef;
+          } else if (pendingEditStep !== null) {
+            step = pendingEditStep;
+            profileEditEntryStepRef.current = pendingEditStep;
+            setBrandEditMode(true);
+            clearPendingBrandEditStep();
+          } else if (legacyPickedSkip) {
+            step = firstIncompleteIndex(restored);
+          } else {
+            step = metaStep ?? firstIncompleteIndex(restored);
+          }
 
           setDraft(restored);
           setActiveStep(step);
@@ -458,6 +487,7 @@ export default function BrandPage() {
           if (!isNaN(stepNum) && stepNum >= 0 && stepNum < steps.length) {
             entryStep = stepNum;
             setActiveStep(stepNum);
+            window.sessionStorage.setItem(BRAND_EDIT_STEP_STORAGE_KEY, String(stepNum));
           }
         }
         profileEditEntryStepRef.current = entryStep;

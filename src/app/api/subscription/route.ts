@@ -8,6 +8,7 @@ import {
 } from "@/lib/subscription";
 import { addVideoTokens } from "@/lib/video-tokens";
 import { sendWelcomeEmail } from "@/lib/send-welcome-email";
+import { fetchAutoReplySubscriptionInfo } from "@/lib/auto-replies-subscription-info";
 
 /**
  * GET: текущая подписка пользователя (по Authorization: Bearer <token>).
@@ -111,13 +112,30 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const autoReply = await fetchAutoReplySubscriptionInfo(supabase as any, user.id);
+    const subscription = {
+      ...row,
+      autoReplyBalance: autoReply.balance,
+      autoReplyWelcomeRemaining: autoReply.welcomeRemaining,
+      autoReplyPaidRemaining: autoReply.paidRemaining,
+      autoReplyPeriodStart: autoReply.periodStart,
+      autoReplyPeriodEnd: autoReply.periodEnd,
+      autoReplyPackExpired: autoReply.packExpired,
+      autoReplyAutoRenew: autoReply.autoRenew,
+      autoReplyHasSavedCard: autoReply.hasSavedCard,
+      autoReplyNextRenewAt: autoReply.nextRenewAt,
+      autoReplyTariffIndex: autoReply.tariffIndex,
+      autoReplyMonthlyPriceRub: autoReply.monthlyPriceRub,
+    };
+
     return NextResponse.json(
       {
         success: true,
-        subscription: row,
+        subscription,
         videoTokenBalance: row.videoTokenBalance,
         videoTokensSpent: row.videoTokensSpent,
         videoTokensLifetimePurchased: row.videoTokensLifetimePurchased,
+        autoReply,
       },
       { headers: { "Cache-Control": "no-store, max-age=0" } }
     );
