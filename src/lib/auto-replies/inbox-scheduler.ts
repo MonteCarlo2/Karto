@@ -39,9 +39,13 @@ export function startAutoReplyBackgroundScheduler() {
     try {
       const { createServerClient } = await import("@/lib/supabase/server");
       const { processAutoReplyInboxCron } = await import("@/lib/auto-replies/inbox-sync-cron");
+      const { processDueAutoReplyRenewals } = await import("@/lib/auto-replies-billing");
       const supabase = createServerClient();
-      const result = await processAutoReplyInboxCron(supabase);
-      console.info("[auto-reply] background tick", result);
+      const [inbox, renew] = await Promise.all([
+        processAutoReplyInboxCron(supabase),
+        processDueAutoReplyRenewals(supabase),
+      ]);
+      console.info("[auto-reply] background tick", { inbox, renew });
     } catch (e) {
       console.error("[auto-reply] background tick failed", e);
     } finally {
