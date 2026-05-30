@@ -7,8 +7,8 @@
     "dev:webpack": "next dev --webpack",
     "prebuild": "node scripts/generate-favicon-ico.js",
     "build": "next build && node scripts/copy-standalone.js",
-    "start": "node -e \"const path=require('path'); process.env.NEXT_CACHE_DIR = process.env.NEXT_CACHE_DIR ?? (process.platform === 'win32' ? path.join(process.cwd(), '.next-cache') : '/tmp'); require('./.next/standalone/server.js');\"",
-    "start:prod": "node -e \"const path=require('path'); process.env.NEXT_CACHE_DIR = process.env.NEXT_CACHE_DIR ?? (process.platform === 'win32' ? path.join(process.cwd(), '.next-cache') : '/tmp'); require('./.next/standalone/server.js');\"",
+    "start": "node scripts/start-standalone.js",
+    "start:prod": "node scripts/start-standalone.js",
     "lint": "eslint"
   },
   "dependencies": {

@@ -35,6 +35,10 @@ export function startAutoReplyBackgroundScheduler() {
 
   const tick = async () => {
     if (running) return;
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) return;
+    if (!process.env.SUPABASE_URL?.trim() && !process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()) {
+      return;
+    }
     running = true;
     try {
       const { createServerClient } = await import("@/lib/supabase/server");

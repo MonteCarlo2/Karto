@@ -1,4 +1,7 @@
 import type { NextConfig } from "next";
+import path from "path";
+
+const repoRoot = path.join(__dirname);
 
 const nextConfig: NextConfig = {
   // Нативный ffmpeg-installer тянет platform-пакеты через относительные пути —
@@ -18,6 +21,8 @@ const nextConfig: NextConfig = {
   // Для Timeweb (Node.js) — только standalone. НЕ использовать output: 'export'
   // (export = статический /out, тогда статика не отдаётся нашим сервером).
   output: "standalone",
+  // Без этого standalone может оказаться в .next/standalone/Users/.../server.js
+  outputFileTracingRoot: repoRoot,
 
   // Меньше размер .next и образа Docker, быстрее пуш в реестр (без карт в браузере).
   productionBrowserSourceMaps: false,
