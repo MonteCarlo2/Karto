@@ -26,7 +26,7 @@ export async function creditAutoReplyFromPayment(
 
   tariffIndex: number,
 
-  opts: { autoRenew: boolean; paymentMethodId?: string | null }
+  opts: { autoRenew: boolean; paymentMethodId?: string | null; billingAnchorIso?: string | null }
 
 ): Promise<{ ok: boolean; error?: string }> {
 
@@ -41,6 +41,8 @@ export async function creditAutoReplyFromPayment(
     autoRenew: opts.autoRenew,
 
     paymentMethodId: opts.paymentMethodId,
+
+    billingAnchorIso: opts.billingAnchorIso,
 
   });
 

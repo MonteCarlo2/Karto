@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AUTO_REPLY_PERIOD_DAYS } from "@/lib/auto-replies-pricing";
+import { addAutoReplyBillingPeriod } from "@/lib/auto-replies-pricing";
 import {
   fetchAutoReplySubscriptionInfo,
   type AutoReplySubscriptionInfo,
@@ -52,6 +52,8 @@ export interface ActivateAutoReplySubscriptionOpts {
   tariffIndex: number;
   autoRenew: boolean;
   paymentMethodId?: string | null;
+  /** При автопродлении — предыдущий next_renew_at; следующее списание = +1 мес. от него (сохраняет 15:00). */
+  billingAnchorIso?: string | null;
 }
 
 /** Активирует месячный пакет автоответов (сброс лимита, не накопление). */
@@ -65,8 +67,10 @@ export async function activateAutoReplySubscription(
 
   const now = new Date();
   const nowIso = now.toISOString();
-  const nextRenewAt = new Date(now);
-  nextRenewAt.setDate(nextRenewAt.getDate() + AUTO_REPLY_PERIOD_DAYS);
+  const anchor = opts.billingAnchorIso ? new Date(opts.billingAnchorIso) : now;
+  const nextRenewAt = addAutoReplyBillingPeriod(
+    Number.isFinite(anchor.getTime()) ? anchor : now
+  );
 
   const { data: row } = await supabase
     .from("user_subscriptions")

@@ -79,7 +79,11 @@ export async function POST(request: NextRequest) {
       console.log("[PAYMENT WEBHOOK] skip: event=%s status=%s", ev, payment.status);
       return new NextResponse(null, { status: 200 });
     } else {
-      paymentToProcess = { id: payment.id!, metadata: payment.metadata };
+      paymentToProcess = {
+        id: payment.id!,
+        metadata: payment.metadata,
+        payment_method: payment.payment_method,
+      };
     }
 
     // Общая обработка: payment_processed + начисление
@@ -152,9 +156,21 @@ export async function POST(request: NextRequest) {
     } else if (paymentKind === "auto_replies") {
       const autoRenew = parseAutoRenewFromMetadata(meta);
       const paymentMethodId = paymentToProcess.payment_method?.id ?? null;
+      const isRenewal =
+        meta.auto_renew_renewal === "true" || meta.auto_renew_renewal === true;
+      let billingAnchorIso: string | null = null;
+      if (isRenewal) {
+        const { data: billingRow } = await supabase
+          .from("auto_reply_billing")
+          .select("next_renew_at")
+          .eq("user_id", userId)
+          .maybeSingle();
+        billingAnchorIso = (billingRow as { next_renew_at?: string } | null)?.next_renew_at ?? null;
+      }
       result = await creditAutoReplyFromPayment(supabase, userId, tariffIndex, {
         autoRenew,
         paymentMethodId,
+        billingAnchorIso,
       });
     } else if (paymentKind === "flow") {
       const idx = Math.min(2, Math.max(0, tariffIndex));

@@ -3,7 +3,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { AUTO_REPLY_PACKAGES, formatAutoReplyVolume } from "@/lib/auto-replies-pricing";
 import {
   creditAutoReplyFromPayment,
-  parseAutoRenewFromMetadata,
 } from "@/lib/auto-reply-payment-credit";
 
 const YOOKASSA_API = "https://api.yookassa.ru/v3/payments";
@@ -145,13 +144,12 @@ export async function processDueAutoReplyRenewals(
         .maybeSingle();
       if (!exists) {
         await supabase.from("payment_processed").insert({ payment_id: result.paymentId });
-        const meta = result.payment.metadata ?? {};
-        const autoRenew = parseAutoRenewFromMetadata(meta);
         const paymentMethodId =
           result.payment.payment_method?.id ?? row.payment_method_id ?? null;
         await creditAutoReplyFromPayment(supabase, row.user_id, row.tariff_index, {
-          autoRenew,
+          autoRenew: row.auto_renew,
           paymentMethodId,
+          billingAnchorIso: row.next_renew_at,
         });
       }
     }

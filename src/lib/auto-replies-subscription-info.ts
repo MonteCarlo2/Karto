@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AUTO_REPLY_PERIOD_DAYS, AUTO_REPLY_PACKAGES } from "@/lib/auto-replies-pricing";
-import { getSubscriptionExpiryIso } from "@/lib/subscription";
+import { AUTO_REPLY_PACKAGES, getAutoReplyPeriodEndIso, isAutoReplyPeriodActive } from "@/lib/auto-replies-pricing";
 
 export interface AutoReplySubscriptionInfo {
   /** Общий остаток: бесплатные пробные + оплаченный пакет (если период активен). */
@@ -21,10 +20,7 @@ export interface AutoReplySubscriptionInfo {
 }
 
 function isPeriodActive(periodStart: string | null | undefined): boolean {
-  if (!periodStart) return false;
-  const startedAtMs = new Date(periodStart).getTime();
-  if (!Number.isFinite(startedAtMs)) return false;
-  return startedAtMs + AUTO_REPLY_PERIOD_DAYS * 24 * 60 * 60 * 1000 > Date.now();
+  return isAutoReplyPeriodActive(periodStart);
 }
 
 export async function fetchAutoReplySubscriptionInfo(
@@ -74,7 +70,7 @@ export async function fetchAutoReplySubscriptionInfo(
     welcomeRemaining,
     paidRemaining,
     periodStart,
-    periodEnd: periodStart ? getSubscriptionExpiryIso({ period_start: periodStart }) : undefined,
+    periodEnd: periodStart ? getAutoReplyPeriodEndIso(periodStart) : undefined,
     packExpired: Boolean(row && !active && rawVolume > 0),
     hasActivePack: active && rawVolume > 0,
     autoRenew: Boolean(billingRow?.auto_renew),
