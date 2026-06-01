@@ -4,7 +4,7 @@ import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
 import { creditSubscription } from "@/lib/payment-credit";
 import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
 import { addVideoTokens } from "@/lib/video-tokens";
-import { creditAutoReplyFromPayment, parseAutoRenewFromMetadata } from "@/lib/auto-reply-payment-credit";
+import { creditAutoReplyFromPayment, parseAutoRenewFromMetadata, parseAutoReplyRenewalFromMetadata } from "@/lib/auto-reply-payment-credit";
 import { capturePayment } from "@/lib/yookassa-capture";
 import { parsePromoFromPaymentMetadata, recordPromoRedemption } from "@/lib/promo/record-redemption";
 
@@ -156,8 +156,7 @@ export async function POST(request: NextRequest) {
     } else if (paymentKind === "auto_replies") {
       const autoRenew = parseAutoRenewFromMetadata(meta);
       const paymentMethodId = paymentToProcess.payment_method?.id ?? null;
-      const isRenewal =
-        meta.auto_renew_renewal === "true" || meta.auto_renew_renewal === true;
+      const isRenewal = parseAutoReplyRenewalFromMetadata(meta);
       let billingAnchorIso: string | null = null;
       if (isRenewal) {
         const { data: billingRow } = await supabase
@@ -171,6 +170,7 @@ export async function POST(request: NextRequest) {
         autoRenew,
         paymentMethodId,
         billingAnchorIso,
+        isScheduledRenewal: isRenewal,
       });
     } else if (paymentKind === "flow") {
       const idx = Math.min(2, Math.max(0, tariffIndex));

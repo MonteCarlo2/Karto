@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { addAutoReplyBillingPeriod } from "@/lib/auto-replies-pricing";
+import { addAutoReplyBillingPeriod, isAutoReplyPeriodActive } from "@/lib/auto-replies-pricing";
 import {
   fetchAutoReplySubscriptionInfo,
   type AutoReplySubscriptionInfo,
@@ -54,9 +54,11 @@ export interface ActivateAutoReplySubscriptionOpts {
   paymentMethodId?: string | null;
   /** При автопродлении — предыдущий next_renew_at; следующее списание = +1 мес. от него (сохраняет 15:00). */
   billingAnchorIso?: string | null;
+  /** Автопродление по расписанию: сброс лимита на объём пакета. Ручная покупка: докупка к остатку. */
+  isScheduledRenewal?: boolean;
 }
 
-/** Активирует месячный пакет автоответов (сброс лимита, не накопление). */
+/** Активирует/продлевает месячный пакет автоответов. */
 export async function activateAutoReplySubscription(
   supabase: SupabaseClient,
   userId: string,
@@ -74,15 +76,28 @@ export async function activateAutoReplySubscription(
 
   const { data: row } = await supabase
     .from("user_subscriptions")
-    .select("id")
+    .select("id, plan_volume, period_start")
     .eq("user_id", userId)
     .eq("plan_type", "auto_replies")
     .maybeSingle();
 
+  const existingVolume = Math.max(0, Number((row as { plan_volume?: number } | null)?.plan_volume ?? 0));
+  const existingPeriodStart = (row as { period_start?: string } | null)?.period_start;
+  const active = isAutoReplyPeriodActive(existingPeriodStart);
+
+  let newVolume: number;
+  if (opts.isScheduledRenewal) {
+    newVolume = replies;
+  } else if (active) {
+    newVolume = existingVolume + replies;
+  } else {
+    newVolume = replies;
+  }
+
   if (row) {
     const { error } = await supabase
       .from("user_subscriptions")
-      .update({ plan_volume: replies, period_start: nowIso })
+      .update({ plan_volume: newVolume, period_start: nowIso })
       .eq("user_id", userId)
       .eq("plan_type", "auto_replies");
     if (error) {
@@ -93,7 +108,7 @@ export async function activateAutoReplySubscription(
     const { error } = await supabase.from("user_subscriptions").insert({
       user_id: userId,
       plan_type: "auto_replies",
-      plan_volume: replies,
+      plan_volume: newVolume,
       period_start: nowIso,
       flows_used: 0,
       creative_used: 0,

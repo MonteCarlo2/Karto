@@ -30,14 +30,26 @@ const playfairDisplay = Playfair_Display({
   display: "swap",
 });
 
-const siteTitle = "KARTO — Генерация карточек товара для маркетплейсов";
+const siteTitle =
+  "KARTO — ИИ-помощник продавца: карточки, контент и автоотзывы";
 const siteDescription =
-  "Генерация карточек товара для маркетплейсов: идеальное описание, цена и изображения. Профессиональный инструмент для продавцов Wildberries, Ozon и др.";
+  "ИИ-помощник для продавцов маркетплейсов: генерация карточек товара, SEO-описаний, фото и видео, автоответы на отзывы Wildberries, Ozon и Яндекс Маркет.";
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://karto.pro";
 
 export const metadata: Metadata = {
   title: siteTitle,
   description: siteDescription,
+  keywords: [
+    "KARTO",
+    "автоотзывы",
+    "автоответы на отзывы",
+    "генерация карточек товара",
+    "генерация контента для маркетплейсов",
+    "Wildberries",
+    "Ozon",
+    "Яндекс Маркет",
+    "ИИ для продавцов",
+  ],
   metadataBase: new URL(siteUrl),
   icons: {
     icon: [
@@ -81,7 +93,7 @@ export default function RootLayout({
     "@context": "https://schema.org",
     "@type": "WebSite",
     name: "KARTO",
-    alternateName: "Karto",
+    alternateName: ["Karto", "KARTO автоотзывы", "KARTO маркетплейсы"],
     url: siteUrl,
     description: siteDescription,
   };

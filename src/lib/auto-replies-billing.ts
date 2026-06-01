@@ -150,6 +150,7 @@ export async function processDueAutoReplyRenewals(
           autoRenew: row.auto_renew,
           paymentMethodId,
           billingAnchorIso: row.next_renew_at,
+          isScheduledRenewal: true,
         });
       }
     }
