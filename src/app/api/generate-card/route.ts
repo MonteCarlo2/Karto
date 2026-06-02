@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildProductCardPrompt, CARD_STYLES } from "@/lib/services/nanobanana";
-import { generateWithKieAi } from "@/lib/services/kie-ai";
+import { generateFlowImage, isFlowImageProviderConfigured } from "@/lib/services/flow-image-generation";
 import { KieAiContentFilteredError, kieErrorToClient } from "@/lib/services/kie-ai-errors";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { 
@@ -132,11 +132,11 @@ function getVariationConcept(variationIndex: number, productName: string): strin
  */
 export async function POST(request: NextRequest) {
   // Проверяем наличие API ключа
-  if (!process.env.KIE_AI_API_KEY && !process.env.KIE_API_KEY) {
+  if (!isFlowImageProviderConfigured()) {
     return NextResponse.json({
       success: false,
-      error: "KIE_AI_API_KEY не настроен",
-      details: "Добавьте KIE_AI_API_KEY (или KIE_API_KEY) в файл .env.local",
+      error: "WAVESPEED_API_KEY не настроен",
+      details: "Добавьте WAVESPEED_API_KEY в файл .env.local (генерация Потока на WaveSpeed)",
     }, { status: 500 });
   }
 
@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
           console.log("📷 Используем base64 изображение, размер:", Math.round(base64Size / 1024), "KB");
         }
       } else if (photoUrl.startsWith("http://") || photoUrl.startsWith("https://")) {
-        // localhost — читаем с диска и отдаём data URL (KIE не дергает localhost)
+        // localhost — читаем с диска и отдаём data URL (WaveSpeed грузит референс через Supabase)
         try {
           const u = new URL(photoUrl);
           if (u.hostname === "localhost" || u.hostname === "127.0.0.1") {
@@ -199,7 +199,7 @@ export async function POST(request: NextRequest) {
                 else if (ext === ".webp") mimeType = "image/webp";
               }
               imageForApi = `data:${mimeType};base64,${buffer.toString("base64")}`;
-              console.log("📷 Локальный URL преобразован в data URL для KIE");
+              console.log("📷 Локальный URL преобразован в data URL для WaveSpeed");
             } else {
               imageForApi = photoUrl;
               console.log("📷 Используем публичный URL (файл большой)");
@@ -546,7 +546,7 @@ ${finalTextPresentation}
     }
     console.log("═══════════════════════════════════════");
     
-    // Генерируем через KIE (модель: getDefaultKieImageModel / KIE_IMAGE_MODEL, по умолчанию nano-banana-2)
+    // Генерируем через WaveSpeed (Nano Banana 2), как в свободном творчестве
     // Убеждаемся, что aspectRatio в правильном формате (3:4 или 1:1)
     const finalAspectRatio = aspectRatio === "1:1" ? "1:1" : "3:4";
     
@@ -554,24 +554,19 @@ ${finalTextPresentation}
     console.log("🖼️ Image Input:", imageForApi ? (imageForApi.startsWith("data:") ? "base64" : "URL") : "нет");
     console.log("📏 Длина промпта:", finalPrompt.length, "символов");
     
-    // Генерируем через KIE с изображением (если есть)
+    // Генерируем через WaveSpeed с изображением (если есть)
     let generatedImageUrl: string;
-    
+
     try {
-      const result = await generateWithKieAi(
-        finalPrompt,
-        imageForApi,
-        finalAspectRatio,
-        "png",
-        "4K"
-      );
+      const result = await generateFlowImage(finalPrompt, imageForApi, finalAspectRatio);
       generatedImageUrl = result.imageUrl;
       console.log("✅ Генерация успешна");
-    } catch (error: any) {
-      console.error("❌ Ошибка в generateWithKieAi:", error);
+    } catch (error: unknown) {
+      console.error("❌ Ошибка в generateFlowImage:", error);
       if (error instanceof KieAiContentFilteredError) throw error;
+      const msg = error instanceof Error ? error.message : String(error);
       throw new Error(
-        `Модель не смогла сгенерировать изображение. Ошибка: ${error.message || "Неизвестная ошибка"}`
+        `Модель не смогла сгенерировать изображение. Ошибка: ${msg || "Неизвестная ошибка"}`
       );
     }
     

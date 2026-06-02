@@ -84,7 +84,7 @@ function readFlowBrandMasterLs(): boolean {
   }
 }
 
-/** Сжатие референса на клиенте (max 1200px, JPEG) для надёжной доставки в KIE, как в «Свободное творчество». */
+/** Сжатие референса на клиенте (max 1200px, JPEG) для надёжной доставки в WaveSpeed, как в «Свободное творчество». */
 function compressReferenceFile(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = document.createElement("img");
@@ -1162,7 +1162,7 @@ export default function VisualPage() {
           return;
         }
 
-        // Сервис временно недоступен (сеть/хостинг не дотягивается до KIE или Supabase)
+        // Сервис временно недоступен (сеть/хостинг не дотягивается до WaveSpeed или Supabase)
         if (response.status === 503 || data.code === "SERVICE_UNAVAILABLE") {
           setGenerationError({
             show: true,

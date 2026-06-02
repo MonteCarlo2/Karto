@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateWithKieAi } from "@/lib/services/kie-ai";
+import { generateFlowImage, isFlowImageProviderConfigured } from "@/lib/services/flow-image-generation";
 import { KieAiContentFilteredError, kieErrorToClient } from "@/lib/services/kie-ai-errors";
 import { downloadImage, getPublicUrl } from "@/lib/services/image-processing";
 import { createServerClient } from "@/lib/supabase/server";
@@ -99,12 +99,12 @@ ${editRequest}
     // Определяем aspect ratio
     const finalAspectRatio = aspectRatio === "1:1" ? "1:1" : "3:4";
 
-    // Подготавливаем изображение для KIE
-    let imageForKie: string;
+    // Подготавливаем изображение для WaveSpeed
+    let imageForApi: string;
     
     if (imageUrl.startsWith("data:image")) {
       // Уже base64
-      imageForKie = imageUrl;
+      imageForApi = imageUrl;
       console.log("🔄 [EDIT] Используется base64 изображение");
     } else if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
       // localhost — читаем с диска и отдаём data URL (KIE не дергает localhost)
@@ -119,14 +119,14 @@ ${editRequest}
           const ext = path.extname(u.pathname).toLowerCase();
           const mimeTypes: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
           const mimeType = mimeTypes[ext] || 'image/jpeg';
-          imageForKie = `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
+          imageForApi = `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
           console.log("🔄 [EDIT] Локальный URL преобразован в data URL для KIE");
         } else {
-          imageForKie = imageUrl;
+          imageForApi = imageUrl;
           console.log("🔄 [EDIT] Используется публичный URL:", imageUrl);
         }
       } catch {
-        imageForKie = imageUrl;
+        imageForApi = imageUrl;
         console.log("🔄 [EDIT] Используется публичный URL:", imageUrl);
       }
     } else {
@@ -164,15 +164,15 @@ ${editRequest}
         
         // Преобразуем в base64
         const base64 = fileBuffer.toString('base64');
-        imageForKie = `data:${mimeType};base64,${base64}`;
+        imageForApi = `data:${mimeType};base64,${base64}`;
         
         console.log("🔄 [EDIT] Изображение преобразовано в base64");
       } catch (fileError: any) {
         console.error("❌ [EDIT] Ошибка загрузки локального файла:", fileError);
         // Пробуем использовать как URL
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-        imageForKie = imageUrl.startsWith("/") ? `${baseUrl}${imageUrl}` : imageUrl;
-        console.log("🔄 [EDIT] Используем fallback URL:", imageForKie);
+        imageForApi = imageUrl.startsWith("/") ? `${baseUrl}${imageUrl}` : imageUrl;
+        console.log("🔄 [EDIT] Используем fallback URL:", imageForApi);
       }
     }
 
@@ -180,26 +180,19 @@ ${editRequest}
     let editedImageUrl: string;
     
     try {
-      const result = await generateWithKieAi(
-        editPrompt,
-        imageForKie,
-        finalAspectRatio,
-        "png",
-        "4K"
-      );
+      const result = await generateFlowImage(editPrompt, imageForApi, finalAspectRatio);
       editedImageUrl = result.imageUrl;
       console.log("✅ [EDIT] Редактирование успешно");
-    } catch (error: any) {
-      console.error("❌ [EDIT] Ошибка в generateWithKieAi:", error);
+    } catch (error: unknown) {
+      console.error("❌ [EDIT] Ошибка в generateFlowImage:", error);
       console.error("❌ [EDIT] Детали ошибки:", {
-        message: error.message,
-        status: error.status,
-        body: error.body,
-        imageUrlType: imageForKie.startsWith("data:") ? "base64" : "url",
+        message: error instanceof Error ? error.message : String(error),
+        imageUrlType: imageForApi.startsWith("data:") ? "base64" : "url",
       });
       if (error instanceof KieAiContentFilteredError) throw error;
+      const msg = error instanceof Error ? error.message : String(error);
       throw new Error(
-        `Модель не смогла отредактировать изображение. Ошибка: ${error.message || "Неизвестная ошибка"}`
+        `Модель не смогла отредактировать изображение. Ошибка: ${msg || "Неизвестная ошибка"}`
       );
     }
 

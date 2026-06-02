@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateWithKieAi } from "@/lib/services/kie-ai";
+import { generateFlowImage, isFlowImageProviderConfigured } from "@/lib/services/flow-image-generation";
 import { KieAiContentFilteredError, kieErrorToClient } from "@/lib/services/kie-ai-errors";
 import { 
   downloadImage, 
@@ -16,11 +16,11 @@ import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-gene
  */
 export async function POST(request: NextRequest) {
   // Проверяем наличие API ключа
-  if (!process.env.KIE_AI_API_KEY && !process.env.KIE_API_KEY) {
+  if (!isFlowImageProviderConfigured()) {
     return NextResponse.json({
       success: false,
-      error: "KIE_AI_API_KEY не настроен",
-      details: "Добавьте KIE_AI_API_KEY (или KIE_API_KEY) в файл .env.local",
+      error: "WAVESPEED_API_KEY не настроен",
+      details: "Добавьте WAVESPEED_API_KEY в файл .env.local (генерация Потока на WaveSpeed)",
     }, { status: 500 });
   }
 
@@ -309,31 +309,30 @@ ${scenarioPrompt}${environmentReference}${userDescription}
     console.log("  - Референс обстановки:", environmentImageUrl ? "да" : "нет");
     console.log("═══════════════════════════════════════");
     
-    // Генерируем через KIE (модель из getDefaultKieImageModel, по умолчанию nano-banana-2)
+    // Генерируем через WaveSpeed (Nano Banana 2)
     const finalAspectRatio = aspectRatio || "3:4";
     
     console.log("📐 Final Aspect Ratio:", finalAspectRatio);
     console.log("🖼️ Image Inputs:", imagesForApi.length);
     console.log("📏 Длина промпта:", finalPrompt.length, "символов");
     
-    // Генерируем через KIE с изображением(ями)
+    // Генерируем через WaveSpeed с изображением(ями)
     let generatedImageUrl: string;
-    
+
     try {
-      const result = await generateWithKieAi(
+      const result = await generateFlowImage(
         finalPrompt,
-        imagesForApi.length > 0 ? (imagesForApi.length === 1 ? imagesForApi[0] : imagesForApi) : undefined,
-        finalAspectRatio,
-        "png",
-        "4K"
+        imagesForApi.length > 0 ? imagesForApi : undefined,
+        finalAspectRatio
       );
       generatedImageUrl = result.imageUrl;
       console.log("✅ Генерация успешна");
-    } catch (error: any) {
-      console.error("❌ Ошибка в generateWithKieAi:", error);
+    } catch (error: unknown) {
+      console.error("❌ Ошибка в generateFlowImage:", error);
       if (error instanceof KieAiContentFilteredError) throw error;
+      const msg = error instanceof Error ? error.message : String(error);
       throw new Error(
-        `Модель не смогла сгенерировать изображение. Ошибка: ${error.message || "Неизвестная ошибка"}`
+        `Модель не смогла сгенерировать изображение. Ошибка: ${msg || "Неизвестная ошибка"}`
       );
     }
     

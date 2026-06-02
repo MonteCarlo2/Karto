@@ -5,10 +5,12 @@ import { createServerClient } from "@/lib/supabase/server";
 import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 
-// 4K через KIE часто >100s; 100s давали массовый Abort → несколько слотов «упали» сразу
-// и повтор запускал столько же лишних generate-card (двойной расход токенов KIE).
-// По умолчанию 3 мин на слот; переопределение: KIE_BATCH_CARD_TIMEOUT_MS (миллисекунды).
-const CARD_GENERATE_TIMEOUT_MS = Number(process.env.KIE_BATCH_CARD_TIMEOUT_MS) || 180_000; // 3 мин на карточку
+// 4K через WaveSpeed может занимать >100s; 100s давали массовый Abort → несколько слотов «упали» сразу.
+// По умолчанию 3 мин на слот; переопределение: WAVESPEED_BATCH_CARD_TIMEOUT_MS или KIE_BATCH_CARD_TIMEOUT_MS.
+const CARD_GENERATE_TIMEOUT_MS =
+  Number(process.env.WAVESPEED_BATCH_CARD_TIMEOUT_MS) ||
+  Number(process.env.KIE_BATCH_CARD_TIMEOUT_MS) ||
+  180_000;
 
 /** Сессии, для которых уже выполняется батч — не запускаем второй параллельный батч. */
 const batchLockBySession = new Set<string>();
@@ -54,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServerClient();
 
-    // Защита от повторного запуска батча для той же сессии (лишние расходы KIE)
+    // Защита от повторного запуска батча для той же сессии
     if (batchLockBySession.has(sessionId)) {
       console.warn("⚠️ [BATCH] Сессия уже в процессе генерации, повторный запрос:", sessionId);
 

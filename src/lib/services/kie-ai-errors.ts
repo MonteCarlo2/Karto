@@ -48,6 +48,9 @@ export function kieErrorToClient(error: unknown): { message: string; code?: "CON
   let m = raw
     .replace(/^KIE AI ошибка:\s*/i, "")
     .replace(/^KIE AI генерация не удалась:\s*/i, "")
+    .replace(/^WaveSpeed задача failed:\s*/i, "")
+    .replace(/^WaveSpeed POST \d+:\s*/i, "")
+    .replace(/^Превышено время ожидания результата WaveSpeed\.?\s*/i, "")
     .trim();
 
   const modelPrefix = /^Модель не смогла (?:сгенерировать изображение|отредактировать изображение)\.\s*Ошибка:\s*/i;
