@@ -123,6 +123,8 @@ export async function GET(request: NextRequest) {
       autoReplyPackExpired: autoReply.packExpired,
       autoReplyAutoRenew: autoReply.autoRenew,
       autoReplyHasSavedCard: autoReply.hasSavedCard,
+      autoReplyCardLast4: autoReply.cardLast4,
+      autoReplyCardBrand: autoReply.cardBrand,
       autoReplyNextRenewAt: autoReply.nextRenewAt,
       autoReplyTariffIndex: autoReply.tariffIndex,
       autoReplyMonthlyPriceRub: autoReply.monthlyPriceRub,

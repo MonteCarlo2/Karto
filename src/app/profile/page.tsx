@@ -42,6 +42,7 @@ import {
 } from "@/lib/subscription";
 import { KartoServicesExplainer } from "@/components/ui/karto-services-explainer";
 import { ProfileAutoReplyBillingPanel } from "@/components/profile/profile-auto-reply-billing";
+import { YookassaTestModeStrip } from "@/components/profile/yookassa-test-mode-strip";
 import {
   fetchUserBrandOnboarding,
   hasBrandOnboardingDraftProgress,
@@ -1000,6 +1001,8 @@ function ProfileContent() {
                   Оплата прошла. Обновляем данные…
                 </div>
               )}
+
+              <YookassaTestModeStrip />
 
               {/* Ваши услуги: всегда три строки (в т.ч. нули), чтобы было видно, чего нет */}
               {user && !loading && (

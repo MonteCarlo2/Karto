@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AUTO_REPLY_PACKAGES, getAutoReplyPeriodEndIso, isAutoReplyPeriodActive } from "@/lib/auto-replies-pricing";
+import { fetchYookassaPaymentMethodCard } from "@/lib/yookassa-payment-method";
 
 export interface AutoReplySubscriptionInfo {
   /** Общий остаток: бесплатные пробные + оплаченный пакет (если период активен). */
@@ -14,6 +15,8 @@ export interface AutoReplySubscriptionInfo {
   hasActivePack: boolean;
   autoRenew: boolean;
   hasSavedCard: boolean;
+  cardLast4?: string;
+  cardBrand?: string;
   nextRenewAt?: string;
   tariffIndex: number;
   monthlyPriceRub: number;
@@ -36,7 +39,9 @@ export async function fetchAutoReplySubscriptionInfo(
       .maybeSingle(),
     supabase
       .from("auto_reply_billing")
-      .select("tariff_index, auto_renew, payment_method_id, next_renew_at, period_start")
+      .select(
+        "tariff_index, auto_renew, payment_method_id, card_last4, card_brand, next_renew_at, period_start"
+      )
       .eq("user_id", userId)
       .maybeSingle(),
   ]);
@@ -50,9 +55,30 @@ export async function fetchAutoReplySubscriptionInfo(
     tariff_index?: number;
     auto_renew?: boolean;
     payment_method_id?: string | null;
+    card_last4?: string | null;
+    card_brand?: string | null;
     next_renew_at?: string;
     period_start?: string;
   } | null;
+
+  let cardLast4 = billingRow?.card_last4?.trim() || undefined;
+  let cardBrand = billingRow?.card_brand?.trim() || undefined;
+  const paymentMethodId = billingRow?.payment_method_id?.trim() || "";
+  if (paymentMethodId && !cardLast4) {
+    const fetched = await fetchYookassaPaymentMethodCard(paymentMethodId);
+    if (fetched) {
+      cardLast4 = fetched.last4;
+      cardBrand = fetched.brand ?? undefined;
+      await supabase
+        .from("auto_reply_billing")
+        .update({
+          card_last4: fetched.last4,
+          card_brand: fetched.brand,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId);
+    }
+  }
 
   const periodStart = row?.period_start ?? billingRow?.period_start;
   const active = isPeriodActive(periodStart);
@@ -74,7 +100,9 @@ export async function fetchAutoReplySubscriptionInfo(
     packExpired: Boolean(row && !active && rawVolume > 0),
     hasActivePack: active && rawVolume > 0,
     autoRenew: Boolean(billingRow?.auto_renew),
-    hasSavedCard: Boolean(billingRow?.payment_method_id),
+    hasSavedCard: Boolean(paymentMethodId),
+    cardLast4,
+    cardBrand,
     nextRenewAt: billingRow?.next_renew_at,
     tariffIndex,
     monthlyPriceRub: AUTO_REPLY_PACKAGES[tariffIndex]?.priceRub ?? AUTO_REPLY_PACKAGES[0].priceRub,

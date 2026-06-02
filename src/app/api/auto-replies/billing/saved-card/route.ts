@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { requireAutoRepliesUser } from "@/lib/auto-replies/api-auth";
 import { fetchAutoReplySubscriptionInfo } from "@/lib/auto-replies-subscription-info";
-import { formatSubscriptionPeriodRu } from "@/lib/subscription";
+import {
+  formatBillingDateLong,
+  savedCardLabelFromFields,
+} from "@/lib/auto-replies-billing-copy";
 
 /** DELETE: удалить сохранённый способ оплаты из KARTO (автопродление отключается). */
 export async function DELETE(request: NextRequest) {
@@ -28,6 +31,8 @@ export async function DELETE(request: NextRequest) {
         user_id: auth.user.id,
         auto_renew: false,
         payment_method_id: null,
+        card_last4: null,
+        card_brand: null,
         updated_at: new Date().toISOString(),
         ...(info.tariffIndex != null ? { tariff_index: info.tariffIndex } : {}),
       },
@@ -42,10 +47,15 @@ export async function DELETE(request: NextRequest) {
     );
   }
 
-  const periodLabel = formatSubscriptionPeriodRu(info.periodStart, info.periodEnd);
-  const message = periodLabel
-    ? `Карта удалена из KARTO. Автопродление отключено. Текущий пакет действует до конца оплаченного периода (${periodLabel.split(" — ")[1] ?? periodLabel}). Для повторного автопродления потребуется новая оплата с сохранением карты.`
-    : "Карта удалена из KARTO. Автопродление отключено. Для повторного автопродления потребуется новая оплата с сохранением карты.";
+  const cardLabel = savedCardLabelFromFields(info.cardLast4, info.cardBrand);
+  const periodEndLabel = formatBillingDateLong(info.periodEnd);
+  const message = periodEndLabel
+    ? cardLabel
+      ? `Карта ${cardLabel} отвязана от аккаунта. Автопродление выключено. Оплаченный пакет «Отзывы» действует до ${periodEndLabel} включительно.`
+      : `Сохранённая карта отвязана. Автопродление выключено. Оплаченный пакет действует до ${periodEndLabel} включительно.`
+    : cardLabel
+      ? `Карта ${cardLabel} отвязана от аккаунта. Автопродление выключено.`
+      : "Сохранённая карта отвязана. Автопродление выключено.";
 
   return NextResponse.json({
     success: true,

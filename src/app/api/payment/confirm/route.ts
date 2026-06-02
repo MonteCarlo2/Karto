@@ -136,6 +136,7 @@ export async function POST(request: NextRequest) {
       result = await creditAutoReplyFromPayment(supabase, userId, tariffIndex, {
         autoRenew,
         paymentMethodId,
+        paymentMethod: payment.payment_method,
       });
     } else if (paymentKind === "flow") {
       const idx = Math.min(2, Math.max(0, tariffIndex));

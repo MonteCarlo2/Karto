@@ -79,6 +79,8 @@ export interface SubscriptionState {
   autoReplyPackExpired?: boolean;
   autoReplyAutoRenew?: boolean;
   autoReplyHasSavedCard?: boolean;
+  autoReplyCardLast4?: string;
+  autoReplyCardBrand?: string;
   autoReplyNextRenewAt?: string;
   autoReplyTariffIndex?: number;
   autoReplyMonthlyPriceRub?: number;

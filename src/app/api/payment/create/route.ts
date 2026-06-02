@@ -231,7 +231,12 @@ export async function POST(request: NextRequest) {
       let userMessage = "Не удалось создать платёж. Попробуйте позже.";
       try {
         const errJson = JSON.parse(errText) as { description?: string; code?: string };
-        if (errJson.description) userMessage = errJson.description;
+        if (errJson.code === "invalid_credentials") {
+          userMessage =
+            "Неверный Shop ID или секретный ключ ЮKassa. Скопируйте ключ заново из кабинета (Интеграция → Ключи API) для магазина Test, karto.pro и вставьте в .env.local, затем перезапустите npm run dev.";
+        } else if (errJson.description) {
+          userMessage = errJson.description;
+        }
       } catch {
         if (res.status === 408 || res.status === 504) userMessage = "Платёжная система не ответила вовремя. Попробуйте ещё раз.";
       }

@@ -52,6 +52,8 @@ export interface ActivateAutoReplySubscriptionOpts {
   tariffIndex: number;
   autoRenew: boolean;
   paymentMethodId?: string | null;
+  cardLast4?: string | null;
+  cardBrand?: string | null;
   /** При автопродлении — предыдущий next_renew_at; следующее списание = +1 мес. от него (сохраняет 15:00). */
   billingAnchorIso?: string | null;
   /** Автопродление по расписанию: сброс лимита на объём пакета. Ручная покупка: докупка к остатку. */
@@ -119,12 +121,15 @@ export async function activateAutoReplySubscription(
     }
   }
 
+  const saveCard = opts.autoRenew && Boolean(opts.paymentMethodId);
   const { error: billingErr } = await supabase.from("auto_reply_billing").upsert(
     {
       user_id: userId,
       tariff_index: opts.tariffIndex,
       auto_renew: opts.autoRenew,
-      payment_method_id: opts.autoRenew ? (opts.paymentMethodId ?? null) : null,
+      payment_method_id: saveCard ? (opts.paymentMethodId ?? null) : null,
+      card_last4: saveCard ? (opts.cardLast4 ?? null) : null,
+      card_brand: saveCard ? (opts.cardBrand ?? null) : null,
       period_start: nowIso,
       next_renew_at: nextRenewAt.toISOString(),
       updated_at: nowIso,

@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { requireAutoRepliesUser } from "@/lib/auto-replies/api-auth";
 import { fetchAutoReplySubscriptionInfo } from "@/lib/auto-replies-subscription-info";
-import { formatSubscriptionPeriodRu } from "@/lib/subscription";
+import {
+  formatAutoReplyPackLine,
+  formatBillingDateLong,
+  savedCardLabelFromFields,
+} from "@/lib/auto-replies-billing-copy";
 
 export async function PATCH(request: NextRequest) {
   const auth = await requireAutoRepliesUser(request);
@@ -58,22 +62,20 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  const periodLabel = formatSubscriptionPeriodRu(info.periodStart, info.periodEnd);
-  const renewDateLabel = info.nextRenewAt
-    ? new Intl.DateTimeFormat("ru-RU", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      }).format(new Date(info.nextRenewAt))
-    : null;
+  const cardLabel = savedCardLabelFromFields(info.cardLast4, info.cardBrand);
+  const periodEndLabel = formatBillingDateLong(info.periodEnd);
+  const renewDateLabel = formatBillingDateLong(info.nextRenewAt);
+  const packLine = formatAutoReplyPackLine(info.tariffIndex);
 
   const message = body.autoRenew
-    ? renewDateLabel
-      ? `Автопродление включено. Следующее списание ${info.monthlyPriceRub.toLocaleString("ru-RU")} ₽ — ${renewDateLabel}.`
-      : `Автопродление включено. С карты будет списываться ${info.monthlyPriceRub.toLocaleString("ru-RU")} ₽ раз в месяц.`
-    : periodLabel
-      ? `Автопродление отключено. Текущий пакет действует до конца периода (${periodLabel.split(" — ")[1] ?? periodLabel}). Следующее списание выполнено не будет.`
-      : "Автопродление отключено. Следующее списание выполнено не будет.";
+    ? cardLabel && renewDateLabel
+      ? `Автопродление включено. С карты ${cardLabel} раз в 30 дней будет списываться ${info.monthlyPriceRub.toLocaleString("ru-RU")} ₽ (${packLine}). Следующее списание — ${renewDateLabel}.`
+      : `Автопродление включено. Списание ${info.monthlyPriceRub.toLocaleString("ru-RU")} ₽ раз в 30 дней (${packLine}).`
+    : periodEndLabel
+      ? cardLabel
+        ? `Автопродление выключено. Карта ${cardLabel} остаётся привязанной. Пакет «Отзывы» действует до ${periodEndLabel} включительно — новых списаний не будет.`
+        : `Автопродление выключено. Пакет действует до ${periodEndLabel} включительно — новых списаний не будет.`
+      : "Автопродление выключено. Следующее списание выполнено не будет.";
 
   return NextResponse.json({
     success: true,
