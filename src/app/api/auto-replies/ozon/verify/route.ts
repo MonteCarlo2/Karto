@@ -9,6 +9,8 @@ import {
   setOzonVerifyCooldown,
 } from "@/lib/services/ozon/server-cache";
 import { OzonApiError, parseOzonCredentials, verifyOzonCredentials } from "@/lib/services/ozon/client";
+import { createServerClient } from "@/lib/supabase/server";
+import { persistServerMarketplaceSecret } from "@/lib/auto-replies/persist-server-marketplace-secret";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -22,7 +24,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  let body: { clientId?: string; apiKey?: string; sellerNameHint?: string | null };
+  let body: { clientId?: string; apiKey?: string; sellerNameHint?: string | null; shopId?: string };
   try {
     body = await request.json();
   } catch {
@@ -70,6 +72,17 @@ export async function POST(request: NextRequest) {
   try {
     const result = await verifyOzonCredentials(credentials, body.sellerNameHint);
     setCachedOzonVerify(cacheKey, result, VERIFY_OK_TTL_MS);
+
+    const supabase = createServerClient();
+    const persisted = await persistServerMarketplaceSecret(supabase, auth.user.id, {
+      shopId: body.shopId,
+      marketplaceId: "ozon",
+      apiKey: credentials.apiKey,
+      clientId: credentials.clientId,
+    });
+    if (!persisted.ok) {
+      console.warn("[ozon/verify] server secret not saved:", persisted.error);
+    }
 
     return NextResponse.json({
       ok: true,

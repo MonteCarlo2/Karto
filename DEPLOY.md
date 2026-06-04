@@ -20,6 +20,9 @@ Next.js с SSR и API-маршрутами нужно разворачивать
 - **PORT** — должна быть задана панелью (например 3000 или 8080). Если нет — добавь вручную, например `PORT=3000`.
 - **HOSTNAME** — добавь `HOSTNAME=0.0.0.0`, чтобы сервер слушал на всех интерфейсах (иначе платформа может не достучаться до приложения и отправит SIGTERM).
 - **NEXT_CACHE_DIR** — добавь `NEXT_CACHE_DIR=/tmp`, чтобы кэш изображений писался в /tmp (иначе возможна ошибка «EACCES: permission denied» для `.next/cache`).
+- **SUPABASE_SERVICE_ROLE_KEY** — обязателен для фоновых автоответов (cron inbox на сервере без открытого сайта).
+- **CRON_SECRET** — секрет для `/api/cron/auto-reply-inbox-sync` и `/api/cron/auto-reply-renew`; также fallback для шифрования ключей маркетплейсов, если не задан отдельный ключ.
+- **AUTO_REPLY_SECRETS_KEY** — рекомендуется: стабильная случайная строка 32+ символов для шифрования API-ключей WB/Ozon/Яндекс в таблице `auto_reply_marketplace_secrets`. **Не менять** после того, как пользователи уже сохранили ключи (иначе расшифровка сломается).
 - **NEXT_PUBLIC_SUPABASE_URL** и **NEXT_PUBLIC_SUPABASE_ANON_KEY** — обязательны для входа и регистрации. Без них появится ошибка «Invalid API key». Возьми значения из Supabase Dashboard → Project Settings → API.
 - Остальные переменные (Replicate и т.д.) — как в `.env.local`.
 
@@ -114,3 +117,11 @@ Next.js с SSR и API-маршрутами нужно разворачивать
 - `EACCES` на `.next/cache` — добавь `NEXT_CACHE_DIR=/tmp`.
 
 После правок в репозитории: **пересборка с очисткой кэша**.
+
+## 9. Автоответы на отзывы (без открытия сайта)
+
+1. В Supabase примени миграцию `supabase/migrations/20260531_auto_reply_server_secrets.sql` (таблица `auto_reply_marketplace_secrets`).
+2. На Timeweb задай `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, желательно `AUTO_REPLY_SECRETS_KEY`.
+3. После деплоя пользователю достаточно **один раз** открыть автоответы или заново «Проверить подключение» WB/Ozon/Яндекс — ключи сохранятся на сервере.
+4. В логах каждые ~5 мин: `[auto-reply] background tick` с `auto_sent` > 0 при новых отзывах. Если `skip no_server_secret` — ключ не в БД, нужен шаг 3.
+5. Опционально: внешний cron `GET https://karto.pro/api/cron/auto-reply-inbox-sync` с заголовком `Authorization: Bearer <CRON_SECRET>` каждые 5–15 мин (дублирует встроенный планировщик).

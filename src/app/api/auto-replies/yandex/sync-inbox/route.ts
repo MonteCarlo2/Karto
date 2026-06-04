@@ -26,6 +26,7 @@ import {
   resolveYandexCampaign,
   YandexApiError,
 } from "@/lib/services/yandex/client";
+import { persistServerMarketplaceSecret } from "@/lib/auto-replies/persist-server-marketplace-secret";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -110,6 +111,7 @@ export async function POST(request: NextRequest) {
     brandName?: string | null;
     sellerName?: string | null;
     force?: boolean;
+    shopId?: string;
   };
 
   try {
@@ -161,6 +163,17 @@ export async function POST(request: NextRequest) {
   }
   if (!mp?.usage || !mp?.starRules || !mp?.reviewScope || !mp?.connection) {
     return NextResponse.json({ error: "Настройки маркетплейса не переданы" }, { status: 400 });
+  }
+
+  const secretPersist = await persistServerMarketplaceSecret(supabase, auth.user.id, {
+    shopId: body.shopId,
+    marketplaceId: "yandex",
+    apiKey: parsed.apiKey,
+    campaignId: parsed.campaignId,
+    businessId,
+  });
+  if (!secretPersist.ok) {
+    console.warn("[yandex/sync-inbox] server secret not saved:", secretPersist.error);
   }
 
   const credentials = {

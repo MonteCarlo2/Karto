@@ -118,8 +118,12 @@ export async function listMarketplaceSecretsForUser(
         campaignId: row.campaign_id ?? undefined,
         businessId: row.business_id ?? undefined,
       });
-    } catch {
-      /* skip corrupt row */
+    } catch (e) {
+      console.warn(
+        "[auto-reply] skip decrypt marketplace secret",
+        row.marketplace_id,
+        e instanceof Error ? e.message : e
+      );
     }
   }
   return out;

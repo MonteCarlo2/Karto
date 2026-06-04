@@ -9,6 +9,8 @@ import {
   yandexCredentialsKey,
 } from "@/lib/services/yandex/server-cache";
 import { parseYandexCredentials, verifyYandexCredentials, YandexApiError } from "@/lib/services/yandex/client";
+import { createServerClient } from "@/lib/supabase/server";
+import { persistServerMarketplaceSecret } from "@/lib/auto-replies/persist-server-marketplace-secret";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -27,6 +29,7 @@ export async function POST(request: NextRequest) {
     campaignId?: string;
     businessId?: string;
     sellerNameHint?: string | null;
+    shopId?: string;
   };
   try {
     body = await request.json();
@@ -75,6 +78,18 @@ export async function POST(request: NextRequest) {
   try {
     const result = await verifyYandexCredentials(parsed, body.sellerNameHint);
     setCachedYandexVerify(cacheKey, result, VERIFY_OK_TTL_MS);
+
+    const supabase = createServerClient();
+    const persisted = await persistServerMarketplaceSecret(supabase, auth.user.id, {
+      shopId: body.shopId,
+      marketplaceId: "yandex",
+      apiKey: parsed.apiKey,
+      campaignId: result.campaignId,
+      businessId: result.businessId,
+    });
+    if (!persisted.ok) {
+      console.warn("[yandex/verify] server secret not saved:", persisted.error);
+    }
 
     return NextResponse.json({
       ok: true,

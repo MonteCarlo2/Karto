@@ -32,24 +32,41 @@ export async function processAutoReplyInboxCron(
   skipped: number;
   errors: number;
   zeroBalance: number;
+  autoSent: number;
 }> {
   const userLimit = opts?.userLimit ?? 40;
-  const { data: rows } = await supabase
-    .from("auto_reply_user_state")
-    .select("user_id, settings_json")
-    .order("updated_at", { ascending: false })
-    .limit(userLimit);
+  const [{ data: rows }, { data: secretRows }] = await Promise.all([
+    supabase
+      .from("auto_reply_user_state")
+      .select("user_id, settings_json")
+      .order("updated_at", { ascending: false })
+      .limit(userLimit),
+    supabase.from("auto_reply_marketplace_secrets").select("user_id").limit(500),
+  ]);
+
+  const settingsByUser = new Map<string, AutoRepliesSettingsRoot>();
+  for (const row of rows ?? []) {
+    const uid = row.user_id as string;
+    if (!settingsByUser.has(uid)) {
+      settingsByUser.set(uid, (row.settings_json as AutoRepliesSettingsRoot) ?? { marketplaces: {} });
+    }
+  }
+  for (const row of secretRows ?? []) {
+    const uid = row.user_id as string;
+    if (!settingsByUser.has(uid)) {
+      settingsByUser.set(uid, { version: 1, shops: {}, marketplaces: {} });
+    }
+  }
 
   let synced = 0;
   let skipped = 0;
   let errors = 0;
   let zeroBalance = 0;
+  let autoSent = 0;
   let users = 0;
 
-  for (const row of rows ?? []) {
-    const userId = row.user_id as string;
-    const settings = row.settings_json as AutoRepliesSettingsRoot;
-    if (!settings?.marketplaces) continue;
+  for (const [userId, settings] of settingsByUser) {
+    if (!settings?.marketplaces) settings.marketplaces = {};
 
     users += 1;
     const balance = await getAutoReplyBalance(supabase, userId);
@@ -73,6 +90,7 @@ export async function processAutoReplyInboxCron(
       const secret = secretByKey.get(mpKey);
       if (!secret?.apiKey?.trim()) {
         skipped += 1;
+        console.info("[auto-reply-inbox-cron] skip no_server_secret", userId, mpKey);
         continue;
       }
 
@@ -171,6 +189,15 @@ export async function processAutoReplyInboxCron(
           { onConflict: "user_id,shop_id,marketplace_id" }
         );
         synced += 1;
+        autoSent += Number(result.autoSentCount ?? 0);
+        if ((result.autoSentCount ?? 0) > 0) {
+          console.info(
+            "[auto-reply-inbox-cron] auto_sent",
+            userId,
+            marketplaceId,
+            result.autoSentCount
+          );
+        }
       } catch (e) {
         errors += 1;
         console.error("[auto-reply-inbox-cron]", userId, marketplaceId, e);
@@ -178,5 +205,5 @@ export async function processAutoReplyInboxCron(
     }
   }
 
-  return { users, synced, skipped, errors, zeroBalance };
+  return { users, synced, skipped, errors, zeroBalance, autoSent };
 }

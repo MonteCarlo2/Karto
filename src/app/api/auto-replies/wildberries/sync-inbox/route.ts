@@ -21,6 +21,7 @@ import {
   wildberriesTokenKey,
 } from "@/lib/services/wildberries/server-cache";
 import { runWildberriesInboxSync } from "@/lib/auto-replies/inbox-sync-wildberries-core";
+import { persistServerMarketplaceSecret } from "@/lib/auto-replies/persist-server-marketplace-secret";
 import {
   WildberriesApiError,
   answerWildberriesFeedback,
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
     take?: number;
     force?: boolean;
     mode?: "ui" | "full";
+    shopId?: string;
   };
 
   try {
@@ -136,6 +138,15 @@ export async function POST(request: NextRequest) {
   }
   if (!mp?.usage || !mp?.starRules || !mp?.reviewScope || !mp?.connection) {
     return NextResponse.json({ error: "Настройки маркетплейса не переданы" }, { status: 400 });
+  }
+
+  const secretPersist = await persistServerMarketplaceSecret(supabase, auth.user.id, {
+    shopId: body.shopId,
+    marketplaceId: "wildberries",
+    apiKey,
+  });
+  if (!secretPersist.ok) {
+    console.warn("[wildberries/sync-inbox] server secret not saved:", secretPersist.error);
   }
 
   const cacheKey = `${wildberriesTokenKey(apiKey)}:inbox`;

@@ -2,7 +2,7 @@
  * Фоновый планировщик для TimeWebCloud и других VPS без Vercel Cron.
  * Запускается из instrumentation.ts при старте Node-сервера.
  */
-const INTERVAL_MS = 10 * 60 * 1000;
+const INTERVAL_MS = 5 * 60 * 1000;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -29,7 +29,7 @@ export function startAutoReplyBackgroundScheduler() {
     return;
   }
 
-  console.info("[auto-reply] background scheduler started (every 10 min)");
+  console.info("[auto-reply] background scheduler started (every 5 min)");
 
   let running = false;
 

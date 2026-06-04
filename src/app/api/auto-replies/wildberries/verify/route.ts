@@ -11,6 +11,8 @@ import {
   wildberriesTokenKey,
 } from "@/lib/services/wildberries/server-cache";
 import { verifyWildberriesToken, WildberriesApiError } from "@/lib/services/wildberries/client";
+import { createServerClient } from "@/lib/supabase/server";
+import { persistServerMarketplaceSecret } from "@/lib/auto-replies/persist-server-marketplace-secret";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -28,7 +30,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  let body: { apiKey?: string; sellerNameHint?: string | null };
+  let body: { apiKey?: string; sellerNameHint?: string | null; shopId?: string };
   try {
     body = await request.json();
   } catch {
@@ -88,6 +90,16 @@ export async function POST(request: NextRequest) {
       })
     );
     setCachedWildberriesVerify(cacheKey, result, VERIFY_OK_TTL_MS);
+
+    const supabase = createServerClient();
+    const persisted = await persistServerMarketplaceSecret(supabase, auth.user.id, {
+      shopId: body.shopId,
+      marketplaceId: "wildberries",
+      apiKey,
+    });
+    if (!persisted.ok) {
+      console.warn("[wildberries/verify] server secret not saved:", persisted.error);
+    }
 
     return NextResponse.json({
       ok: true,

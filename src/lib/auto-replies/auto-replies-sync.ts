@@ -306,13 +306,15 @@ async function pushServerMarketplaceSecrets(userId: string, settings: ReturnType
   const entries = extractServerSecretEntriesFromSettingsRoot(settings, localTokens);
   if (entries.length === 0) return;
 
-  void autoRepliesAuthorizedFetch("/api/auto-replies/secrets/sync", {
+  const res = await autoRepliesAuthorizedFetch("/api/auto-replies/secrets/sync", {
     method: "POST",
     body: JSON.stringify({ entries }),
     timeoutMs: 15_000,
-  }).catch((e) => {
-    console.warn("[auto-replies] server secrets sync failed", e);
   });
+  const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+  if (!res.ok || !data.success) {
+    console.warn("[auto-replies] server secrets sync failed", data.error ?? res.status);
+  }
 }
 
 export async function pushAutoRepliesStateToSupabase(): Promise<void> {
@@ -345,7 +347,7 @@ export async function pushAutoRepliesStateToSupabase(): Promise<void> {
       composeDrafts,
     });
 
-    pushServerMarketplaceSecrets(ctx.userId, settings);
+    await pushServerMarketplaceSecrets(ctx.userId, settings);
   })();
 
   try {
