@@ -25,6 +25,32 @@ if (!process.env.HOSTNAME) {
   process.env.HOSTNAME = "0.0.0.0";
 }
 
+function linkWritableNextCache(appDir) {
+  if (process.platform === "win32") return;
+  const cacheBase = process.env.NEXT_CACHE_DIR;
+  const writable = path.join(cacheBase, "karto-next-prerender-cache");
+  const nextDir = path.join(appDir, ".next");
+  const cachePath = path.join(nextDir, "cache");
+  try {
+    fs.mkdirSync(writable, { recursive: true });
+    fs.mkdirSync(nextDir, { recursive: true });
+    if (fs.existsSync(cachePath)) {
+      const st = fs.lstatSync(cachePath);
+      if (st.isSymbolicLink()) return;
+      if (st.isDirectory()) {
+        try {
+          fs.rmSync(cachePath, { recursive: true, force: true });
+        } catch {
+          return;
+        }
+      }
+    }
+    fs.symlinkSync(writable, cachePath, "dir");
+  } catch (e) {
+    console.warn("[start-standalone] prerender cache symlink:", e instanceof Error ? e.message : e);
+  }
+}
+
 const candidates = [];
 
 function addCandidate(base) {
@@ -54,4 +80,5 @@ console.log("[start-standalone] PORT=", process.env.PORT || "(default 3000)");
 console.log("[start-standalone] HOSTNAME=", process.env.HOSTNAME);
 console.log("[start-standalone] loading", serverPath);
 
+linkWritableNextCache(path.dirname(serverPath));
 require(serverPath);

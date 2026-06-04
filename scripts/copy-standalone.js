@@ -32,6 +32,34 @@ if (!process.env.HOSTNAME) {
   process.env.HOSTNAME = "0.0.0.0";
 }
 
+/** Next.js prerender cache ignores NEXT_CACHE_DIR and writes to .next/cache beside server.js. */
+function linkWritableNextCache() {
+  const cacheBase = process.env.NEXT_CACHE_DIR;
+  const writable = path.join(cacheBase, "karto-next-prerender-cache");
+  const nextDir = path.join(__dirname, ".next");
+  const cachePath = path.join(nextDir, "cache");
+  try {
+    fs.mkdirSync(writable, { recursive: true });
+    fs.mkdirSync(nextDir, { recursive: true });
+    if (fs.existsSync(cachePath)) {
+      const st = fs.lstatSync(cachePath);
+      if (st.isSymbolicLink()) return;
+      if (st.isDirectory()) {
+        try {
+          fs.rmSync(cachePath, { recursive: true, force: true });
+        } catch {
+          return;
+        }
+      }
+    }
+    fs.symlinkSync(writable, cachePath, "dir");
+  } catch (e) {
+    console.warn("[karto] prerender cache symlink:", e instanceof Error ? e.message : e);
+  }
+}
+
+linkWritableNextCache();
+
 const serverPath = path.join(__dirname, "server.js");
 console.log("[karto] start.js cwd=", process.cwd());
 console.log("[karto] PORT=", process.env.PORT || "3000");
