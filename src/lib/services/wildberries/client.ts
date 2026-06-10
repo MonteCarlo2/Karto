@@ -447,6 +447,19 @@ export async function fetchWildberriesAnsweredInboxFeedbacks(
   return page;
 }
 
+/** Отзывы во вкладке «есть ответ» на WB, но без текста ответа — их нужно доотправить. */
+export async function fetchWildberriesAnsweredWithoutReplyText(
+  token: string,
+  takePerPage = 100,
+  maxPages = 5
+): Promise<NonNullable<WbFeedbacksListData["feedbacks"]>> {
+  const page = await fetchAllWildberriesFeedbacksPaginated(token, true, takePerPage, {
+    startSkip: 0,
+    maxPages: Math.min(WB_MAX_PAGES, Math.max(1, maxPages)),
+  });
+  return (page.feedbacks ?? []).filter((f) => (f.answer?.text?.trim() ?? "").length < 2);
+}
+
 export async function fetchWildberriesUnansweredCount(token: string): Promise<number> {
   const data = await wbRequest<WbUnansweredCountData>(
     token,

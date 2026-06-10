@@ -17,6 +17,7 @@ import { sortInboxItemsByReviewDate } from "@/lib/auto-replies/inbox-review-scop
 import { finishInboxSyncPipeline, type InboxSyncMode } from "@/lib/auto-replies/inbox-sync-finish";
 import {
   answerWildberriesFeedback,
+  fetchWildberriesAnsweredWithoutReplyText,
   fetchWildberriesInboxSlice,
   type WildberriesInboxFetchProgress,
 } from "@/lib/services/wildberries/client";
@@ -113,14 +114,27 @@ export async function runWildberriesInboxSync(input: {
 
   if (mode === "full") {
     try {
-      const slice = await fetchWildberriesInboxSlice(apiKey, {
-        take,
-        progress: defaultProgress(),
-        maxPagesPerStatus: CRON_UNANSWERED_PAGES,
-        includeAnswered: false,
-      });
+      const [slice, ghostAnswered] = await Promise.all([
+        fetchWildberriesInboxSlice(apiKey, {
+          take,
+          progress: defaultProgress(),
+          maxPagesPerStatus: CRON_UNANSWERED_PAGES,
+          includeAnswered: false,
+        }),
+        fetchWildberriesAnsweredWithoutReplyText(apiKey, take, 5),
+      ]);
+      const byFeedbackId = new Map<string, (typeof slice.feedbacks)[number]>();
+      for (const f of slice.feedbacks ?? []) {
+        if (f?.id) byFeedbackId.set(f.id, f);
+      }
+      for (const f of ghostAnswered) {
+        if (f?.id && !byFeedbackId.has(f.id)) byFeedbackId.set(f.id, f);
+      }
+      if (ghostAnswered.length > 0) {
+        console.info("[wb-inbox-cron] ghost_answered_without_text", ghostAnswered.length);
+      }
       const freshItems = mapWildberriesFeedbacksToInbox({
-        feedbacks: slice.feedbacks ?? [],
+        feedbacks: Array.from(byFeedbackId.values()),
         tab: "semi",
         sellerName: displayShopName,
         shopSettings: shop,

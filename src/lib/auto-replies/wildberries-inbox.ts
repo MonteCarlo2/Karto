@@ -44,10 +44,13 @@ export function resolveInboxShopDisplayName({
   );
 }
 
+/**
+ * Отзыв считаем отвеченным только при реальном тексте ответа.
+ * WB иногда кладёт отзыв во вкладку «Есть ответ» без текста (state/ИИ WB) — такие нужно доотправить.
+ */
 export function isWildberriesFeedbackAnswered(feedback: WbFeedback): boolean {
-  if (feedback.answer?.text?.trim()) return true;
-  const state = feedback.state?.trim().toLowerCase();
-  return state === "wbRu" || state === "answered" || state === "published";
+  const text = feedback.answer?.text?.trim() ?? "";
+  return text.length >= 2;
 }
 
 export function buildWildberriesReviewText(feedback: WbFeedback): string {
