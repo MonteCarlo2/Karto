@@ -124,6 +124,12 @@ export async function listMarketplaceSecretsForUser(
         row.marketplace_id,
         e instanceof Error ? e.message : e
       );
+      await supabase
+        .from("auto_reply_marketplace_secrets")
+        .delete()
+        .eq("user_id", userId)
+        .eq("shop_id", row.shop_id)
+        .eq("marketplace_id", row.marketplace_id);
     }
   }
   return out;

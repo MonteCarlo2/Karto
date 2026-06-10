@@ -24,6 +24,8 @@ import {
 const SYNC_CACHE_MS = 10 * 60_000;
 const UI_PAGES_PER_SYNC = 15;
 const CRON_PAGES_PER_SYNC = 50;
+/** Cron: каждый тик заново тянет свежие неотвеченные с начала ленты (dateDesc). */
+const CRON_UNANSWERED_PAGES = 10;
 
 type WbSyncCachePayload = {
   items?: InboxReviewItem[];
@@ -73,6 +75,8 @@ export async function runWildberriesInboxSync(input: {
   take?: number;
   mode?: InboxSyncMode;
   force?: boolean;
+  /** Снимок из Supabase — подмешивается, если in-memory кэш пуст (после рестарта). */
+  seedItems?: InboxReviewItem[];
 }): Promise<WildberriesInboxSyncResult> {
   const apiKey = input.apiKey.trim();
   const tab = input.tab ?? "semi";
@@ -90,7 +94,11 @@ export async function runWildberriesInboxSync(input: {
   });
 
   const stalePayload = getStaleWildberriesSync<WbSyncCachePayload>(cacheKey);
-  const staleItems = (stalePayload?.items ?? []) as InboxReviewItem[];
+  const seedItems = (input.seedItems ?? []) as InboxReviewItem[];
+  const staleItems = mergeInboxItems(
+    seedItems,
+    (stalePayload?.items ?? []) as InboxReviewItem[]
+  );
 
   let progress: WildberriesInboxFetchProgress =
     stalePayload?.meta?.fetchProgress ?? defaultProgress();
@@ -103,7 +111,35 @@ export async function runWildberriesInboxSync(input: {
   let syncWarning: string | undefined;
   let mergedBeforePipeline: InboxReviewItem[];
 
-  if (!progress.fetchComplete || input.force === true) {
+  if (mode === "full") {
+    try {
+      const slice = await fetchWildberriesInboxSlice(apiKey, {
+        take,
+        progress: defaultProgress(),
+        maxPagesPerStatus: CRON_UNANSWERED_PAGES,
+        includeAnswered: false,
+      });
+      const freshItems = mapWildberriesFeedbacksToInbox({
+        feedbacks: slice.feedbacks ?? [],
+        tab: "semi",
+        sellerName: displayShopName,
+        shopSettings: shop,
+        mpSettings: mp,
+        brandName: input.brandName ?? null,
+        usage: mp.usage ?? input.usage,
+        existingItems: staleItems,
+      });
+      mergedBeforePipeline = sortInboxItemsByReviewDate(mergeInboxItems(staleItems, freshItems));
+    } catch (e) {
+      mergedBeforePipeline = sortInboxItemsByReviewDate([...staleItems]);
+      const message =
+        e instanceof Error ? e.message : "Wildberries временно недоступен";
+      syncWarning =
+        mergedBeforePipeline.length > 0
+          ? `${message} Продолжаем с сохранённой лентой и автоотправкой.`
+          : message;
+    }
+  } else if (!progress.fetchComplete || input.force === true) {
     try {
       const slice = await fetchWildberriesInboxSlice(apiKey, {
         take,

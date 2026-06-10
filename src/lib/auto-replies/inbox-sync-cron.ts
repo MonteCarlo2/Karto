@@ -11,6 +11,8 @@ import { runWildberriesInboxSync } from "@/lib/auto-replies/inbox-sync-wildberri
 import { runYandexInboxSync } from "@/lib/auto-replies/inbox-sync-yandex-core";
 import { runOzonInboxSync } from "@/lib/auto-replies/inbox-sync-ozon-core";
 import { ozonReviewApiBlocked } from "@/lib/auto-replies/ozon-subscription";
+import type { InboxReviewItem } from "@/lib/auto-replies/inbox-demo-data";
+import { shouldAutoSendInboxItem } from "@/lib/auto-replies/inbox-star-rules";
 
 function parseMpKey(key: string): { shopId: string; marketplaceId: AutoRepliesMarketplaceId } | null {
   const idx = key.indexOf(":");
@@ -86,6 +88,10 @@ export async function processAutoReplyInboxCron(
       const usage = mpCfg.usage;
       if (usage !== "semi" && usage !== "auto") continue;
       if (mpCfg.connection.status !== "active") continue;
+      if (!mpCfg.connection.verifiedAt?.trim()) {
+        skipped += 1;
+        continue;
+      }
 
       const secret = secretByKey.get(mpKey);
       if (!secret?.apiKey?.trim()) {
@@ -126,6 +132,14 @@ export async function processAutoReplyInboxCron(
           | Awaited<ReturnType<typeof runOzonInboxSync>>;
 
         if (marketplaceId === "wildberries") {
+          const { data: wbSnap } = await supabase
+            .from("auto_reply_inbox_snapshots")
+            .select("items_json")
+            .eq("user_id", userId)
+            .eq("shop_id", shopId)
+            .eq("marketplace_id", "wildberries")
+            .maybeSingle();
+
           result = await runWildberriesInboxSync({
             supabase,
             userId,
@@ -135,6 +149,7 @@ export async function processAutoReplyInboxCron(
             mp: mpSettings,
             sellerName: mpCfg.connection.sellerName ?? null,
             mode: "full",
+            seedItems: (wbSnap?.items_json as InboxReviewItem[] | null) ?? undefined,
           });
         } else if (marketplaceId === "yandex") {
           const campaignId = secret.campaignId ?? mpCfg.connection.campaignId;
@@ -197,6 +212,25 @@ export async function processAutoReplyInboxCron(
             marketplaceId,
             result.autoSentCount
           );
+        } else if (result.autoSendWarning) {
+          console.warn(
+            "[auto-reply-inbox-cron] auto_send_blocked",
+            userId,
+            marketplaceId,
+            result.autoSendWarning
+          );
+        } else {
+          const pendingAuto = (result.items ?? []).filter(
+            (item) => shouldAutoSendInboxItem(item, mpSettings, shop) && item.status === "pending"
+          ).length;
+          if (pendingAuto > 0) {
+            console.info(
+              "[auto-reply-inbox-cron] pending_auto_unsent",
+              userId,
+              marketplaceId,
+              pendingAuto
+            );
+          }
         }
       } catch (e) {
         errors += 1;

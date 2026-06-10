@@ -12,14 +12,26 @@ const EMPTY_REVIEW_MARKERS = [
   "без текста",
 ];
 
+/** WB: только «Плюсы»/«Минусы» без основного текста — для шаблона «без комментария». */
+export function isProsConsOnlyReviewText(reviewText: string): boolean {
+  const lines = reviewText
+    .trim()
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return true;
+  return lines.every((line) => /^плюсы:/i.test(line) || /^минусы:/i.test(line));
+}
+
 export function hasMeaningfulReviewText(text: string): boolean {
   const t = text.trim().toLowerCase();
   if (t.length < 3) return false;
+  if (isProsConsOnlyReviewText(text)) return false;
   return !EMPTY_REVIEW_MARKERS.some((m) => t.includes(m));
 }
 
 export function isReviewWithoutText(reviewText: string): boolean {
-  return !hasMeaningfulReviewText(reviewText);
+  return isProsConsOnlyReviewText(reviewText) || !hasMeaningfulReviewText(reviewText);
 }
 
 export function shouldUseEmptyReviewTemplate(style: AutoRepliesStyleSettings): boolean {
