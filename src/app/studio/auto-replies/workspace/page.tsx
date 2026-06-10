@@ -33,6 +33,7 @@ import {
   deriveConnectedMarketplacesForShop,
   ensureMainShopNamed,
   getMarketplaceSettings,
+  getShopDisplayName,
   getShopSettings,
   listAutoReplyShops,
   patchMarketplaceSettings,
@@ -119,7 +120,6 @@ export default function AutoRepliesWorkspacePage() {
   const { showToast } = useToast();
   const [authReady, setAuthReady] = useState(false);
   const [authBootstrapError, setAuthBootstrapError] = useState<string | null>(null);
-  const [cloudSyncWarning, setCloudSyncWarning] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userMeta, setUserMeta] = useState<{
@@ -289,15 +289,6 @@ export default function AutoRepliesWorkspacePage() {
     [reloadSettings, selectedShopId]
   );
 
-  useEffect(() => {
-    const onCloudWarning = (e: Event) => {
-      const detail = (e as CustomEvent<string>).detail;
-      if (typeof detail === "string" && detail.trim()) setCloudSyncWarning(detail);
-    };
-    window.addEventListener("karto-auto-replies-cloud-warning", onCloudWarning);
-    return () => window.removeEventListener("karto-auto-replies-cloud-warning", onCloudWarning);
-  }, []);
-
   /* Auth + Supabase bootstrap */
   useEffect(() => {
     let cancel = false;
@@ -331,8 +322,14 @@ export default function AutoRepliesWorkspacePage() {
       setWorkspacePrefsUserId(uid);
       setAutoRepliesSyncContext(uid, email, null);
 
-      await bootstrapAutoRepliesFromSupabase(uid, email, null);
+      const boot = await bootstrapAutoRepliesFromSupabase(uid, email, null);
       if (cancel) return;
+      if (boot.brandName) {
+        setBrandName(boot.brandName);
+        setBrandLoaded(true);
+        ensureMainShopNamed(boot.brandName);
+        setShopsRevision((n) => n + 1);
+      }
 
       const r = readAutoRepliesWorkspacePrefs(uid);
       const shopId = r?.shopId?.trim() || "main";
@@ -394,7 +391,7 @@ export default function AutoRepliesWorkspacePage() {
           string,
           unknown
         >);
-        setBrandName(name ?? "Без названия");
+        if (name) setBrandName(name);
         setBrandDescription(desc);
         setAutoRepliesSyncContext(userId, userEmail, name ?? null);
         if (isAutoRepliesBootstrapComplete()) {
@@ -405,7 +402,7 @@ export default function AutoRepliesWorkspacePage() {
           });
         }
       } catch {
-        if (!cancel) setBrandName(null);
+        /* Не сбрасываем имя — остаётся из bootstrap / локальных настроек магазина */
       } finally {
         if (!cancel) setBrandLoaded(true);
       }
@@ -614,8 +611,16 @@ export default function AutoRepliesWorkspacePage() {
     shops[0] ??
     ({
       id: "main",
-      name: brandLoaded ? (brandName?.trim() || "Без названия") : "…",
+      name: brandLoaded
+        ? getShopDisplayName(selectedShopId, brandName)
+        : getShopDisplayName(selectedShopId, brandName ?? null),
     } as const);
+
+  const shopPageTitle = getShopDisplayName(selectedShopId, brandName);
+
+  useEffect(() => {
+    document.title = `${shopPageTitle} — Автоответы — KARTO`;
+  }, [shopPageTitle]);
 
   const connectionOk = mpSettings?.connection.status === "active";
 
@@ -804,14 +809,6 @@ export default function AutoRepliesWorkspacePage() {
           </div>
         )}
       </main>
-      {cloudSyncWarning ? (
-        <div
-          className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-[13px] text-amber-950"
-          style={sans}
-        >
-          {cloudSyncWarning}
-        </div>
-      ) : null}
       <WorkspaceSupportChrome workspaceArea={workspaceArea} user={userMeta} />
     </div>
   );

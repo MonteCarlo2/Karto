@@ -212,34 +212,75 @@ function applyHydratedState(params: {
   }
 }
 
+export type BootstrapAutoRepliesResult = {
+  ok: boolean;
+  brandName: string | null;
+};
+
+async function fetchBootstrapRemoteViaApi(): Promise<{
+  remote: Awaited<ReturnType<typeof fetchAutoReplyUserState>>;
+  remoteHistory: Awaited<ReturnType<typeof fetchAutoReplyHistory>>;
+  brandName: string | null;
+} | null> {
+  const res = await autoRepliesAuthorizedFetch("/api/auto-replies/bootstrap-state", {
+    timeoutMs: BOOTSTRAP_REMOTE_TIMEOUT_MS,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    userState?: Awaited<ReturnType<typeof fetchAutoReplyUserState>>;
+    history?: Awaited<ReturnType<typeof fetchAutoReplyHistory>>;
+    brandName?: string | null;
+    error?: string;
+  };
+  if (!res.ok || !data.ok || !data.userState) return null;
+  return {
+    remote: data.userState,
+    remoteHistory: data.history ?? [],
+    brandName: data.brandName ?? null,
+  };
+}
+
 export async function bootstrapAutoRepliesFromSupabase(
   userId: string,
   email: string | null,
   shopName?: string | null
-): Promise<boolean> {
+): Promise<BootstrapAutoRepliesResult> {
   setAutoRepliesSyncContext(userId, email, shopName);
   bootstrapComplete = false;
 
-  const supabase = createBrowserClient();
   let remote: Awaited<ReturnType<typeof fetchAutoReplyUserState>> = null;
   let remoteHistory: Awaited<ReturnType<typeof fetchAutoReplyHistory>> = [];
-  let cloudSyncWarning: string | undefined;
+  let brandName: string | null = null;
 
   try {
-    [remote, remoteHistory] = await withNetworkTimeout(
-      Promise.all([
-        fetchAutoReplyUserState(supabase, userId),
-        fetchAutoReplyHistory(supabase, userId),
-      ]),
+    const viaApi = await withNetworkTimeout(
+      fetchBootstrapRemoteViaApi(),
       BOOTSTRAP_REMOTE_TIMEOUT_MS,
-      "Загрузка настроек из облака"
+      "Загрузка настроек"
     );
+    if (viaApi) {
+      remote = viaApi.remote;
+      remoteHistory = viaApi.remoteHistory;
+      brandName = viaApi.brandName;
+    }
   } catch (e) {
-    cloudSyncWarning =
-      e instanceof NetworkTimeoutError
-        ? "Не удалось связаться с облаком (Supabase). Проверьте интернет или VPN. Настройки загружены локально."
-        : "Не удалось загрузить настройки из облака. Используем локальные данные.";
-    console.warn("[auto-replies] bootstrap remote failed", e);
+    console.warn("[auto-replies] bootstrap via API failed", e);
+  }
+
+  if (!remote) {
+    const supabase = createBrowserClient();
+    try {
+      [remote, remoteHistory] = await withNetworkTimeout(
+        Promise.all([
+          fetchAutoReplyUserState(supabase, userId),
+          fetchAutoReplyHistory(supabase, userId),
+        ]),
+        BOOTSTRAP_REMOTE_TIMEOUT_MS,
+        "Загрузка настроек из облака"
+      );
+    } catch (e) {
+      console.warn("[auto-replies] bootstrap remote failed", e);
+    }
   }
 
   const legacyRoot = readLegacyGlobalSettingsRoot();
@@ -319,12 +360,12 @@ export async function bootstrapAutoRepliesFromSupabase(
   }
 
   bootstrapComplete = true;
-  if (cloudSyncWarning && typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent("karto-auto-replies-cloud-warning", { detail: cloudSyncWarning })
-    );
-  }
-  return true;
+  const shopDisplayName =
+    exportSettingsRoot().shops.main?.displayName?.trim() ||
+    brandName?.trim() ||
+    shopName?.trim() ||
+    null;
+  return { ok: true, brandName: shopDisplayName };
 }
 
 /** Снимок inbox с сервера (cron) — без прямого доступа браузера к Supabase. */

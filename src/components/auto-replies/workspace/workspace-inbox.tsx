@@ -40,6 +40,8 @@ import {
   syncMarketplaceInbox,
 } from "@/lib/auto-replies/marketplace-live";
 import { reassignInboxItemFeeds } from "@/lib/auto-replies/inbox-auto-send";
+import { normalizeInboxItemsAutoJournal } from "@/lib/auto-replies/inbox-auto-journal";
+import { getShopDisplayName } from "@/lib/auto-replies/settings-store";
 import { shouldAutoSendInboxItem } from "@/lib/auto-replies/inbox-star-rules";
 import { hydrateInboxReplyDrafts } from "@/lib/auto-replies/empty-review-settings";
 import { sendWildberriesPendingAuto, sendWildberriesReply } from "@/lib/auto-replies/wildberries-client-api";
@@ -306,6 +308,23 @@ export function WorkspaceInbox({
     marketplaceIdRef.current = marketplaceId;
   }, [marketplaceId]);
 
+  const prepareInboxItems = useCallback(
+    (raw: InboxReviewItem[], mp: AutoRepliesMarketplaceSettings) =>
+      normalizeInboxItemsAutoJournal(
+        hydrateInboxReplyDrafts(
+          applyReviewScopeEligibility(
+            filterInboxItemsByReviewScope(reassignInboxItemFeeds(raw, mp), mp.reviewScope),
+            mp.reviewScope
+          ),
+          shopSettingsRef.current
+        ),
+        marketplaceId,
+        mp,
+        shopSettingsRef.current
+      ),
+    [marketplaceId]
+  );
+
   const applyMergedInboxItems = useCallback(
     (prev: InboxReviewItem[], incoming: InboxReviewItem[], mp: AutoRepliesMarketplaceSettings, seller: string, fetchComplete: boolean) => {
       const prevForMarket = filterInboxItemsForMarketplace(prev, marketplaceId);
@@ -317,13 +336,7 @@ export function WorkspaceInbox({
         byId.set(item.id, old ? mergeInboxReviewItem(old, item) : item);
       }
 
-      const merged = hydrateInboxReplyDrafts(
-        applyReviewScopeEligibility(
-          filterInboxItemsByReviewScope(reassignInboxItemFeeds(Array.from(byId.values()), mp), mp.reviewScope),
-          mp.reviewScope
-        ),
-        shopSettingsRef.current
-      );
+      const merged = prepareInboxItems(Array.from(byId.values()), mp);
       saveInboxClientCache(_shopId, marketplaceId, mp.connection.apiKey, {
         items: merged,
         sellerName: seller,
@@ -332,7 +345,7 @@ export function WorkspaceInbox({
       }, inboxCacheSecondaryId(marketplaceId, mp.connection));
       return merged;
     },
-    [_shopId, marketplaceId]
+    [_shopId, marketplaceId, prepareInboxItems]
   );
 
   const runPendingAutoSend = useCallback(
@@ -648,13 +661,7 @@ export function WorkspaceInbox({
           const old = byId.get(item.id);
           byId.set(item.id, old ? mergeInboxReviewItem(old, item) : item);
         }
-        const mergedMp = hydrateInboxReplyDrafts(
-          applyReviewScopeEligibility(
-            filterInboxItemsByReviewScope(reassignInboxItemFeeds(Array.from(byId.values()), mp), mp.reviewScope),
-            mp.reviewScope
-          ),
-          shopSettingsRef.current
-        );
+        const mergedMp = prepareInboxItems(Array.from(byId.values()), mp);
         saveInboxClientCache(
           _shopId,
           marketplaceId,
@@ -689,15 +696,7 @@ export function WorkspaceInbox({
         onPendingRef.current?.(inboxSemiPendingCount(demo));
       } else {
         const cached = loadInboxClientCache(_shopId, marketplaceId, connection.apiKey, inboxCacheKey);
-        const cachedItems = cached?.items
-          ? hydrateInboxReplyDrafts(
-              applyReviewScopeEligibility(
-                filterInboxItemsByReviewScope(reassignInboxItemFeeds(cached.items, mp), mp.reviewScope),
-                mp.reviewScope
-              ),
-              shopSettingsRef.current
-            )
-          : [];
+        const cachedItems = cached?.items ? prepareInboxItems(cached.items, mp) : [];
         setItems(cachedItems);
         setSellerName(cached?.sellerName ?? connection.sellerName ?? "");
         onPendingRef.current?.(inboxSemiPendingCount(cachedItems));
@@ -707,15 +706,7 @@ export function WorkspaceInbox({
     }
 
     const cached = loadInboxClientCache(_shopId, marketplaceId, connection.apiKey, inboxCacheKey);
-    const cachedItems = cached?.items
-      ? hydrateInboxReplyDrafts(
-          applyReviewScopeEligibility(
-            filterInboxItemsByReviewScope(reassignInboxItemFeeds(cached.items, mp), mp.reviewScope),
-            mp.reviewScope
-          ),
-          shopSettingsRef.current
-        )
-      : [];
+    const cachedItems = cached?.items ? prepareInboxItems(cached.items, mp) : [];
     wbFetchCompleteRef.current = cached?.fetchComplete === true;
     setItems(cachedItems);
     setSellerName(cached?.sellerName ?? connection.sellerName ?? "");
@@ -825,13 +816,7 @@ export function WorkspaceInbox({
     let pendingAuto = 0;
 
     setItems((prev) => {
-      const next = hydrateInboxReplyDrafts(
-        applyReviewScopeEligibility(
-          filterInboxItemsByReviewScope(reassignInboxItemFeeds(prev, mp), mp.reviewScope),
-          mp.reviewScope
-        ),
-        shop
-      );
+      const next = prepareInboxItems(prev, mp);
       pendingAuto = next.filter(
         (item) =>
           item.feed === "auto" &&
@@ -1008,7 +993,7 @@ export function WorkspaceInbox({
     });
   }, [brandName, sellerName]);
 
-  const shopTitle = brandName?.trim() || sellerName?.trim() || "Отзывы";
+  const shopTitle = getShopDisplayName(_shopId, brandName) || sellerName?.trim() || "Отзывы";
 
 
 
