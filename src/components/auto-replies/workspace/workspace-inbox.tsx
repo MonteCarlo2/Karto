@@ -27,6 +27,7 @@ import {
   type InboxFeedFilters,
 } from "@/lib/auto-replies/inbox-feed-filters";
 import { loadInboxClientCache, saveInboxClientCache, isInboxClientCacheFresh, inboxCacheSecondaryId } from "@/lib/auto-replies/inbox-client-cache";
+import { fetchAutoReplyInboxSnapshotFromApi } from "@/lib/auto-replies/auto-replies-sync";
 import {
   filterInboxItemsForMarketplace,
   isPlaceholderProductName,
@@ -632,7 +633,48 @@ export function WorkspaceInbox({
   refreshLiveInboxRef.current = refreshLiveInbox;
   runPendingAutoSendRef.current = runPendingAutoSend;
 
-
+  useEffect(() => {
+    if (!liveReady || showDemo) return;
+    let cancel = false;
+    void fetchAutoReplyInboxSnapshotFromApi({ shopId: _shopId, marketplaceId }).then((snapshot) => {
+      if (cancel || !snapshot?.items?.length) return;
+      const mp = mpSettingsRef.current;
+      setItems((prev) => {
+        const other = prev.filter((item) => item.marketplaceId !== marketplaceId);
+        const byId = new Map(
+          filterInboxItemsForMarketplace(prev, marketplaceId).map((item) => [item.id, item])
+        );
+        for (const item of snapshot.items) {
+          const old = byId.get(item.id);
+          byId.set(item.id, old ? mergeInboxReviewItem(old, item) : item);
+        }
+        const mergedMp = hydrateInboxReplyDrafts(
+          applyReviewScopeEligibility(
+            filterInboxItemsByReviewScope(reassignInboxItemFeeds(Array.from(byId.values()), mp), mp.reviewScope),
+            mp.reviewScope
+          ),
+          shopSettingsRef.current
+        );
+        saveInboxClientCache(
+          _shopId,
+          marketplaceId,
+          mp.connection.apiKey,
+          {
+            items: mergedMp,
+            sellerName: snapshot.sellerName ?? (sellerName || mp.connection.sellerName || ""),
+            unansweredCount: inboxSemiPendingCount(mergedMp),
+            fetchComplete: wbFetchCompleteRef.current === true,
+          },
+          inboxCacheSecondaryId(marketplaceId, mp.connection)
+        );
+        return [...other, ...mergedMp];
+      });
+      if (snapshot.sellerName) setSellerName(snapshot.sellerName);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [liveReady, showDemo, marketplaceId, _shopId, sellerName]);
 
   useEffect(() => {
     setSelectedId(null);

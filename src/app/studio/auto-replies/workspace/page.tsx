@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { NetworkTimeoutError, withNetworkTimeout } from "@/lib/supabase/network-timeout";
 import { fetchUserBrandOnboarding } from "@/lib/brand/user-brand-onboarding-db";
 import type { AutoRepliesMarketplaceId, AutoRepliesUsageId } from "@/lib/auto-replies/types";
 import {
@@ -117,6 +118,8 @@ export default function AutoRepliesWorkspacePage() {
   const router = useRouter();
   const { showToast } = useToast();
   const [authReady, setAuthReady] = useState(false);
+  const [authBootstrapError, setAuthBootstrapError] = useState<string | null>(null);
+  const [cloudSyncWarning, setCloudSyncWarning] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userMeta, setUserMeta] = useState<{
@@ -286,14 +289,28 @@ export default function AutoRepliesWorkspacePage() {
     [reloadSettings, selectedShopId]
   );
 
+  useEffect(() => {
+    const onCloudWarning = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail;
+      if (typeof detail === "string" && detail.trim()) setCloudSyncWarning(detail);
+    };
+    window.addEventListener("karto-auto-replies-cloud-warning", onCloudWarning);
+    return () => window.removeEventListener("karto-auto-replies-cloud-warning", onCloudWarning);
+  }, []);
+
   /* Auth + Supabase bootstrap */
   useEffect(() => {
     let cancel = false;
     (async () => {
+      try {
       const supabase = createBrowserClient();
       const {
         data: { session },
-      } = await supabase.auth.getSession();
+      } = await withNetworkTimeout(
+        supabase.auth.getSession(),
+        15_000,
+        "Проверка входа"
+      );
       if (cancel) return;
       if (!session?.user?.id) {
         router.replace(
@@ -341,6 +358,19 @@ export default function AutoRepliesWorkspacePage() {
 
       setSyncReady(true);
       setAuthReady(true);
+      setAuthBootstrapError(null);
+      } catch (e) {
+        if (cancel) return;
+        const msg =
+          e instanceof NetworkTimeoutError
+            ? "Не удалось подключиться к облаку авторизации. Включите VPN или проверьте интернет и обновите страницу."
+            : e instanceof Error
+              ? e.message
+              : "Не удалось загрузить автоответы";
+        setAuthBootstrapError(msg);
+        setAuthReady(true);
+        setSyncReady(false);
+      }
     })();
     return () => {
       cancel = true;
@@ -609,10 +639,23 @@ export default function AutoRepliesWorkspacePage() {
   if (!authReady || !syncReady) {
     return (
       <div
-        className="flex min-h-screen items-center justify-center bg-[#F3F1EA] text-[#4a4a4a]"
+        className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#F3F1EA] px-6 text-center text-[#4a4a4a]"
         style={sans}
       >
-        Загрузка…
+        {authBootstrapError ? (
+          <>
+            <p className="max-w-md text-[15px] leading-relaxed">{authBootstrapError}</p>
+            <button
+              type="button"
+              className="rounded-lg bg-[#1a1a1a] px-4 py-2 text-sm text-white"
+              onClick={() => window.location.reload()}
+            >
+              Обновить страницу
+            </button>
+          </>
+        ) : (
+          <p>Загрузка…</p>
+        )}
       </div>
     );
   }
@@ -761,6 +804,14 @@ export default function AutoRepliesWorkspacePage() {
           </div>
         )}
       </main>
+      {cloudSyncWarning ? (
+        <div
+          className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-[13px] text-amber-950"
+          style={sans}
+        >
+          {cloudSyncWarning}
+        </div>
+      ) : null}
       <WorkspaceSupportChrome workspaceArea={workspaceArea} user={userMeta} />
     </div>
   );

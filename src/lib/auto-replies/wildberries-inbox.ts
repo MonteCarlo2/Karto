@@ -106,6 +106,9 @@ export function mapWildberriesFeedbackToInboxItem({
   const buyerLabel = buyer ? `Покупатель ${buyer}` : "Покупатель WB";
   const nmId = parseWildberriesNmId(product?.nmId);
   const isAnswered = isWildberriesFeedbackAnswered(feedback);
+  const inferredAutoSent =
+    Boolean(existingItem?.autoSent) ||
+    (existingItem?.status === "pending" && existingItem.feed === "auto" && isAnswered);
   const status = isAnswered ? "sent" : "pending";
   const shopDisplayName = resolveInboxShopDisplayName({
     brandName,
@@ -134,22 +137,25 @@ export function mapWildberriesFeedbackToInboxItem({
         }));
 
   const answerDate = feedback.answer?.createDate;
-  const autoSent = existingItem?.autoSent;
+  const autoSent = inferredAutoSent ? true : existingItem?.autoSent;
   const feed =
-    existingItem?.status === "sent"
-      ? existingItem.feed
-      : resolveInboxItemFeed({
-          status,
-          starRating,
-          mpSettings,
-          autoSent,
-        });
+    status === "sent" && autoSent
+      ? "auto"
+      : existingItem?.status === "sent"
+        ? existingItem.feed
+        : resolveInboxItemFeed({
+            status,
+            starRating,
+            mpSettings,
+            autoSent,
+          });
   const sentAtLabel = isAnswered
-    ? existingItem?.sentAtLabel ??
-      resolveSentAtLabel({
-        dateLabel: formatInboxReviewDates(answerDate ?? feedback.createdDate).dateLabel,
-        autoSent,
-      })
+    ? existingItem?.sentAtLabel?.includes("автоматически")
+      ? existingItem.sentAtLabel
+      : resolveSentAtLabel({
+          dateLabel: formatInboxReviewDates(answerDate ?? feedback.createdDate).dateLabel,
+          autoSent: Boolean(autoSent),
+        })
     : undefined;
 
   return {

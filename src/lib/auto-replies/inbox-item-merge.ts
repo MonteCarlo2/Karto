@@ -1,5 +1,6 @@
 import type { InboxReviewItem } from "./inbox-demo-data";
 import type { AutoRepliesMarketplaceId } from "./types";
+import { resolveSentAtLabel } from "./inbox-auto-send";
 
 export function isPlaceholderProductName(
   name: string,
@@ -42,16 +43,36 @@ export function mergeInboxReviewItem(prev: InboxReviewItem, next: InboxReviewIte
       ? prev.productArticle
       : next.productArticle;
 
-  const preserveSent = prev.status === "sent";
+  const prevSent = prev.status === "sent";
+  const nextSent = next.status === "sent";
+  const mergedSent = prevSent || nextSent;
+  const inferredAutoSent =
+    Boolean(prev.autoSent || next.autoSent) ||
+    (prev.status === "pending" && prev.feed === "auto" && nextSent);
+  const autoJournalSent = mergedSent && inferredAutoSent;
+
   const nextDraft = next.replyDraft?.trim() ?? "";
   const prevDraft = prev.replyDraft?.trim() ?? "";
-  const replyDraft = preserveSent
+  const replyDraft = mergedSent
     ? prev.replyDraft || next.replyDraft
     : nextDraft.length >= 2
       ? next.replyDraft
       : prevDraft.length >= 2
         ? prev.replyDraft
         : next.replyDraft;
+
+  const sentAtLabel = autoJournalSent
+    ? prev.sentAtLabel?.includes("автоматически")
+      ? prev.sentAtLabel
+      : next.sentAtLabel?.includes("автоматически")
+        ? next.sentAtLabel
+        : resolveSentAtLabel({
+            dateLabel: next.dateLabel || prev.dateLabel,
+            autoSent: true,
+          })
+    : mergedSent
+      ? prev.sentAtLabel || next.sentAtLabel
+      : next.sentAtLabel;
 
   return {
     ...next,
@@ -60,14 +81,14 @@ export function mergeInboxReviewItem(prev: InboxReviewItem, next: InboxReviewIte
     productImageUrl: next.productImageUrl || prev.productImageUrl,
     nmId: next.nmId ?? prev.nmId,
     supplierOfferId: next.supplierOfferId || prev.supplierOfferId,
-    autoSent: next.autoSent ?? prev.autoSent,
-    status: preserveSent ? "sent" : next.status,
-    feed: preserveSent ? prev.feed : next.feed,
+    autoSent: autoJournalSent ? true : next.autoSent ?? prev.autoSent,
+    status: mergedSent ? "sent" : next.status,
+    feed: autoJournalSent ? "auto" : mergedSent ? prev.feed : next.feed,
     replyDraft,
     draftGeneratedByAi: next.draftGeneratedByAi ?? prev.draftGeneratedByAi,
     autoSendError: next.autoSendError ?? prev.autoSendError,
-    canSend: preserveSent ? false : next.canSend,
-    sentAtLabel: preserveSent ? prev.sentAtLabel || next.sentAtLabel : next.sentAtLabel,
+    canSend: mergedSent ? false : next.canSend,
+    sentAtLabel,
   };
 }
 

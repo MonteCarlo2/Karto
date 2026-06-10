@@ -57,6 +57,9 @@ import {
 import { removeAutoReplySecretToken, removeAutoReplySecretsForShop } from "./secrets-store";
 import { deleteTrainingImage } from "./training-image-store";
 import type { InboxReviewItem } from "./inbox-demo-data";
+import { NetworkTimeoutError, withNetworkTimeout } from "@/lib/supabase/network-timeout";
+
+const BOOTSTRAP_REMOTE_TIMEOUT_MS = 12_000;
 
 const LEGACY_SETTINGS_KEY = "karto-auto-replies-settings-v1";
 
@@ -218,8 +221,26 @@ export async function bootstrapAutoRepliesFromSupabase(
   bootstrapComplete = false;
 
   const supabase = createBrowserClient();
-  const remote = await fetchAutoReplyUserState(supabase, userId);
-  const remoteHistory = await fetchAutoReplyHistory(supabase, userId);
+  let remote: Awaited<ReturnType<typeof fetchAutoReplyUserState>> = null;
+  let remoteHistory: Awaited<ReturnType<typeof fetchAutoReplyHistory>> = [];
+  let cloudSyncWarning: string | undefined;
+
+  try {
+    [remote, remoteHistory] = await withNetworkTimeout(
+      Promise.all([
+        fetchAutoReplyUserState(supabase, userId),
+        fetchAutoReplyHistory(supabase, userId),
+      ]),
+      BOOTSTRAP_REMOTE_TIMEOUT_MS,
+      "Загрузка настроек из облака"
+    );
+  } catch (e) {
+    cloudSyncWarning =
+      e instanceof NetworkTimeoutError
+        ? "Не удалось связаться с облаком (Supabase). Проверьте интернет или VPN. Настройки загружены локально."
+        : "Не удалось загрузить настройки из облака. Используем локальные данные.";
+    console.warn("[auto-replies] bootstrap remote failed", e);
+  }
 
   const legacyRoot = readLegacyGlobalSettingsRoot();
   const legacySecrets = legacyRoot ? extractApiSecretsFromSettingsRoot(legacyRoot) : {};
@@ -298,7 +319,49 @@ export async function bootstrapAutoRepliesFromSupabase(
   }
 
   bootstrapComplete = true;
+  if (cloudSyncWarning && typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("karto-auto-replies-cloud-warning", { detail: cloudSyncWarning })
+    );
+  }
   return true;
+}
+
+/** Снимок inbox с сервера (cron) — без прямого доступа браузера к Supabase. */
+export async function fetchAutoReplyInboxSnapshotFromApi(input: {
+  shopId: string;
+  marketplaceId: AutoRepliesMarketplaceId;
+}): Promise<{
+  items: InboxReviewItem[];
+  sellerName: string | null;
+  syncedAt: string | null;
+} | null> {
+  try {
+    const params = new URLSearchParams({
+      shopId: input.shopId,
+      marketplaceId: input.marketplaceId,
+    });
+    const res = await autoRepliesAuthorizedFetch(
+      `/api/auto-replies/inbox-snapshot?${params.toString()}`,
+      { timeoutMs: 20_000 }
+    );
+    const data = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      items?: InboxReviewItem[];
+      sellerName?: string | null;
+      syncedAt?: string | null;
+      error?: string;
+    };
+    if (!res.ok || !data.ok) return null;
+    return {
+      items: Array.isArray(data.items) ? data.items : [],
+      sellerName: data.sellerName ?? null,
+      syncedAt: data.syncedAt ?? null,
+    };
+  } catch (e) {
+    console.warn("[auto-replies] inbox snapshot fetch failed", e);
+    return null;
+  }
 }
 
 async function pushServerMarketplaceSecrets(userId: string, settings: ReturnType<typeof exportSettingsRoot>) {
