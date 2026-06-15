@@ -36,6 +36,7 @@ import { inboxTheme } from "./inbox-theme";
 
 type WorkspaceInboxDetailProps = {
   item: InboxReviewItem;
+  shopId: string;
   usage: AutoRepliesUsageId;
   shopSettings: AutoRepliesShopSettings;
   mpSettings: AutoRepliesMarketplaceSettings;
@@ -51,6 +52,7 @@ function marketplaceTitle(id: InboxReviewItem["marketplaceId"]) {
 
 export function WorkspaceInboxDetail({
   item,
+  shopId,
   usage: _usage,
   shopSettings,
   mpSettings,
@@ -107,6 +109,28 @@ export function WorkspaceInboxDetail({
       onUpdateDraft(item.id, next);
     },
     [item.id, onUpdateDraft]
+  );
+
+  const syncDraftToTelegram = useCallback(
+    async (next: string, source: "web_edit" | "web_regen") => {
+      if (item.status !== "pending" || item.feed !== "semi" || next.trim().length < 2) return;
+      try {
+        await autoRepliesAuthorizedFetch("/api/telegram/sync-review", {
+          method: "POST",
+          body: JSON.stringify({
+            shopId,
+            marketplaceId: item.marketplaceId,
+            reviewId: item.id,
+            replyDraft: next.trim(),
+            source,
+          }),
+          timeoutMs: 20_000,
+        });
+      } catch {
+        /* карточки в TG может не быть — не мешаем работе на сайте */
+      }
+    },
+    [item.feed, item.id, item.marketplaceId, item.status, shopId]
   );
 
   const regenerationsLeft = remainingRegenerations(regenerateCount);
@@ -166,6 +190,7 @@ export function WorkspaceInboxDetail({
         throw new Error(data.error || "Не удалось перегенерировать ответ");
       }
       syncDraft(data.reply);
+      void syncDraftToTelegram(data.reply, "web_regen");
       if (hint) setRevisionHint("");
     } catch (e) {
       setRegenerateCount(regenerateCount);
@@ -192,6 +217,7 @@ export function WorkspaceInboxDetail({
     regenerateCount,
     shopSettings,
     syncDraft,
+    syncDraftToTelegram,
     onReplyBalanceChange,
   ]);
 
@@ -337,6 +363,7 @@ export function WorkspaceInboxDetail({
                   onClick={() => {
                     if (editMode) {
                       syncDraft(draft);
+                      void syncDraftToTelegram(draft, "web_edit");
                       setEditMode(false);
                     } else {
                       setEditMode(true);

@@ -155,16 +155,30 @@ export async function runWildberriesInboxSync(input: {
     }
   } else if (!progress.fetchComplete || input.force === true) {
     try {
-      const slice = await fetchWildberriesInboxSlice(apiKey, {
-        take,
-        progress,
-        maxPagesPerStatus: maxPages,
-        includeAnswered: true,
-      });
+      const [slice, ghostAnswered] = await Promise.all([
+        fetchWildberriesInboxSlice(apiKey, {
+          take,
+          progress,
+          maxPagesPerStatus: maxPages,
+          includeAnswered: true,
+        }),
+        fetchWildberriesAnsweredWithoutReplyText(apiKey, take, 3),
+      ]);
       progress = slice.progress;
 
+      const byFeedbackId = new Map<string, (typeof slice.feedbacks)[number]>();
+      for (const f of slice.feedbacks ?? []) {
+        if (f?.id) byFeedbackId.set(f.id, f);
+      }
+      for (const f of ghostAnswered) {
+        if (f?.id && !byFeedbackId.has(f.id)) byFeedbackId.set(f.id, f);
+      }
+      if (ghostAnswered.length > 0) {
+        console.info("[wb-inbox-ui] ghost_answered_without_text", ghostAnswered.length);
+      }
+
       const freshItems = mapWildberriesFeedbacksToInbox({
-        feedbacks: slice.feedbacks ?? [],
+        feedbacks: Array.from(byFeedbackId.values()),
         tab: "semi",
         sellerName: displayShopName,
         shopSettings: shop,

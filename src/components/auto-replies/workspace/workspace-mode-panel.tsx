@@ -8,6 +8,7 @@ import type {
 } from "@/lib/auto-replies/settings-types";
 import { STAR_KEYS } from "@/lib/auto-replies/star-rules";
 import { WorkspaceReviewScopePanel } from "./workspace-review-scope-panel";
+import { WorkspaceTelegramPanel } from "./workspace-telegram-panel";
 import {
   WsModeSourceSwitch,
   WsModeStarRow,
@@ -182,11 +183,12 @@ export function WorkspaceModePanel({
         </div>
 
         {source === "cabinet" ? (
-          <aside className="w-full shrink-0 xl:w-[288px] xl:sticky xl:top-8 xl:self-start">
+          <aside className="w-full shrink-0 space-y-3 xl:w-[372px] xl:sticky xl:top-8 xl:self-start">
             <WorkspaceReviewScopePanel
               reviewScope={mpSettings.reviewScope}
               onPatch={(patch) => onPatchMp({ reviewScope: patch })}
             />
+            {usage === "semi" ? <WorkspaceTelegramPanel /> : null}
           </aside>
         ) : null}
       </div>

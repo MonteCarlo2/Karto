@@ -45,34 +45,41 @@ export function mergeInboxReviewItem(prev: InboxReviewItem, next: InboxReviewIte
 
   const prevSent = prev.status === "sent";
   const nextSent = next.status === "sent";
-  const mergedSent = prevSent || nextSent;
+  /** WB: во вкладке «есть ответ» без текста — next.pending; не держим старый sent из snapshot. */
+  const ghostReopen = prevSent && !nextSent;
+  const mergedSent = ghostReopen ? false : prevSent || nextSent;
   const inferredAutoSent =
-    Boolean(prev.autoSent || next.autoSent) ||
-    (prev.status === "pending" && prev.feed === "auto" && nextSent);
+    !ghostReopen &&
+    (Boolean(prev.autoSent || next.autoSent) ||
+      (prev.status === "pending" && prev.feed === "auto" && nextSent));
   const autoJournalSent = mergedSent && inferredAutoSent;
 
   const nextDraft = next.replyDraft?.trim() ?? "";
   const prevDraft = prev.replyDraft?.trim() ?? "";
-  const replyDraft = mergedSent
-    ? prev.replyDraft || next.replyDraft
-    : nextDraft.length >= 2
-      ? next.replyDraft
-      : prevDraft.length >= 2
-        ? prev.replyDraft
-        : next.replyDraft;
-
-  const sentAtLabel = autoJournalSent
-    ? prev.sentAtLabel?.includes("автоматически")
-      ? prev.sentAtLabel
-      : next.sentAtLabel?.includes("автоматически")
-        ? next.sentAtLabel
-        : resolveSentAtLabel({
-            dateLabel: next.dateLabel || prev.dateLabel,
-            autoSent: true,
-          })
+  const replyDraft = ghostReopen
+    ? next.replyDraft
     : mergedSent
-      ? prev.sentAtLabel || next.sentAtLabel
-      : next.sentAtLabel;
+      ? prev.replyDraft || next.replyDraft
+      : nextDraft.length >= 2
+        ? next.replyDraft
+        : prevDraft.length >= 2
+          ? prev.replyDraft
+          : next.replyDraft;
+
+  const sentAtLabel = ghostReopen
+    ? next.sentAtLabel
+    : autoJournalSent
+      ? prev.sentAtLabel?.includes("автоматически")
+        ? prev.sentAtLabel
+        : next.sentAtLabel?.includes("автоматически")
+          ? next.sentAtLabel
+          : resolveSentAtLabel({
+              dateLabel: next.dateLabel || prev.dateLabel,
+              autoSent: true,
+            })
+      : mergedSent
+        ? prev.sentAtLabel || next.sentAtLabel
+        : next.sentAtLabel;
 
   return {
     ...next,
@@ -81,13 +88,13 @@ export function mergeInboxReviewItem(prev: InboxReviewItem, next: InboxReviewIte
     productImageUrl: next.productImageUrl || prev.productImageUrl,
     nmId: next.nmId ?? prev.nmId,
     supplierOfferId: next.supplierOfferId || prev.supplierOfferId,
-    autoSent: autoJournalSent ? true : next.autoSent ?? prev.autoSent,
+    autoSent: ghostReopen ? next.autoSent : autoJournalSent ? true : next.autoSent ?? prev.autoSent,
     status: mergedSent ? "sent" : next.status,
-    feed: autoJournalSent ? "auto" : mergedSent ? prev.feed : next.feed,
+    feed: ghostReopen ? next.feed : autoJournalSent ? "auto" : mergedSent ? prev.feed : next.feed,
     replyDraft,
     draftGeneratedByAi: next.draftGeneratedByAi ?? prev.draftGeneratedByAi,
-    autoSendError: next.autoSendError ?? prev.autoSendError,
-    canSend: mergedSent ? false : next.canSend,
+    autoSendError: ghostReopen ? next.autoSendError : next.autoSendError ?? prev.autoSendError,
+    canSend: ghostReopen ? next.canSend : mergedSent ? false : next.canSend,
     sentAtLabel,
   };
 }

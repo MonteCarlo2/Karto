@@ -4,6 +4,11 @@ import type { AutoRepliesMarketplaceSettings, AutoRepliesShopSettings } from "./
 import type { AutoRepliesUsageId } from "./types";
 import { buildLocalAutoReply } from "./reply-generation";
 import {
+  isReviewWithoutText,
+  resolveEmptyReviewBody,
+  shouldUseEmptyReviewTemplate,
+} from "./empty-review-settings";
+import {
   getWildberriesProductImageProxyUrl,
   parseWildberriesNmId,
 } from "./marketplace-product-image";
@@ -119,22 +124,32 @@ export function mapWildberriesFeedbackToInboxItem({
   const reviewPhotoUrls = extractWildberriesReviewPhotos(feedback);
   const hasReviewPhotos = reviewPhotoUrls.length > 0;
 
-  const replyDraft =
-    feedback.answer?.text?.trim() ||
-    (status === "pending"
-      ? ""
-      : buildLocalAutoReply({
-          reviewText,
-          starRating,
-          shop: shopSettings,
-          mp: mpSettings,
-          brandName: brandName ?? null,
-          buyerName: buyer,
-          productName,
-          hasReviewPhotos,
-          revisionHint: null,
-          previousReply: null,
-        }));
+  const replyDraft = (() => {
+    const wbText = feedback.answer?.text?.trim() ?? "";
+    if (wbText.length >= 2) return wbText;
+    if (status === "pending") {
+      if (
+        isReviewWithoutText(reviewText) &&
+        shouldUseEmptyReviewTemplate(shopSettings.style)
+      ) {
+        const body = resolveEmptyReviewBody(shopSettings.style);
+        if (body.length >= 2) return body;
+      }
+      return "";
+    }
+    return buildLocalAutoReply({
+      reviewText,
+      starRating,
+      shop: shopSettings,
+      mp: mpSettings,
+      brandName: brandName ?? null,
+      buyerName: buyer,
+      productName,
+      hasReviewPhotos,
+      revisionHint: null,
+      previousReply: null,
+    });
+  })();
 
   const answerDate = feedback.answer?.createDate;
   const autoSent = inferredAutoSent ? true : existingItem?.autoSent;

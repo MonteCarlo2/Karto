@@ -84,6 +84,13 @@ export function resolveInboxDisplayReplyDraft(
     }
     return item.replyDraft;
   }
+  if (item.status === "sent" && isReviewWithoutText(item.reviewText) && shouldUseEmptyReviewTemplate(shop.style)) {
+    try {
+      return finalizeReplyText(resolveEmptyReviewBody(shop.style), shop);
+    } catch {
+      return resolveEmptyReviewBody(shop.style);
+    }
+  }
   if (item.status !== "pending") return item.replyDraft ?? "";
   if (!isReviewWithoutText(item.reviewText)) return item.replyDraft ?? "";
   if (!shouldUseEmptyReviewTemplate(shop.style)) return item.replyDraft ?? "";

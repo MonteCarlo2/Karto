@@ -14,19 +14,21 @@ export function startAutoReplyBackgroundScheduler() {
   globalThis.__kartoAutoReplyCronStarted = true;
 
   const isDev = process.env.NODE_ENV === "development";
-  const explicitlyOn = process.env.AUTO_REPLY_CRON === "1" || process.env.AUTO_REPLY_CRON === "true";
   const explicitlyOff = process.env.AUTO_REPLY_CRON === "0" || process.env.AUTO_REPLY_CRON === "false";
+  const hasServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
 
-  const enabled =
-    !explicitlyOff &&
-    Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) &&
-    (explicitlyOn || !isDev);
+  /** Фоновый cron: prod и dev (отключить в dev: AUTO_REPLY_CRON=0). */
+  const enabled = hasServiceRole && !explicitlyOff;
 
   if (!enabled) {
     console.info(
-      "[auto-reply] background scheduler off (dev: set AUTO_REPLY_CRON=1; prod: runs automatically)"
+      "[auto-reply] background scheduler off (нужен SUPABASE_SERVICE_ROLE_KEY; в dev: AUTO_REPLY_CRON=0 чтобы выключить)"
     );
     return;
+  }
+
+  if (isDev) {
+    console.info("[auto-reply] background scheduler on in dev (every 5 min)");
   }
 
   console.info("[auto-reply] background scheduler started (every 5 min)");

@@ -49,6 +49,7 @@ import { sendYandexReply } from "@/lib/auto-replies/yandex-client-api";
 import { sendOzonReply } from "@/lib/auto-replies/ozon-client-api";
 import { applyReviewScopeEligibility, consumeReviewScopeLimit, filterInboxItemsByReviewScope } from "@/lib/auto-replies/inbox-review-scope";
 import { appendReplyHistory, usageModeLabel } from "@/lib/auto-replies/reply-history-store";
+import { autoRepliesAuthorizedFetch } from "@/lib/auto-replies/auto-replies-fetch";
 import { OZON_REVIEW_SUBSCRIPTION_DENIED, ozonReviewApiBlocked } from "@/lib/auto-replies/ozon-subscription";
 
 import { AUTO_REPLIES_MARKETPLACE_UI } from "@/lib/auto-replies/workspace-prefs";
@@ -1030,161 +1031,88 @@ export function WorkspaceInbox({
   const handlePublishReply = useCallback(
     async (id: string, replyText: string) => {
       const item = items.find((entry) => entry.id === id);
-      const feedbackId = item?.externalId?.trim();
-      if (!feedbackId) {
+      if (!item?.externalId?.trim()) {
         throw new Error("Не найден ID отзыва");
       }
 
-      const apiKey = mpSettings.connection.apiKey.trim();
-      if (!apiKey) {
-        throw new Error(`Укажите API-токен в разделе «Кабинет и API»`);
-      }
-
-      const bumpReviewScopeAfterSend = () => {
-        const scope = mpSettingsRef.current.reviewScope;
-        if (scope.mode === "limited") {
-          onPatchReviewScope?.({
-            limitConsumed: consumeReviewScopeLimit(scope, 1).limitConsumed,
-          });
-        }
-      };
-
-      const logSentReply = () => {
-        if (!item) return;
-        appendReplyHistory({
+      const res = await autoRepliesAuthorizedFetch("/api/auto-replies/semi-confirm", {
+        method: "POST",
+        body: JSON.stringify({
           shopId: _shopId,
           marketplaceId,
-          usageMode: usage,
-          usageModeLabel: usageModeLabel(usage),
-          starRating: item.starRating,
-          reviewText: item.reviewText,
+          reviewId: id,
           replyText,
-          generationSource: "openrouter-dual",
-        });
+        }),
+        timeoutMs: 60_000,
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        item?: InboxReviewItem;
       };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Не удалось отправить ответ");
+      }
 
-      if (marketplaceId === "wildberries") {
-        await sendWildberriesReply({
-          apiKey,
-          feedbackId,
-          text: replyText,
+      const sentItem = data.item;
+      const scope = mpSettingsRef.current.reviewScope;
+      if (scope.mode === "limited") {
+        onPatchReviewScope?.({
+          limitConsumed: consumeReviewScopeLimit(scope, 1).limitConsumed,
         });
+      }
 
-        setItems((list) => {
-          const next = list.map((entry) =>
-            entry.id === id
-              ? {
-                  ...entry,
+      appendReplyHistory({
+        shopId: _shopId,
+        marketplaceId,
+        usageMode: usage,
+        usageModeLabel: usageModeLabel(usage),
+        starRating: item.starRating,
+        reviewText: item.reviewText,
+        replyText,
+        generationSource: "openrouter-dual",
+      });
+
+      setItems((list) => {
+        const next = list.map((entry) =>
+          entry.id === id
+            ? {
+                ...entry,
+                ...(sentItem ?? {
                   status: "sent" as const,
                   feed: "semi" as const,
                   replyDraft: replyText,
                   canSend: false,
                   autoSent: false,
                   sentAtLabel: "Только что · подтверждено",
-                }
-              : entry
-          );
-          saveInboxClientCache(_shopId, marketplaceId, mpSettings.connection.apiKey, {
+                }),
+              }
+            : entry
+        );
+        saveInboxClientCache(
+          _shopId,
+          marketplaceId,
+          mpSettings.connection.apiKey,
+          {
             items: next,
             sellerName: sellerName || mpSettings.connection.sellerName || "",
-            unansweredCount: Math.max(0, semiPendingCount - 1),
+            unansweredCount: inboxSemiPendingCount(next),
             fetchComplete: wbFetchCompleteRef.current === true,
-          }, inboxCacheSecondaryId(marketplaceId, mpSettings.connection));
-          return next;
-        });
-        bumpReviewScopeAfterSend();
-        logSentReply();
-        return;
-      }
-
-      if (marketplaceId === "yandex") {
-        const campaignId = mpSettings.connection.campaignId?.trim();
-        const businessId = mpSettings.connection.businessId?.trim();
-        if (!campaignId) {
-          throw new Error("Укажите Campaign ID Яндекс Маркета в разделе «Кабинет и API»");
-        }
-        if (!businessId) {
-          throw new Error("Нажмите «Проверить подключение» в разделе «Кабинет и API»");
-        }
-
-        await sendYandexReply({
-          apiKey,
-          campaignId,
-          businessId,
-          feedbackId,
-          text: replyText,
-        });
-
-        setItems((list) => {
-          const next = list.map((entry) =>
-            entry.id === id
-              ? {
-                  ...entry,
-                  status: "sent" as const,
-                  feed: "semi" as const,
-                  replyDraft: replyText,
-                  canSend: false,
-                  autoSent: false,
-                  sentAtLabel: "Только что · подтверждено",
-                }
-              : entry
-          );
-          saveInboxClientCache(_shopId, marketplaceId, mpSettings.connection.apiKey, {
-            items: next,
-            sellerName: sellerName || mpSettings.connection.sellerName || "",
-            unansweredCount: Math.max(0, semiPendingCount - 1),
-            fetchComplete: wbFetchCompleteRef.current === true,
-          }, inboxCacheSecondaryId(marketplaceId, mpSettings.connection));
-          return next;
-        });
-        bumpReviewScopeAfterSend();
-        logSentReply();
-        return;
-      }
-
-      if (marketplaceId === "ozon") {
-        const clientId = mpSettings.connection.clientId?.trim();
-        if (!clientId) {
-          throw new Error("Укажите Client ID Ozon в разделе «Кабинет и API»");
-        }
-
-        await sendOzonReply({
-          clientId,
-          apiKey,
-          reviewId: feedbackId,
-          text: replyText,
-        });
-
-        setItems((list) => {
-          const next = list.map((entry) =>
-            entry.id === id
-              ? {
-                  ...entry,
-                  status: "sent" as const,
-                  feed: "semi" as const,
-                  replyDraft: replyText,
-                  canSend: false,
-                  autoSent: false,
-                  sentAtLabel: "Только что · подтверждено",
-                }
-              : entry
-          );
-          saveInboxClientCache(_shopId, marketplaceId, mpSettings.connection.apiKey, {
-            items: next,
-            sellerName: sellerName || mpSettings.connection.sellerName || "",
-            unansweredCount: Math.max(0, semiPendingCount - 1),
-            fetchComplete: wbFetchCompleteRef.current === true,
-          }, inboxCacheSecondaryId(marketplaceId, mpSettings.connection));
-          return next;
-        });
-        bumpReviewScopeAfterSend();
-        logSentReply();
-        return;
-      }
-
-      throw new Error("Отправка для этой площадки пока недоступна");
+          },
+          inboxCacheSecondaryId(marketplaceId, mpSettings.connection)
+        );
+        return next;
+      });
     },
-    [items, marketplaceId, mpSettings.connection, semiPendingCount, sellerName, _shopId, onPatchReviewScope]
+    [
+      items,
+      marketplaceId,
+      mpSettings.connection,
+      sellerName,
+      _shopId,
+      onPatchReviewScope,
+      usage,
+    ]
   );
 
 
@@ -1315,6 +1243,8 @@ export function WorkspaceInbox({
             key={selected.id}
 
             item={selected}
+
+            shopId={_shopId}
 
             usage={usage}
 

@@ -203,6 +203,26 @@ export async function processAutoReplyInboxCron(
           },
           { onConflict: "user_id,shop_id,marketplace_id" }
         );
+
+        if (usage === "semi") {
+          try {
+            const { notifyTelegramSemiPendingReviews } = await import(
+              "@/lib/telegram/notify-semi-pending"
+            );
+            const tgSent = await notifyTelegramSemiPendingReviews(supabase, {
+              userId,
+              shopId,
+              marketplaceId,
+              items: result.items ?? [],
+            });
+            if (tgSent > 0) {
+              console.info("[auto-reply-inbox-cron] telegram_notified", userId, marketplaceId, tgSent);
+            }
+          } catch (e) {
+            console.warn("[auto-reply-inbox-cron] telegram_notify_failed", userId, marketplaceId, e);
+          }
+        }
+
         synced += 1;
         autoSent += Number(result.autoSentCount ?? 0);
         if ((result.autoSentCount ?? 0) > 0) {
