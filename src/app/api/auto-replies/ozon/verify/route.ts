@@ -10,13 +10,27 @@ import {
 } from "@/lib/services/ozon/server-cache";
 import { OzonApiError, parseOzonCredentials, verifyOzonCredentials } from "@/lib/services/ozon/client";
 import { createServerClient } from "@/lib/supabase/server";
-import { persistServerMarketplaceSecret } from "@/lib/auto-replies/persist-server-marketplace-secret";
+import { persistServerMarketplaceSecret, persistServerMarketplaceSecretBestEffort } from "@/lib/auto-replies/persist-server-marketplace-secret";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const VERIFY_OK_TTL_MS = 30 * 60 * 1000;
 const VERIFY_429_COOLDOWN_SEC = 2 * 60;
+
+function scheduleOzonSecretPersist(
+  userId: string,
+  credentials: { clientId: string; apiKey: string },
+  shopId?: string
+) {
+  const supabase = createServerClient();
+  void persistServerMarketplaceSecretBestEffort(supabase, userId, {
+    shopId,
+    marketplaceId: "ozon",
+    apiKey: credentials.apiKey,
+    clientId: credentials.clientId,
+  });
+}
 
 export async function POST(request: NextRequest) {
   const auth = await requireAutoRepliesUser(request);
@@ -61,6 +75,7 @@ export async function POST(request: NextRequest) {
     reviewSubscriptionHint?: string;
   }>(cacheKey);
   if (cached) {
+    scheduleOzonSecretPersist(auth.user.id, credentials, body.shopId);
     return NextResponse.json({
       ok: true,
       ...cached,

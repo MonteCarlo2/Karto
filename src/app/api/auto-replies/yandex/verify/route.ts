@@ -10,13 +10,28 @@ import {
 } from "@/lib/services/yandex/server-cache";
 import { parseYandexCredentials, verifyYandexCredentials, YandexApiError } from "@/lib/services/yandex/client";
 import { createServerClient } from "@/lib/supabase/server";
-import { persistServerMarketplaceSecret } from "@/lib/auto-replies/persist-server-marketplace-secret";
+import { persistServerMarketplaceSecret, persistServerMarketplaceSecretBestEffort } from "@/lib/auto-replies/persist-server-marketplace-secret";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const VERIFY_OK_TTL_MS = 30 * 60 * 1000;
 const VERIFY_429_COOLDOWN_SEC = 2 * 60;
+
+function scheduleYandexSecretPersist(
+  userId: string,
+  parsed: { apiKey: string; campaignId: string; businessId?: string },
+  shopId?: string
+) {
+  const supabase = createServerClient();
+  void persistServerMarketplaceSecretBestEffort(supabase, userId, {
+    shopId,
+    marketplaceId: "yandex",
+    apiKey: parsed.apiKey,
+    campaignId: parsed.campaignId,
+    businessId: parsed.businessId ?? null,
+  });
+}
 
 export async function POST(request: NextRequest) {
   const auth = await requireAutoRepliesUser(request);
@@ -67,6 +82,11 @@ export async function POST(request: NextRequest) {
     processedCount: number;
   }>(cacheKey);
   if (cached) {
+    scheduleYandexSecretPersist(
+      auth.user.id,
+      { apiKey: parsed.apiKey, campaignId: cached.campaignId, businessId: cached.businessId },
+      body.shopId
+    );
     return NextResponse.json({
       ok: true,
       ...cached,

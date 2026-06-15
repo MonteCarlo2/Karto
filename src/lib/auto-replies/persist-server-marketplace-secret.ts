@@ -45,3 +45,15 @@ export async function persistServerMarketplaceSecret(
     return { ok: false, error: msg };
   }
 }
+
+/** Сохранить ключ на сервере при любой успешной проверке (в т.ч. из кэша) — для фонового cron без захода на сайт. */
+export async function persistServerMarketplaceSecretBestEffort(
+  supabase: SupabaseClient,
+  userId: string,
+  entry: ServerMarketplaceSecretInput
+): Promise<void> {
+  const result = await persistServerMarketplaceSecret(supabase, userId, entry);
+  if (!result.ok) {
+    console.warn("[auto-reply] server secret best-effort failed", entry.marketplaceId, result.error);
+  }
+}

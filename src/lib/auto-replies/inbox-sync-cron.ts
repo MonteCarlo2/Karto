@@ -25,6 +25,11 @@ function parseMpKey(key: string): { shopId: string; marketplaceId: AutoRepliesMa
   return { shopId, marketplaceId };
 }
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __kartoInboxCronRunning: boolean | undefined;
+}
+
 export async function processAutoReplyInboxCron(
   supabase: SupabaseClient,
   opts?: { userLimit?: number }
@@ -36,27 +41,64 @@ export async function processAutoReplyInboxCron(
   zeroBalance: number;
   autoSent: number;
 }> {
-  const userLimit = opts?.userLimit ?? 40;
-  const [{ data: rows }, { data: secretRows }] = await Promise.all([
+  if (globalThis.__kartoInboxCronRunning) {
+    return { users: 0, synced: 0, skipped: 0, errors: 0, zeroBalance: 0, autoSent: 0 };
+  }
+  globalThis.__kartoInboxCronRunning = true;
+  try {
+    return await processAutoReplyInboxCronInner(supabase, opts);
+  } finally {
+    globalThis.__kartoInboxCronRunning = false;
+  }
+}
+
+async function processAutoReplyInboxCronInner(
+  supabase: SupabaseClient,
+  opts?: { userLimit?: number }
+): Promise<{
+  users: number;
+  synced: number;
+  skipped: number;
+  errors: number;
+  zeroBalance: number;
+  autoSent: number;
+}> {
+  const userLimit = opts?.userLimit ?? 500;
+  const [{ data: stateRows }, { data: secretRows }] = await Promise.all([
     supabase
       .from("auto_reply_user_state")
       .select("user_id, settings_json")
       .order("updated_at", { ascending: false })
       .limit(userLimit),
-    supabase.from("auto_reply_marketplace_secrets").select("user_id").limit(500),
+    supabase.from("auto_reply_marketplace_secrets").select("user_id"),
   ]);
 
   const settingsByUser = new Map<string, AutoRepliesSettingsRoot>();
-  for (const row of rows ?? []) {
+  for (const row of stateRows ?? []) {
     const uid = row.user_id as string;
     if (!settingsByUser.has(uid)) {
       settingsByUser.set(uid, (row.settings_json as AutoRepliesSettingsRoot) ?? { marketplaces: {} });
     }
   }
-  for (const row of secretRows ?? []) {
-    const uid = row.user_id as string;
+
+  const secretUserIds = [
+    ...new Set((secretRows ?? []).map((row) => row.user_id as string).filter(Boolean)),
+  ];
+  const missingStateIds = secretUserIds.filter((uid) => !settingsByUser.has(uid));
+  if (missingStateIds.length > 0) {
+    const { data: extraStateRows } = await supabase
+      .from("auto_reply_user_state")
+      .select("user_id, settings_json")
+      .in("user_id", missingStateIds.slice(0, 500));
+    for (const row of extraStateRows ?? []) {
+      const uid = row.user_id as string;
+      settingsByUser.set(uid, (row.settings_json as AutoRepliesSettingsRoot) ?? { marketplaces: {} });
+    }
+  }
+
+  for (const uid of secretUserIds) {
     if (!settingsByUser.has(uid)) {
-      settingsByUser.set(uid, { version: 1, shops: {}, marketplaces: {} });
+      console.info("[auto-reply-inbox-cron] skip user with secrets but no settings", uid);
     }
   }
 

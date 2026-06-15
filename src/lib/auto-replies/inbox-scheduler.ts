@@ -2,7 +2,8 @@
  * Фоновый планировщик для TimeWebCloud и других VPS без Vercel Cron.
  * Запускается из instrumentation.ts при старте Node-сервера.
  */
-const INTERVAL_MS = 5 * 60 * 1000;
+const INTERVAL_MS = 2 * 60 * 1000;
+const STARTUP_DELAY_MS = 15_000;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -28,10 +29,10 @@ export function startAutoReplyBackgroundScheduler() {
   }
 
   if (isDev) {
-    console.info("[auto-reply] background scheduler on in dev (every 5 min)");
+    console.info("[auto-reply] background scheduler on in dev (every 2 min)");
   }
 
-  console.info("[auto-reply] background scheduler started (every 5 min)");
+  console.info("[auto-reply] background scheduler started (every 2 min, first tick in 15s)");
 
   let running = false;
 
@@ -51,7 +52,9 @@ export function startAutoReplyBackgroundScheduler() {
         processAutoReplyInboxCron(supabase),
         processDueAutoReplyRenewals(supabase),
       ]);
-      console.info("[auto-reply] background tick", { inbox, renew });
+      const payload = { inbox, renew, at: new Date().toISOString() };
+      console.info("[auto-reply] background tick", payload);
+      await recordCronHeartbeat(payload);
     } catch (e) {
       console.error("[auto-reply] background tick failed", e);
     } finally {
@@ -59,6 +62,22 @@ export function startAutoReplyBackgroundScheduler() {
     }
   };
 
-  void tick();
+  setTimeout(() => void tick(), STARTUP_DELAY_MS);
   setInterval(() => void tick(), INTERVAL_MS);
+}
+
+async function recordCronHeartbeat(payload: Record<string, unknown>) {
+  try {
+    const { createServerClient } = await import("@/lib/supabase/server");
+    const supabase = createServerClient();
+    const now = new Date().toISOString();
+    await supabase.from("auto_reply_cron_heartbeats").upsert({
+      id: "inbox",
+      last_tick_at: now,
+      last_result: payload,
+      updated_at: now,
+    });
+  } catch (e) {
+    console.warn("[auto-reply] heartbeat write failed (apply migration 20260603?)", e);
+  }
 }

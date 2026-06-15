@@ -72,6 +72,23 @@ if (!fs.existsSync(serverPath)) {
 }
 
 require(serverPath);
+
+/** Резервный cron: если instrumentation не стартовал, HTTP-тик всё равно обработает inbox. */
+(function startCronSelfPing() {
+  const secret = process.env.CRON_SECRET && String(process.env.CRON_SECRET).trim();
+  if (!secret) return;
+  const port = process.env.PORT || "3000";
+  const url = "http://127.0.0.1:" + port + "/api/cron/auto-reply-inbox-sync";
+  const headers = { Authorization: "Bearer " + secret };
+  const ping = () => {
+    fetch(url, { headers }).catch((e) => {
+      console.warn("[karto] cron self-ping failed:", e && e.message ? e.message : e);
+    });
+  };
+  setTimeout(ping, 20000);
+  setInterval(ping, 2 * 60 * 1000);
+  console.info("[karto] cron self-ping enabled (every 2 min)");
+})();
 `;
 
 function copyRecursive(src, dest) {

@@ -120,8 +120,19 @@ Next.js с SSR и API-маршрутами нужно разворачивать
 
 ## 9. Автоответы на отзывы (без открытия сайта)
 
-1. В Supabase примени миграцию `supabase/migrations/20260531_auto_reply_server_secrets.sql` (таблица `auto_reply_marketplace_secrets`).
-2. На Timeweb задай `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, желательно `AUTO_REPLY_SECRETS_KEY`.
-3. После деплоя пользователю достаточно **один раз** открыть автоответы или заново «Проверить подключение» WB/Ozon/Яндекс — ключи сохранятся на сервере.
-4. В логах каждые ~5 мин: `[auto-reply] background tick` с `auto_sent` > 0 при новых отзывах. Если `skip no_server_secret` — ключ не в БД, нужен шаг 3.
-5. Опционально: внешний cron `GET https://karto.pro/api/cron/auto-reply-inbox-sync` с заголовком `Authorization: Bearer <CRON_SECRET>` каждые 5–15 мин (дублирует встроенный планировщик).
+1. В Supabase примени миграции:
+   - `20260531_auto_reply_server_secrets.sql` — ключи маркетплейсов на сервере
+   - `20260603_cron_heartbeat_telegram_admin.sql` — heartbeat cron + подписи таблиц Telegram
+   - `20260601_auto_reply_telegram.sql`, `20260602_telegram_review_photo.sql` — Telegram
+2. На Timeweb **обязательно** задай `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, желательно `AUTO_REPLY_SECRETS_KEY`.
+3. После деплоя пользователю достаточно **один раз** нажать «Проверить подключение» WB/Ozon/Яндекс — ключ сохранится в `auto_reply_marketplace_secrets`.
+4. **Проверка, что cron живой (без логов Timeweb):** Supabase → Table Editor → `auto_reply_cron_heartbeats` → строка `id=inbox`, поле `last_tick_at` должно обновляться каждые ~2 мин.
+5. В логах Timeweb: `[auto-reply] background scheduler started` и `[auto-reply] background tick`. Если `skip no_server_secret` — ключ не в БД (шаг 3).
+6. **Резерв:** при `CRON_SECRET` в `start.js` включён self-ping `127.0.0.1` каждые 2 мин (дубль планировщика, безопасен).
+7. Опционально: внешний cron `GET https://karto.pro/api/cron/auto-reply-inbox-sync` с `Authorization: Bearer <CRON_SECRET>` каждые 2–5 мин.
+
+### Telegram в Supabase
+
+- **Подключён / выключен:** таблица `auto_reply_telegram_links` — есть строка = подключён; `notify_enabled` = уведомления вкл/выкл; нет строки = не подключён.
+- **Карточки в боте:** `auto_reply_telegram_review_messages` (`pending` / `sent`).
+- **Ответы на сайте:** те же данные в `auto_reply_inbox_snapshots` и `auto_reply_history` — подтверждение в Telegram пишет туда напрямую на сервере, без браузера.

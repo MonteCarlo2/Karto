@@ -20,6 +20,17 @@ async function handleCron(request: NextRequest) {
 
   const supabase = createServerClient();
   const result = await processAutoReplyInboxCron(supabase);
+  try {
+    const now = new Date().toISOString();
+    await supabase.from("auto_reply_cron_heartbeats").upsert({
+      id: "inbox",
+      last_tick_at: now,
+      last_result: { ...result, source: "http-cron", at: now },
+      updated_at: now,
+    });
+  } catch {
+    /* heartbeat table optional until migration applied */
+  }
   return NextResponse.json({ ok: true, ...result });
 }
 

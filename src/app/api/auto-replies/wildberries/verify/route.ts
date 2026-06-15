@@ -12,7 +12,7 @@ import {
 } from "@/lib/services/wildberries/server-cache";
 import { verifyWildberriesToken, WildberriesApiError } from "@/lib/services/wildberries/client";
 import { createServerClient } from "@/lib/supabase/server";
-import { persistServerMarketplaceSecret } from "@/lib/auto-replies/persist-server-marketplace-secret";
+import { persistServerMarketplaceSecret, persistServerMarketplaceSecretBestEffort } from "@/lib/auto-replies/persist-server-marketplace-secret";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -22,6 +22,19 @@ const VERIFY_429_COOLDOWN_SEC = 30;
 
 function fallbackSellerName(hint?: string | null) {
   return hint?.trim() || "Продавец Wildberries";
+}
+
+function scheduleWildberriesSecretPersist(
+  userId: string,
+  apiKey: string,
+  shopId?: string
+) {
+  const supabase = createServerClient();
+  void persistServerMarketplaceSecretBestEffort(supabase, userId, {
+    shopId,
+    marketplaceId: "wildberries",
+    apiKey,
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -49,6 +62,7 @@ export async function POST(request: NextRequest) {
     const retryAfterSec = cooldownRetryAfterSec(cooldown);
     const stale = getCachedWildberriesVerify(cacheKey) ?? getStaleWildberriesVerify(cacheKey);
     if (stale) {
+      scheduleWildberriesSecretPersist(auth.user.id, apiKey, body.shopId);
       return NextResponse.json({
         ok: true,
         sellerName: stale.sellerName,
@@ -60,6 +74,7 @@ export async function POST(request: NextRequest) {
         retryAfterSec,
       });
     }
+    scheduleWildberriesSecretPersist(auth.user.id, apiKey, body.shopId);
     return NextResponse.json({
       ok: true,
       sellerName: fallbackSellerName(body.sellerNameHint),
@@ -73,6 +88,7 @@ export async function POST(request: NextRequest) {
 
   const cached = getCachedWildberriesVerify(cacheKey);
   if (cached) {
+    scheduleWildberriesSecretPersist(auth.user.id, apiKey, body.shopId);
     return NextResponse.json({
       ok: true,
       sellerName: cached.sellerName,
