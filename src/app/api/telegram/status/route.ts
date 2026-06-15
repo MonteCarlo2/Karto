@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAutoRepliesUser } from "@/lib/auto-replies/api-auth";
 import { createServerClient } from "@/lib/supabase/server";
 import {
-  cleanupTelegramMarketplaceUnlink,
   fetchTelegramLinkByUserId,
   isTelegramMarketplaceEnabled,
   parseTelegramMarketplaceId,

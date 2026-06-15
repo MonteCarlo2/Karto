@@ -62,7 +62,7 @@ const TG_BLUE = "#24A1DE";
 const TG_BORDER = "rgba(36, 161, 222, 0.3)";
 
 const HELP_TEXT =
-  "Бот присылает в Telegram отзывы полуавтоматического режима, ожидающие подтверждения. Подтверждайте, редактируйте или перегенерируйте ответ в чате — всё синхронизируется с KARTO. Подключение и отключение — отдельно для каждой площадки.";
+  "Бот присылает в Telegram отзывы полуавтоматического режима. «Подключить» всегда открывает бота с новой ссылкой. «Отключить» полностью удаляет привязку из KARTO — как при первом входе.";
 
 function TelegramLogo() {
   return (
@@ -184,7 +184,14 @@ function StatusDot({ active, loading }: { active: boolean; loading?: boolean }) 
 }
 
 function disconnectedStatus(prev: TelegramStatus): TelegramStatus {
-  return { ...prev, linked: false };
+  return {
+    ...prev,
+    linked: false,
+    accountLinked: false,
+    username: null,
+    firstName: null,
+    linkedAt: null,
+  };
 }
 
 type WorkspaceTelegramPanelProps = {
@@ -278,20 +285,10 @@ export function WorkspaceTelegramPanel({
         body: JSON.stringify({ shopId, marketplaceId }),
         timeoutMs: TG_LINK_MS,
       });
-      const data = (await res.json()) as {
-        url?: string;
-        alreadyLinked?: boolean;
-        error?: string;
-      };
+      const data = (await res.json()) as { url?: string; error?: string };
       if (!res.ok) throw new Error(data.error || "Не удалось подключить");
-
-      if (data.alreadyLinked) {
-        if (data.url) window.open(data.url, "_blank", "noopener,noreferrer");
-        await refreshSilent();
-        return;
-      }
-
       if (!data.url) throw new Error("Не удалось получить ссылку на бота");
+
       window.open(data.url, "_blank", "noopener,noreferrer");
       startConnectPoll();
     } catch (e) {
@@ -312,7 +309,7 @@ export function WorkspaceTelegramPanel({
     try {
       const res = await autoRepliesAuthorizedFetch("/api/telegram/unlink", {
         method: "POST",
-        body: JSON.stringify({ shopId, marketplaceId }),
+        body: JSON.stringify({}),
         timeoutMs: TG_UNLINK_MS,
       });
       const data = (await res.json()) as { error?: string };
@@ -323,11 +320,10 @@ export function WorkspaceTelegramPanel({
     } finally {
       setBusy(null);
     }
-  }, [shopId, marketplaceId]);
+  }, []);
 
   const configured = status?.configured ?? false;
   const linked = Boolean(status?.linked);
-  const accountLinked = Boolean(status?.accountLinked);
   const displayName = status?.username
     ? `@${status.username}`
     : status?.firstName?.trim() || null;
@@ -371,10 +367,6 @@ export function WorkspaceTelegramPanel({
                 style={{ ...wsSans, color: panel.textMuted }}
               >
                 {displayName}
-              </p>
-            ) : statusKnown && !linked && accountLinked && displayName ? (
-              <p className="mt-1.5 text-[12px] leading-snug" style={{ ...wsSans, color: panel.textMuted }}>
-                Не подключено для этой площадки · аккаунт {displayName}
               </p>
             ) : statusKnown ? (
               <p className="mt-1.5 text-[12px]" style={{ ...wsSans, color: panel.textMuted }}>

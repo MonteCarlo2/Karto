@@ -46,6 +46,14 @@ export async function completeTelegramLink(
   });
   await clearTelegramSession(supabase, input.from.id);
 
+  if (input.marketplaceId) {
+    await enableTelegramMarketplace(supabase, {
+      userId: input.userId,
+      shopId,
+      marketplaceId: input.marketplaceId,
+    });
+  }
+
   if (!existing || !sameAccount) {
     await telegramSendMessage({ chatId: input.chat.id, text: TELEGRAM_WELCOME_LINKED });
   } else if (chatChanged || isRelink) {
@@ -73,11 +81,6 @@ export async function completeTelegramLink(
     };
 
     if (input.marketplaceId) {
-      await enableTelegramMarketplace(supabase, {
-        userId: input.userId,
-        shopId,
-        marketplaceId: input.marketplaceId,
-      });
       void notifyMarketplace(input.marketplaceId).catch((e) =>
         console.warn("[telegram] notify after link failed", e)
       );
@@ -86,11 +89,5 @@ export async function completeTelegramLink(
         console.warn("[telegram] notify after link failed", e)
       );
     }
-  } else if (input.marketplaceId) {
-    await enableTelegramMarketplace(supabase, {
-      userId: input.userId,
-      shopId,
-      marketplaceId: input.marketplaceId,
-    });
   }
 }

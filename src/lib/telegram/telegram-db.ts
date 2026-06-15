@@ -169,7 +169,25 @@ export async function disableTelegramMarketplace(
   );
 }
 
-/** Отключить Telegram только для одной площадки (аккаунт в боте сохраняется). */
+/** Полное отключение Telegram для аккаунта KARTO — как при первом подключении. */
+export async function cleanupTelegramFullUnlink(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<void> {
+  const link = await fetchTelegramLinkByUserId(supabase, userId);
+
+  await Promise.all([
+    supabase.from("auto_reply_telegram_review_messages").delete().eq("user_id", userId),
+    supabase.from("auto_reply_telegram_marketplaces").delete().eq("user_id", userId),
+    supabase.from("auto_reply_telegram_link_tokens").delete().eq("user_id", userId),
+    link
+      ? supabase.from("auto_reply_telegram_sessions").delete().eq("telegram_user_id", link.telegram_user_id)
+      : Promise.resolve(),
+    deleteTelegramLink(supabase, userId),
+  ]);
+}
+
+/** @deprecated Используйте cleanupTelegramFullUnlink */
 export async function cleanupTelegramMarketplaceUnlink(
   supabase: SupabaseClient,
   userId: string,
