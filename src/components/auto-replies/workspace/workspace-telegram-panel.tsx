@@ -6,17 +6,51 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { CircleHelp, Loader2, Unplug } from "lucide-react";
 import { autoRepliesAuthorizedFetch } from "@/lib/auto-replies/auto-replies-fetch";
-import type { AutoRepliesUsageId } from "@/lib/auto-replies/types";
+import type { AutoRepliesMarketplaceId, AutoRepliesUsageId } from "@/lib/auto-replies/types";
 import { WsGlassPanel, panel, wsSans } from "./settings-ui";
 
 type TelegramStatus = {
   configured: boolean;
   linked: boolean;
+  accountLinked?: boolean;
   botUsername: string;
   username: string | null;
   firstName: string | null;
   linkedAt: string | null;
 };
+
+type TelegramContext = {
+  shopId: string;
+  marketplaceId: AutoRepliesMarketplaceId;
+};
+
+function statusUrl(ctx: TelegramContext) {
+  const params = new URLSearchParams({
+    shopId: ctx.shopId,
+    marketplaceId: ctx.marketplaceId,
+  });
+  return `/api/telegram/status?${params.toString()}`;
+}
+
+async function fetchTelegramStatus(ctx: TelegramContext): Promise<TelegramStatus> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < TG_STATUS_RETRIES; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 400 * attempt));
+    }
+    try {
+      const res = await autoRepliesAuthorizedFetch(statusUrl(ctx), { timeoutMs: TG_FETCH_MS });
+      const data = (await res.json()) as TelegramStatus & { error?: string };
+      if (!res.ok) throw new Error(data.error || "Не удалось загрузить статус");
+      return data;
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error("Ошибка загрузки");
+    }
+  }
+
+  throw lastError ?? new Error("Не удалось загрузить статус");
+}
 
 const TG_FETCH_MS = 20_000;
 const TG_UNLINK_MS = 12_000;
@@ -28,7 +62,7 @@ const TG_BLUE = "#24A1DE";
 const TG_BORDER = "rgba(36, 161, 222, 0.3)";
 
 const HELP_TEXT =
-  "Бот присылает в Telegram отзывы полуавтоматического режима, ожидающие подтверждения. Подтверждайте, редактируйте или перегенерируйте ответ в чате — всё синхронизируется с KARTO.";
+  "Бот присылает в Telegram отзывы полуавтоматического режима, ожидающие подтверждения. Подтверждайте, редактируйте или перегенерируйте ответ в чате — всё синхронизируется с KARTO. Подключение и отключение — отдельно для каждой площадки.";
 
 function TelegramLogo() {
   return (
@@ -44,26 +78,6 @@ function TelegramLogo() {
       />
     </div>
   );
-}
-
-async function fetchTelegramStatus(): Promise<TelegramStatus> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < TG_STATUS_RETRIES; attempt++) {
-    if (attempt > 0) {
-      await new Promise((r) => setTimeout(r, 400 * attempt));
-    }
-    try {
-      const res = await autoRepliesAuthorizedFetch("/api/telegram/status", { timeoutMs: TG_FETCH_MS });
-      const data = (await res.json()) as TelegramStatus & { error?: string };
-      if (!res.ok) throw new Error(data.error || "Не удалось загрузить статус");
-      return data;
-    } catch (e) {
-      lastError = e instanceof Error ? e : new Error("Ошибка загрузки");
-    }
-  }
-
-  throw lastError ?? new Error("Не удалось загрузить статус");
 }
 
 const HELP_POPOVER_W = 272;
@@ -170,20 +184,21 @@ function StatusDot({ active, loading }: { active: boolean; loading?: boolean }) 
 }
 
 function disconnectedStatus(prev: TelegramStatus): TelegramStatus {
-  return {
-    ...prev,
-    linked: false,
-    username: null,
-    firstName: null,
-    linkedAt: null,
-  };
+  return { ...prev, linked: false };
 }
 
 type WorkspaceTelegramPanelProps = {
+  shopId: string;
+  marketplaceId: AutoRepliesMarketplaceId;
   usage?: AutoRepliesUsageId;
 };
 
-export function WorkspaceTelegramPanel({ usage = "semi" }: WorkspaceTelegramPanelProps) {
+export function WorkspaceTelegramPanel({
+  shopId,
+  marketplaceId,
+  usage = "semi",
+}: WorkspaceTelegramPanelProps) {
+  const ctx = { shopId, marketplaceId };
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const statusRef = useRef<TelegramStatus | null>(null);
   const connectPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -202,21 +217,21 @@ export function WorkspaceTelegramPanel({ usage = "semi" }: WorkspaceTelegramPane
 
   const refreshSilent = useCallback(async (): Promise<TelegramStatus | null> => {
     try {
-      const data = await fetchTelegramStatus();
+      const data = await fetchTelegramStatus(ctx);
       setStatus(data);
       setError(null);
       return data;
     } catch {
       return null;
     }
-  }, []);
+  }, [shopId, marketplaceId]);
 
   const refresh = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent ?? false;
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const data = await fetchTelegramStatus();
+      const data = await fetchTelegramStatus(ctx);
       setStatus(data);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Ошибка загрузки";
@@ -224,12 +239,13 @@ export function WorkspaceTelegramPanel({ usage = "semi" }: WorkspaceTelegramPane
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [shopId, marketplaceId]);
 
   useEffect(() => {
+    setStatus(null);
     void refresh();
     return () => stopConnectPoll();
-  }, [refresh, stopConnectPoll]);
+  }, [refresh, stopConnectPoll, shopId, marketplaceId]);
 
   useEffect(() => {
     const tick = () => {
@@ -259,10 +275,22 @@ export function WorkspaceTelegramPanel({ usage = "semi" }: WorkspaceTelegramPane
     try {
       const res = await autoRepliesAuthorizedFetch("/api/telegram/link-token", {
         method: "POST",
+        body: JSON.stringify({ shopId, marketplaceId }),
         timeoutMs: TG_LINK_MS,
       });
-      const data = (await res.json()) as { url?: string; error?: string };
-      if (!res.ok || !data.url) throw new Error(data.error || "Не удалось получить ссылку");
+      const data = (await res.json()) as {
+        url?: string;
+        alreadyLinked?: boolean;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Не удалось подключить");
+
+      if (data.alreadyLinked) {
+        await refreshSilent();
+        return;
+      }
+
+      if (!data.url) throw new Error("Не удалось получить ссылку на бота");
       window.open(data.url, "_blank", "noopener,noreferrer");
       startConnectPoll();
     } catch (e) {
@@ -270,7 +298,7 @@ export function WorkspaceTelegramPanel({ usage = "semi" }: WorkspaceTelegramPane
     } finally {
       setBusy(null);
     }
-  }, [startConnectPoll]);
+  }, [shopId, marketplaceId, refreshSilent, startConnectPoll]);
 
   const unlink = useCallback(async () => {
     const prev = statusRef.current;
@@ -283,6 +311,7 @@ export function WorkspaceTelegramPanel({ usage = "semi" }: WorkspaceTelegramPane
     try {
       const res = await autoRepliesAuthorizedFetch("/api/telegram/unlink", {
         method: "POST",
+        body: JSON.stringify({ shopId, marketplaceId }),
         timeoutMs: TG_UNLINK_MS,
       });
       const data = (await res.json()) as { error?: string };
@@ -293,14 +322,15 @@ export function WorkspaceTelegramPanel({ usage = "semi" }: WorkspaceTelegramPane
     } finally {
       setBusy(null);
     }
-  }, []);
+  }, [shopId, marketplaceId]);
 
   const configured = status?.configured ?? false;
   const linked = Boolean(status?.linked);
+  const accountLinked = Boolean(status?.accountLinked);
   const displayName = status?.username
     ? `@${status.username}`
     : status?.firstName?.trim() || null;
-  const showConnect = configured && !linked;
+  const showConnect = !linked;
   const showUnlink = linked;
   const statusKnown = status !== null;
   const busyConnect = busy === "connect";
@@ -341,13 +371,19 @@ export function WorkspaceTelegramPanel({ usage = "semi" }: WorkspaceTelegramPane
               >
                 {displayName}
               </p>
-            ) : statusKnown && !configured ? (
-              <p className="mt-1.5 text-[12px]" style={{ ...wsSans, color: panel.textSubtle }}>
-                Скоро будет доступно
+            ) : statusKnown && !linked && accountLinked && displayName ? (
+              <p className="mt-1.5 text-[12px] leading-snug" style={{ ...wsSans, color: panel.textMuted }}>
+                Не подключено для этой площадки · аккаунт {displayName}
               </p>
             ) : statusKnown ? (
               <p className="mt-1.5 text-[12px]" style={{ ...wsSans, color: panel.textMuted }}>
                 Не подключено
+              </p>
+            ) : null}
+
+            {!configured && statusKnown && !linked ? (
+              <p className="mt-1 text-[11px] leading-snug" style={{ ...wsSans, color: panel.textSubtle }}>
+                На сервере не задан TELEGRAM_BOT_TOKEN — подключение временно недоступно.
               </p>
             ) : null}
 
@@ -406,7 +442,7 @@ export function WorkspaceTelegramPanel({ usage = "semi" }: WorkspaceTelegramPane
           ) : (
             <button
               type="button"
-              disabled={busyConnect || loading}
+              disabled={busyConnect || loading || !configured}
               onClick={() => void connect()}
               className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold text-white shadow-[0_6px_20px_-10px_rgba(36,161,222,0.55)] transition hover:brightness-[1.04] disabled:opacity-50"
               style={{ ...wsSans, backgroundColor: TG_BLUE }}

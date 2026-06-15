@@ -62,6 +62,8 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
     return (
       <WorkspaceModePanel
         usage={usage}
+        shopId={shopId}
+        marketplaceId={marketplaceId}
         marketplaceLabel={marketplaceLabel}
         connectionOk={conn.status === "active"}
         mpSettings={mpSettings}

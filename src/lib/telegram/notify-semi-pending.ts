@@ -4,7 +4,7 @@ import type { InboxReviewItem } from "@/lib/auto-replies/inbox-demo-data";
 import type { AutoRepliesMarketplaceId } from "@/lib/auto-replies/types";
 import { isTelegramConfigured } from "./config";
 import { sendTelegramReviewCard } from "./send-review-card";
-import { fetchTelegramLinkByUserId, upsertTelegramReviewMessage } from "./telegram-db";
+import { fetchTelegramLinkByUserId, isTelegramMarketplaceEnabled, upsertTelegramReviewMessage } from "./telegram-db";
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -22,7 +22,15 @@ export async function notifyTelegramSemiPendingReviews(
   if (!isTelegramConfigured()) return 0;
 
   const link = await fetchTelegramLinkByUserId(supabase, input.userId);
-  if (!link?.notify_enabled) return 0;
+  if (!link) return 0;
+
+  const mpEnabled = await isTelegramMarketplaceEnabled(
+    supabase,
+    input.userId,
+    input.shopId,
+    input.marketplaceId
+  );
+  if (!mpEnabled) return 0;
 
   const pending = input.items.filter(
     (item) =>
@@ -96,11 +104,16 @@ export async function notifyAllPendingSemiForUser(
 
   let total = 0;
   for (const snap of snaps ?? []) {
+    const shopId = snap.shop_id as string;
+    const marketplaceId = snap.marketplace_id as AutoRepliesMarketplaceId;
+    const enabled = await isTelegramMarketplaceEnabled(supabase, userId, shopId, marketplaceId);
+    if (!enabled) continue;
+
     const items = (snap.items_json as InboxReviewItem[]) ?? [];
     total += await notifyTelegramSemiPendingReviews(supabase, {
       userId,
-      shopId: snap.shop_id as string,
-      marketplaceId: snap.marketplace_id as AutoRepliesMarketplaceId,
+      shopId,
+      marketplaceId,
       items,
     });
   }

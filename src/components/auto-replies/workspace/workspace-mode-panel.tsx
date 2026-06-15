@@ -21,6 +21,8 @@ type SourceMode = "cabinet" | "manual";
 
 type WorkspaceModePanelProps = {
   usage: AutoRepliesUsageId;
+  shopId: string;
+  marketplaceId: import("@/lib/auto-replies/types").AutoRepliesMarketplaceId;
   marketplaceLabel: string;
   connectionOk: boolean;
   mpSettings: AutoRepliesMarketplaceSettings;
@@ -68,6 +70,8 @@ function SourceHeader({
 
 export function WorkspaceModePanel({
   usage,
+  shopId,
+  marketplaceId,
   marketplaceLabel,
   connectionOk,
   mpSettings,
@@ -188,7 +192,9 @@ export function WorkspaceModePanel({
               reviewScope={mpSettings.reviewScope}
               onPatch={(patch) => onPatchMp({ reviewScope: patch })}
             />
-            {source === "cabinet" ? <WorkspaceTelegramPanel usage={usage} /> : null}
+            {source === "cabinet" ? (
+              <WorkspaceTelegramPanel shopId={shopId} marketplaceId={marketplaceId} usage={usage} />
+            ) : null}
           </aside>
         ) : null}
       </div>

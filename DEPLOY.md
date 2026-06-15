@@ -136,3 +136,5 @@ Next.js с SSR и API-маршрутами нужно разворачивать
 - **Подключён / выключен:** таблица `auto_reply_telegram_links` — есть строка = подключён; `notify_enabled` = уведомления вкл/выкл; нет строки = не подключён.
 - **Карточки в боте:** `auto_reply_telegram_review_messages` (`pending` / `sent`).
 - **Ответы на сайте:** те же данные в `auto_reply_inbox_snapshots` и `auto_reply_history` — подтверждение в Telegram пишет туда напрямую на сервере, без браузера.
+- **По площадкам:** таблица `auto_reply_telegram_marketplaces` — включено/выключено отдельно для WB, Ozon, Яндекс. Миграция `20260604_telegram_per_marketplace.sql`.
+- **TELEGRAM_BOT_TOKEN** на Timeweb обязателен — без него кнопка «Подключить» неактивна (не «Скоро будет доступно»).

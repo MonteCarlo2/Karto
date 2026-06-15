@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash, randomBytes } from "crypto";
+import type { AutoRepliesMarketplaceId } from "@/lib/auto-replies/types";
 
 export type TelegramLinkRow = {
   user_id: string;
@@ -32,6 +33,19 @@ export type TelegramSessionState =
   | "awaiting_code"
   | "awaiting_edit_text"
   | "awaiting_regen_hint";
+
+export type ConsumedLinkToken = {
+  userId: string;
+  shopId: string;
+  marketplaceId: AutoRepliesMarketplaceId | null;
+};
+
+const VALID_MP = new Set<AutoRepliesMarketplaceId>(["wildberries", "ozon", "yandex"]);
+
+export function parseTelegramMarketplaceId(value: string | null | undefined): AutoRepliesMarketplaceId | null {
+  const id = value?.trim() as AutoRepliesMarketplaceId | undefined;
+  return id && VALID_MP.has(id) ? id : null;
+}
 
 export function hashTelegramCode(code: string): string {
   return createHash("sha256").update(`karto-tg:${code}`).digest("hex");
@@ -97,6 +111,83 @@ export async function upsertTelegramLink(
   );
 }
 
+export async function isTelegramMarketplaceEnabled(
+  supabase: SupabaseClient,
+  userId: string,
+  shopId: string,
+  marketplaceId: AutoRepliesMarketplaceId
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("auto_reply_telegram_marketplaces")
+    .select("notify_enabled")
+    .eq("user_id", userId)
+    .eq("shop_id", shopId)
+    .eq("marketplace_id", marketplaceId)
+    .maybeSingle();
+
+  if (!data) return false;
+  return Boolean(data.notify_enabled);
+}
+
+export async function enableTelegramMarketplace(
+  supabase: SupabaseClient,
+  input: {
+    userId: string;
+    shopId: string;
+    marketplaceId: AutoRepliesMarketplaceId;
+  }
+): Promise<void> {
+  await supabase.from("auto_reply_telegram_marketplaces").upsert(
+    {
+      user_id: input.userId,
+      shop_id: input.shopId,
+      marketplace_id: input.marketplaceId,
+      notify_enabled: true,
+      enabled_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id,shop_id,marketplace_id" }
+  );
+}
+
+export async function disableTelegramMarketplace(
+  supabase: SupabaseClient,
+  input: {
+    userId: string;
+    shopId: string;
+    marketplaceId: AutoRepliesMarketplaceId;
+  }
+): Promise<void> {
+  await supabase.from("auto_reply_telegram_marketplaces").upsert(
+    {
+      user_id: input.userId,
+      shop_id: input.shopId,
+      marketplace_id: input.marketplaceId,
+      notify_enabled: false,
+      enabled_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id,shop_id,marketplace_id" }
+  );
+}
+
+/** Отключить Telegram только для одной площадки (аккаунт в боте сохраняется). */
+export async function cleanupTelegramMarketplaceUnlink(
+  supabase: SupabaseClient,
+  userId: string,
+  shopId: string,
+  marketplaceId: AutoRepliesMarketplaceId
+): Promise<void> {
+  await Promise.all([
+    disableTelegramMarketplace(supabase, { userId, shopId, marketplaceId }),
+    supabase
+      .from("auto_reply_telegram_review_messages")
+      .delete()
+      .eq("user_id", userId)
+      .eq("shop_id", shopId)
+      .eq("marketplace_id", marketplaceId)
+      .eq("status", "pending"),
+  ]);
+}
+
 export async function deleteTelegramLink(supabase: SupabaseClient, userId: string): Promise<void> {
   await supabase.from("auto_reply_telegram_links").delete().eq("user_id", userId);
 }
@@ -124,14 +215,20 @@ export async function cleanupTelegramOnUnlink(
 export async function createLinkToken(
   supabase: SupabaseClient,
   userId: string,
-  ttlMinutes = 15
+  opts?: {
+    shopId?: string;
+    marketplaceId?: AutoRepliesMarketplaceId;
+    ttlMinutes?: number;
+  }
 ): Promise<string> {
   const token = generateLinkToken();
-  const expiresAt = new Date(Date.now() + ttlMinutes * 60_000).toISOString();
+  const expiresAt = new Date(Date.now() + (opts?.ttlMinutes ?? 15) * 60_000).toISOString();
   await supabase.from("auto_reply_telegram_link_tokens").insert({
     token,
     user_id: userId,
     expires_at: expiresAt,
+    shop_id: (opts?.shopId ?? "main").trim() || "main",
+    marketplace_id: opts?.marketplaceId ?? null,
   });
   return token;
 }
@@ -139,10 +236,10 @@ export async function createLinkToken(
 export async function consumeLinkToken(
   supabase: SupabaseClient,
   token: string
-): Promise<string | null> {
+): Promise<ConsumedLinkToken | null> {
   const { data } = await supabase
     .from("auto_reply_telegram_link_tokens")
-    .select("user_id, expires_at, used_at")
+    .select("user_id, shop_id, marketplace_id, expires_at, used_at")
     .eq("token", token)
     .maybeSingle();
 
@@ -154,7 +251,11 @@ export async function consumeLinkToken(
     .update({ used_at: new Date().toISOString() })
     .eq("token", token);
 
-  return data.user_id as string;
+  return {
+    userId: data.user_id as string,
+    shopId: (data.shop_id as string | null)?.trim() || "main",
+    marketplaceId: parseTelegramMarketplaceId(data.marketplace_id as string | null),
+  };
 }
 
 export async function findAuthUserIdByEmail(

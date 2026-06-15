@@ -29,6 +29,7 @@ import {
 import { editTelegramReviewCard } from "./send-review-card";
 import {
   fetchTelegramLinkByUserId,
+  isTelegramMarketplaceEnabled,
   markTelegramReviewMessageSent,
   updateTelegramReviewDraft,
 } from "./telegram-db";
@@ -353,6 +354,14 @@ export async function syncTelegramPendingReviewCard(
 
   const link = await fetchTelegramLinkByUserId(supabase, input.userId);
   if (!link) return { synced: false };
+
+  const mpEnabled = await isTelegramMarketplaceEnabled(
+    supabase,
+    input.userId,
+    input.shopId,
+    input.marketplaceId
+  );
+  if (!mpEnabled) return { synced: false };
 
   const { data: tgRow } = await supabase
     .from("auto_reply_telegram_review_messages")

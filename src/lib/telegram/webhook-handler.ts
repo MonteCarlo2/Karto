@@ -61,8 +61,8 @@ async function handleStartLink(
   chat: TgChat
 ): Promise<void> {
   try {
-    const userId = await consumeLinkToken(supabase, token);
-    if (!userId) {
+    const consumed = await consumeLinkToken(supabase, token);
+    if (!consumed) {
       await telegramSendMessage({
         chatId: chat.id,
         text: "Ссылка устарела или уже использована. Нажмите «Подключить Telegram» в кабинете KARTO ещё раз.",
@@ -70,7 +70,14 @@ async function handleStartLink(
       return;
     }
 
-    await completeTelegramLink(supabase, { userId, from, chat, fromCabinetLink: true });
+    await completeTelegramLink(supabase, {
+      userId: consumed.userId,
+      from,
+      chat,
+      fromCabinetLink: true,
+      shopId: consumed.shopId,
+      marketplaceId: consumed.marketplaceId,
+    });
   } catch (e) {
     console.error("[telegram] handleStartLink failed", e);
     await telegramSendMessage({

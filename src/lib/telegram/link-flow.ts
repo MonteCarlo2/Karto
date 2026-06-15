@@ -5,12 +5,15 @@ import {
   TELEGRAM_WELCOME_LINKED,
   TELEGRAM_WELCOME_RELINKED,
 } from "./bot-profile";
-import { notifyAllPendingSemiForUser } from "./notify-semi-pending";
 import {
   clearTelegramSession,
+  enableTelegramMarketplace,
   fetchTelegramLinkByUserId,
   upsertTelegramLink,
 } from "./telegram-db";
+import type { AutoRepliesMarketplaceId } from "@/lib/auto-replies/types";
+import { notifyTelegramSemiPendingReviews, notifyAllPendingSemiForUser } from "./notify-semi-pending";
+import type { InboxReviewItem } from "@/lib/auto-replies/inbox-demo-data";
 
 type TgUser = { id: number; username?: string; first_name?: string };
 type TgChat = { id: number };
@@ -24,8 +27,11 @@ export async function completeTelegramLink(
     wasRelink?: boolean;
     /** Свежая ссылка из кабинета — считаем переподключением. */
     fromCabinetLink?: boolean;
+    shopId?: string;
+    marketplaceId?: AutoRepliesMarketplaceId | null;
   }
 ): Promise<void> {
+  const shopId = (input.shopId ?? "main").trim() || "main";
   const existing = await fetchTelegramLinkByUserId(supabase, input.userId);
   const sameAccount = existing?.telegram_user_id === input.from.id;
   const chatChanged = existing && existing.chat_id !== input.chat.id;
@@ -49,8 +55,42 @@ export async function completeTelegramLink(
   }
 
   if (!existing || !sameAccount || chatChanged || isRelink) {
-    void notifyAllPendingSemiForUser(supabase, input.userId).catch((e) =>
-      console.warn("[telegram] notify after link failed", e)
-    );
+    const notifyMarketplace = async (marketplaceId: AutoRepliesMarketplaceId) => {
+      const { data: snap } = await supabase
+        .from("auto_reply_inbox_snapshots")
+        .select("items_json")
+        .eq("user_id", input.userId)
+        .eq("shop_id", shopId)
+        .eq("marketplace_id", marketplaceId)
+        .maybeSingle();
+      const items = (snap?.items_json as InboxReviewItem[] | null) ?? [];
+      await notifyTelegramSemiPendingReviews(supabase, {
+        userId: input.userId,
+        shopId,
+        marketplaceId,
+        items,
+      });
+    };
+
+    if (input.marketplaceId) {
+      await enableTelegramMarketplace(supabase, {
+        userId: input.userId,
+        shopId,
+        marketplaceId: input.marketplaceId,
+      });
+      void notifyMarketplace(input.marketplaceId).catch((e) =>
+        console.warn("[telegram] notify after link failed", e)
+      );
+    } else {
+      void notifyAllPendingSemiForUser(supabase, input.userId).catch((e) =>
+        console.warn("[telegram] notify after link failed", e)
+      );
+    }
+  } else if (input.marketplaceId) {
+    await enableTelegramMarketplace(supabase, {
+      userId: input.userId,
+      shopId,
+      marketplaceId: input.marketplaceId,
+    });
   }
 }
