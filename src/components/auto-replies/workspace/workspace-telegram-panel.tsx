@@ -328,24 +328,6 @@ export function WorkspaceTelegramPanel({ usage = "semi" }: WorkspaceTelegramPane
               </p>
               <TelegramHelpButton />
               <StatusDot active={linked} loading={loading || (!statusKnown && Boolean(error))} />
-
-              {showUnlink ? (
-                <button
-                  type="button"
-                  disabled={busyUnlink}
-                  onClick={() => void unlink()}
-                  className="ml-auto flex shrink-0 items-center gap-1 rounded-lg border border-[rgba(255,69,58,0.28)] bg-white/85 px-2.5 py-1 text-[11px] font-semibold text-[#C9342B] transition hover:border-[rgba(255,69,58,0.45)] hover:bg-white disabled:opacity-60"
-                  style={wsSans}
-                  title="Отключить Telegram от аккаунта KARTO"
-                >
-                  {busyUnlink ? (
-                    <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2.2} />
-                  ) : (
-                    <Unplug className="h-3 w-3 opacity-80" strokeWidth={2.2} />
-                  )}
-                  {busyUnlink ? "Отключаем…" : "Отключить"}
-                </button>
-              ) : null}
             </div>
 
             {loading && !statusKnown ? (
@@ -396,27 +378,49 @@ export function WorkspaceTelegramPanel({ usage = "semi" }: WorkspaceTelegramPane
         </div>
       </div>
 
-      {showConnect ? (
+      {showConnect || showUnlink ? (
         <div
           className="border-t px-4 py-2.5 sm:px-5"
           style={{ borderColor: "rgba(36, 161, 222, 0.12)" }}
         >
-          <button
-            type="button"
-            disabled={busyConnect || loading}
-            onClick={() => void connect()}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold text-white shadow-[0_6px_20px_-10px_rgba(36,161,222,0.55)] transition hover:brightness-[1.04] disabled:opacity-50"
-            style={{ ...wsSans, backgroundColor: TG_BLUE }}
-          >
-            {busyConnect ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.2} />
-                Открываем бота…
-              </>
-            ) : (
-              "Подключить Telegram"
-            )}
-          </button>
+          {showUnlink ? (
+            <button
+              type="button"
+              disabled={busyUnlink || loading}
+              onClick={() => void unlink()}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[rgba(36,161,222,0.18)] bg-white/70 px-3 py-2 text-[12px] font-medium text-[#5C6B78] transition hover:border-[rgba(36,161,222,0.32)] hover:bg-white disabled:opacity-50"
+              style={wsSans}
+            >
+              {busyUnlink ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.2} />
+                  Отключаем…
+                </>
+              ) : (
+                <>
+                  <Unplug className="h-3.5 w-3.5 shrink-0 opacity-70" strokeWidth={2} />
+                  Отключить
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={busyConnect || loading}
+              onClick={() => void connect()}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold text-white shadow-[0_6px_20px_-10px_rgba(36,161,222,0.55)] transition hover:brightness-[1.04] disabled:opacity-50"
+              style={{ ...wsSans, backgroundColor: TG_BLUE }}
+            >
+              {busyConnect ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2.2} />
+                  Открываем бота…
+                </>
+              ) : (
+                "Подключить Telegram"
+              )}
+            </button>
+          )}
         </div>
       ) : null}
     </WsGlassPanel>
