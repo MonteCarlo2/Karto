@@ -51,8 +51,18 @@ export function hashTelegramCode(code: string): string {
   return createHash("sha256").update(`karto-tg:${code}`).digest("hex");
 }
 
+/** ≤32 hex + префикс link_ укладываются в лимит Telegram deep-link (64 символа). */
 export function generateLinkToken(): string {
-  return randomBytes(24).toString("hex");
+  return randomBytes(16).toString("hex");
+}
+
+function isMissingTelegramMarketplacesTable(error: { code?: string; message?: string } | null): boolean {
+  return error?.code === "PGRST205" || /auto_reply_telegram_marketplaces/i.test(error?.message ?? "");
+}
+
+function isMissingLinkTokenMarketplaceColumns(error: { message?: string } | null): boolean {
+  const msg = error?.message ?? "";
+  return /shop_id|marketplace_id|schema cache/i.test(msg);
 }
 
 export function generateSixDigitCode(): string {
@@ -117,13 +127,18 @@ export async function isTelegramMarketplaceEnabled(
   shopId: string,
   marketplaceId: AutoRepliesMarketplaceId
 ): Promise<boolean> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("auto_reply_telegram_marketplaces")
     .select("notify_enabled")
     .eq("user_id", userId)
     .eq("shop_id", shopId)
     .eq("marketplace_id", marketplaceId)
     .maybeSingle();
+
+  if (isMissingTelegramMarketplacesTable(error)) {
+    const account = await fetchTelegramLinkByUserId(supabase, userId);
+    return Boolean(account?.notify_enabled ?? account);
+  }
 
   if (!data) return false;
   return Boolean(data.notify_enabled);
@@ -137,7 +152,7 @@ export async function enableTelegramMarketplace(
     marketplaceId: AutoRepliesMarketplaceId;
   }
 ): Promise<void> {
-  await supabase.from("auto_reply_telegram_marketplaces").upsert(
+  const { error } = await supabase.from("auto_reply_telegram_marketplaces").upsert(
     {
       user_id: input.userId,
       shop_id: input.shopId,
@@ -147,6 +162,8 @@ export async function enableTelegramMarketplace(
     },
     { onConflict: "user_id,shop_id,marketplace_id" }
   );
+  if (isMissingTelegramMarketplacesTable(error)) return;
+  if (error) throw new Error(error.message);
 }
 
 export async function disableTelegramMarketplace(
@@ -241,67 +258,100 @@ export async function createLinkToken(
 ): Promise<string> {
   const token = generateLinkToken();
   const expiresAt = new Date(Date.now() + (opts?.ttlMinutes ?? 30) * 60_000).toISOString();
-  await supabase.from("auto_reply_telegram_link_tokens").insert({
+  const shopId = (opts?.shopId ?? "main").trim() || "main";
+
+  const fullRow = {
     token,
     user_id: userId,
     expires_at: expiresAt,
-    shop_id: (opts?.shopId ?? "main").trim() || "main",
+    shop_id: shopId,
     marketplace_id: opts?.marketplaceId ?? null,
-  });
+  };
+
+  let { error } = await supabase.from("auto_reply_telegram_link_tokens").insert(fullRow);
+
+  if (error && isMissingLinkTokenMarketplaceColumns(error)) {
+    ({ error } = await supabase.from("auto_reply_telegram_link_tokens").insert({
+      token,
+      user_id: userId,
+      expires_at: expiresAt,
+    }));
+  }
+
+  if (error) {
+    console.error("[telegram] createLinkToken failed", error);
+    throw new Error(error.message || "Не удалось сохранить ссылку подключения в базе");
+  }
+
   return token;
 }
 
-export async function consumeLinkToken(
-  supabase: SupabaseClient,
-  token: string
-): Promise<ConsumedLinkToken | null> {
-  return resolveLinkTokenForConnect(supabase, token.trim());
-}
-
-/** Атомарно занять токен или повторно использовать свежий (дубль webhook / двойной /start). */
-export async function resolveLinkTokenForConnect(
+/** Проверить токен без пометки used_at — помечаем только после успешной привязки. */
+export async function peekLinkToken(
   supabase: SupabaseClient,
   token: string
 ): Promise<ConsumedLinkToken | null> {
   const trimmed = token.trim();
   if (!trimmed) return null;
 
-  const nowIso = new Date().toISOString();
-
-  const { data: claimed } = await supabase
+  const { data: row, error } = await supabase
     .from("auto_reply_telegram_link_tokens")
-    .update({ used_at: nowIso })
+    .select("user_id, expires_at, used_at")
     .eq("token", trimmed)
-    .is("used_at", null)
-    .gt("expires_at", nowIso)
-    .select("user_id, shop_id, marketplace_id")
     .maybeSingle();
 
-  if (claimed) {
-    return {
-      userId: claimed.user_id as string,
-      shopId: (claimed.shop_id as string | null)?.trim() || "main",
-      marketplaceId: parseTelegramMarketplaceId(claimed.marketplace_id as string | null),
-    };
+  if (error || !row) return null;
+  if (new Date(row.expires_at as string).getTime() < Date.now()) return null;
+
+  if (row.used_at) {
+    const usedAgoMs = Date.now() - new Date(row.used_at as string).getTime();
+    if (usedAgoMs > 20 * 60_000) return null;
   }
 
-  const { data: row } = await supabase
+  let shopId = "main";
+  let marketplaceId: AutoRepliesMarketplaceId | null = null;
+
+  const { data: ext, error: extError } = await supabase
     .from("auto_reply_telegram_link_tokens")
-    .select("user_id, shop_id, marketplace_id, expires_at, used_at")
+    .select("shop_id, marketplace_id")
     .eq("token", trimmed)
     .maybeSingle();
 
-  if (!row?.used_at) return null;
-  if (new Date(row.expires_at).getTime() < Date.now()) return null;
-
-  const usedAgoMs = Date.now() - new Date(row.used_at as string).getTime();
-  if (usedAgoMs > 20 * 60_000) return null;
+  if (!extError && ext) {
+    shopId = (ext.shop_id as string | null)?.trim() || "main";
+    marketplaceId = parseTelegramMarketplaceId(ext.marketplace_id as string | null);
+  }
 
   return {
     userId: row.user_id as string,
-    shopId: (row.shop_id as string | null)?.trim() || "main",
-    marketplaceId: parseTelegramMarketplaceId(row.marketplace_id as string | null),
+    shopId,
+    marketplaceId,
   };
+}
+
+export async function consumeLinkToken(
+  supabase: SupabaseClient,
+  token: string
+): Promise<ConsumedLinkToken | null> {
+  return peekLinkToken(supabase, token.trim());
+}
+
+/** @deprecated Используйте peekLinkToken + markLinkTokenUsed */
+export async function resolveLinkTokenForConnect(
+  supabase: SupabaseClient,
+  token: string
+): Promise<ConsumedLinkToken | null> {
+  return peekLinkToken(supabase, token);
+}
+
+export async function markLinkTokenUsed(supabase: SupabaseClient, token: string): Promise<void> {
+  const trimmed = token.trim();
+  if (!trimmed) return;
+  await supabase
+    .from("auto_reply_telegram_link_tokens")
+    .update({ used_at: new Date().toISOString() })
+    .eq("token", trimmed)
+    .is("used_at", null);
 }
 
 export async function releaseLinkToken(supabase: SupabaseClient, token: string): Promise<void> {

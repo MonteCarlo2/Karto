@@ -8,7 +8,7 @@ import {
   findAuthUserIdByEmail,
   generateSixDigitCode,
   getTelegramSession,
-  releaseLinkToken,
+  markLinkTokenUsed,
   saveTelegramVerifyCode,
   setTelegramSession,
   verifyTelegramEmailCode,
@@ -65,6 +65,7 @@ async function handleStartLink(
   try {
     const consumed = await consumeLinkToken(supabase, trimmed);
     if (!consumed) {
+      console.warn("[telegram] link token invalid", { prefix: trimmed.slice(0, 8) });
       await telegramSendMessage({
         chatId: chat.id,
         text: "Ссылка устарела или уже использована. Нажмите «Подключить Telegram» в кабинете KARTO ещё раз.",
@@ -72,19 +73,15 @@ async function handleStartLink(
       return;
     }
 
-    try {
-      await completeTelegramLink(supabase, {
-        userId: consumed.userId,
-        from,
-        chat,
-        fromCabinetLink: true,
-        shopId: consumed.shopId,
-        marketplaceId: consumed.marketplaceId,
-      });
-    } catch (linkErr) {
-      await releaseLinkToken(supabase, trimmed);
-      throw linkErr;
-    }
+    await completeTelegramLink(supabase, {
+      userId: consumed.userId,
+      from,
+      chat,
+      fromCabinetLink: true,
+      shopId: consumed.shopId,
+      marketplaceId: consumed.marketplaceId,
+    });
+    await markLinkTokenUsed(supabase, trimmed);
   } catch (e) {
     console.error("[telegram] handleStartLink failed", e);
     await telegramSendMessage({

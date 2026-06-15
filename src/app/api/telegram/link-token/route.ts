@@ -40,7 +40,19 @@ export async function POST(request: NextRequest) {
   void ensureTelegramBotProfile();
 
   /** Всегда новая ссылка — без опоры на старые записи в БД. */
-  const token = await createLinkToken(supabase, auth.user.id, { shopId, marketplaceId });
+  let token: string;
+  try {
+    token = await createLinkToken(supabase, auth.user.id, { shopId, marketplaceId });
+  } catch (e) {
+    console.error("[telegram/link-token] createLinkToken", e);
+    return NextResponse.json(
+      {
+        error:
+          "Не удалось создать ссылку в базе. Примените миграции Telegram в Supabase (20260604) или обратитесь в поддержку.",
+      },
+      { status: 500 }
+    );
+  }
   const username = getTelegramBotUsername();
   const url = `https://t.me/${username}?start=link_${token}`;
 
