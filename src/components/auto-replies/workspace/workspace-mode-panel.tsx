@@ -188,7 +188,7 @@ export function WorkspaceModePanel({
               reviewScope={mpSettings.reviewScope}
               onPatch={(patch) => onPatchMp({ reviewScope: patch })}
             />
-            {usage === "semi" ? <WorkspaceTelegramPanel /> : null}
+            {source === "cabinet" ? <WorkspaceTelegramPanel usage={usage} /> : null}
           </aside>
         ) : null}
       </div>

@@ -107,15 +107,18 @@ export async function cleanupTelegramOnUnlink(
   userId: string
 ): Promise<void> {
   const link = await fetchTelegramLinkByUserId(supabase, userId);
-  await supabase
-    .from("auto_reply_telegram_review_messages")
-    .delete()
-    .eq("user_id", userId)
-    .eq("status", "pending");
-  if (link) {
-    await supabase.from("auto_reply_telegram_sessions").delete().eq("telegram_user_id", link.telegram_user_id);
-  }
-  await deleteTelegramLink(supabase, userId);
+
+  await Promise.all([
+    supabase
+      .from("auto_reply_telegram_review_messages")
+      .delete()
+      .eq("user_id", userId)
+      .eq("status", "pending"),
+    link
+      ? supabase.from("auto_reply_telegram_sessions").delete().eq("telegram_user_id", link.telegram_user_id)
+      : Promise.resolve(),
+    deleteTelegramLink(supabase, userId),
+  ]);
 }
 
 export async function createLinkToken(
