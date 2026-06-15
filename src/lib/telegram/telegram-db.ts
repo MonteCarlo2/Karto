@@ -222,7 +222,7 @@ export async function createLinkToken(
   }
 ): Promise<string> {
   const token = generateLinkToken();
-  const expiresAt = new Date(Date.now() + (opts?.ttlMinutes ?? 15) * 60_000).toISOString();
+  const expiresAt = new Date(Date.now() + (opts?.ttlMinutes ?? 30) * 60_000).toISOString();
   await supabase.from("auto_reply_telegram_link_tokens").insert({
     token,
     user_id: userId,
@@ -237,25 +237,60 @@ export async function consumeLinkToken(
   supabase: SupabaseClient,
   token: string
 ): Promise<ConsumedLinkToken | null> {
-  const { data } = await supabase
+  return resolveLinkTokenForConnect(supabase, token.trim());
+}
+
+/** Атомарно занять токен или повторно использовать свежий (дубль webhook / двойной /start). */
+export async function resolveLinkTokenForConnect(
+  supabase: SupabaseClient,
+  token: string
+): Promise<ConsumedLinkToken | null> {
+  const trimmed = token.trim();
+  if (!trimmed) return null;
+
+  const nowIso = new Date().toISOString();
+
+  const { data: claimed } = await supabase
     .from("auto_reply_telegram_link_tokens")
-    .select("user_id, shop_id, marketplace_id, expires_at, used_at")
-    .eq("token", token)
+    .update({ used_at: nowIso })
+    .eq("token", trimmed)
+    .is("used_at", null)
+    .gt("expires_at", nowIso)
+    .select("user_id, shop_id, marketplace_id")
     .maybeSingle();
 
-  if (!data || data.used_at) return null;
-  if (new Date(data.expires_at).getTime() < Date.now()) return null;
+  if (claimed) {
+    return {
+      userId: claimed.user_id as string,
+      shopId: (claimed.shop_id as string | null)?.trim() || "main",
+      marketplaceId: parseTelegramMarketplaceId(claimed.marketplace_id as string | null),
+    };
+  }
 
-  await supabase
+  const { data: row } = await supabase
     .from("auto_reply_telegram_link_tokens")
-    .update({ used_at: new Date().toISOString() })
-    .eq("token", token);
+    .select("user_id, shop_id, marketplace_id, expires_at, used_at")
+    .eq("token", trimmed)
+    .maybeSingle();
+
+  if (!row?.used_at) return null;
+  if (new Date(row.expires_at).getTime() < Date.now()) return null;
+
+  const usedAgoMs = Date.now() - new Date(row.used_at as string).getTime();
+  if (usedAgoMs > 20 * 60_000) return null;
 
   return {
-    userId: data.user_id as string,
-    shopId: (data.shop_id as string | null)?.trim() || "main",
-    marketplaceId: parseTelegramMarketplaceId(data.marketplace_id as string | null),
+    userId: row.user_id as string,
+    shopId: (row.shop_id as string | null)?.trim() || "main",
+    marketplaceId: parseTelegramMarketplaceId(row.marketplace_id as string | null),
   };
+}
+
+export async function releaseLinkToken(supabase: SupabaseClient, token: string): Promise<void> {
+  await supabase
+    .from("auto_reply_telegram_link_tokens")
+    .update({ used_at: null })
+    .eq("token", token.trim());
 }
 
 export async function findAuthUserIdByEmail(

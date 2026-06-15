@@ -8,6 +8,7 @@ import {
   findAuthUserIdByEmail,
   generateSixDigitCode,
   getTelegramSession,
+  releaseLinkToken,
   saveTelegramVerifyCode,
   setTelegramSession,
   verifyTelegramEmailCode,
@@ -60,8 +61,9 @@ async function handleStartLink(
   from: TgUser,
   chat: TgChat
 ): Promise<void> {
+  const trimmed = token.trim();
   try {
-    const consumed = await consumeLinkToken(supabase, token);
+    const consumed = await consumeLinkToken(supabase, trimmed);
     if (!consumed) {
       await telegramSendMessage({
         chatId: chat.id,
@@ -70,19 +72,24 @@ async function handleStartLink(
       return;
     }
 
-    await completeTelegramLink(supabase, {
-      userId: consumed.userId,
-      from,
-      chat,
-      fromCabinetLink: true,
-      shopId: consumed.shopId,
-      marketplaceId: consumed.marketplaceId,
-    });
+    try {
+      await completeTelegramLink(supabase, {
+        userId: consumed.userId,
+        from,
+        chat,
+        fromCabinetLink: true,
+        shopId: consumed.shopId,
+        marketplaceId: consumed.marketplaceId,
+      });
+    } catch (linkErr) {
+      await releaseLinkToken(supabase, trimmed);
+      throw linkErr;
+    }
   } catch (e) {
     console.error("[telegram] handleStartLink failed", e);
     await telegramSendMessage({
       chatId: chat.id,
-      text: "Не удалось привязать аккаунт. Проверьте, что миграция Telegram в Supabase применена, и попробуйте снова из кабинета KARTO.",
+      text: "Не удалось привязать аккаунт. Проверьте, что миграции Telegram в Supabase применены, и попробуйте снова из кабинета KARTO.",
     });
   }
 }

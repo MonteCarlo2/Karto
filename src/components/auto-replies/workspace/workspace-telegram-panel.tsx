@@ -286,6 +286,7 @@ export function WorkspaceTelegramPanel({
       if (!res.ok) throw new Error(data.error || "Не удалось подключить");
 
       if (data.alreadyLinked) {
+        if (data.url) window.open(data.url, "_blank", "noopener,noreferrer");
         await refreshSilent();
         return;
       }

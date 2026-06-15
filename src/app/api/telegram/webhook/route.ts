@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { getTelegramWebhookSecret, isTelegramConfigured } from "@/lib/telegram/config";
 import { handleTelegramWebhookUpdate } from "@/lib/telegram/webhook-handler";
+import { isDuplicateTelegramUpdate } from "@/lib/telegram/process-updates";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,6 +28,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const updateObj = update as { update_id?: number };
+    if (isDuplicateTelegramUpdate(updateObj.update_id)) {
+      return NextResponse.json({ ok: true, duplicate: true });
+    }
+
     const supabase = createServerClient();
     await handleTelegramWebhookUpdate(supabase, update as Parameters<typeof handleTelegramWebhookUpdate>[1]);
     return NextResponse.json({ ok: true });

@@ -8,7 +8,7 @@ import {
   parseTelegramMarketplaceId,
 } from "@/lib/telegram/telegram-db";
 import { getTelegramBotUsername, isTelegramConfigured } from "@/lib/telegram/config";
-import { ensureTelegramBotProfile } from "@/lib/telegram/bot-profile";
+import { ensureTelegramWebhookRegistered } from "@/lib/telegram/telegram-webhook-setup";
 import { kickTelegramAfterLink } from "@/lib/telegram/process-updates";
 import { ensureTelegramPollingStarted } from "@/lib/telegram/telegram-polling";
 import { notifyTelegramSemiPendingReviews } from "@/lib/telegram/notify-semi-pending";
@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
       linked: true,
       alreadyLinked: true,
       botUsername: getTelegramBotUsername(),
+      url: `https://t.me/${getTelegramBotUsername()}`,
       username: existing.username,
       firstName: existing.first_name,
     });
@@ -83,8 +84,12 @@ export async function POST(request: NextRequest) {
   const username = getTelegramBotUsername();
   const url = `https://t.me/${username}?start=link_${token}`;
 
-  kickTelegramAfterLink();
-  ensureTelegramPollingStarted();
+  if (process.env.NODE_ENV === "development") {
+    kickTelegramAfterLink();
+    ensureTelegramPollingStarted();
+  } else {
+    void ensureTelegramWebhookRegistered();
+  }
 
   return NextResponse.json({ ok: true, url, botUsername: username, alreadyLinked: false });
 }
