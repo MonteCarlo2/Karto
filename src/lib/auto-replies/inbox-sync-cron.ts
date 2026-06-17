@@ -129,6 +129,14 @@ async function processAutoReplyInboxCronInner(
     const secrets = await listMarketplaceSecretsForUser(supabase, userId);
     const secretByKey = new Map(secrets.map((s) => [`${s.shopId}:${s.marketplaceId}`, s]));
 
+    const { data: secretRowRefs } = await supabase
+      .from("auto_reply_marketplace_secrets")
+      .select("shop_id, marketplace_id")
+      .eq("user_id", userId);
+    const secretRowKeys = new Set(
+      (secretRowRefs ?? []).map((r) => `${r.shop_id as string}:${r.marketplace_id as string}`)
+    );
+
     for (const [mpKey, mpCfg] of Object.entries(settings.marketplaces)) {
       const parsed = parseMpKey(mpKey);
       if (!parsed) continue;
@@ -144,12 +152,15 @@ async function processAutoReplyInboxCronInner(
       const secret = secretByKey.get(mpKey);
       if (!secret?.apiKey?.trim()) {
         skipped += 1;
-        console.info(
-          "[auto-reply-inbox-cron] skip no_server_secret",
-          userId,
-          mpKey,
-          "— откройте Автоответы на karto.pro или нажмите «Проверить подключение» для сохранения ключа на сервере"
-        );
+        // Площадка помечена active в settings, но ключа на сервере нет — не спамим (напр. Ozon не используется).
+        if (secretRowKeys.has(mpKey)) {
+          console.info(
+            "[auto-reply-inbox-cron] skip no_server_secret",
+            userId,
+            mpKey,
+            "— откройте Автоответы на karto.pro или нажмите «Проверить подключение» для сохранения ключа на сервере"
+          );
+        }
         continue;
       }
 
