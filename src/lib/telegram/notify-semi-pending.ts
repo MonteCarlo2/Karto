@@ -1,10 +1,9 @@
-import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { InboxReviewItem } from "@/lib/auto-replies/inbox-demo-data";
 import type { AutoRepliesMarketplaceId } from "@/lib/auto-replies/types";
 import { isTelegramConfigured } from "./config";
 import { sendTelegramReviewCard } from "./send-review-card";
-import { fetchTelegramLinkByUserId, isTelegramMarketplaceEnabled, upsertTelegramReviewMessage } from "./telegram-db";
+import { fetchTelegramLinkByUserId, isTelegramMarketplaceEnabled, resolveTelegramReviewMessageRowId, upsertTelegramReviewMessage } from "./telegram-db";
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -60,7 +59,12 @@ export async function notifyTelegramSemiPendingReviews(
   for (const item of pending) {
     if (already.has(item.id)) continue;
 
-    const rowId = randomUUID();
+    const rowId = await resolveTelegramReviewMessageRowId(supabase, {
+      userId: input.userId,
+      shopId: input.shopId,
+      marketplaceId: input.marketplaceId,
+      reviewId: item.id,
+    });
 
     try {
       const msg = await sendTelegramReviewCard({
@@ -70,7 +74,7 @@ export async function notifyTelegramSemiPendingReviews(
         status: "pending",
       });
 
-      await upsertTelegramReviewMessage(supabase, {
+      const saved = await upsertTelegramReviewMessage(supabase, {
         id: rowId,
         user_id: input.userId,
         shop_id: input.shopId,
@@ -81,6 +85,11 @@ export async function notifyTelegramSemiPendingReviews(
         reply_draft: item.replyDraft,
         has_photo: msg.has_photo,
       });
+
+      if (!saved) {
+        console.warn("[telegram] notify: DB row not saved", input.userId, item.id);
+        continue;
+      }
 
       sent += 1;
       if (sent < pending.length) await sleep(450);

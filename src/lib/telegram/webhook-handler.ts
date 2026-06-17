@@ -302,6 +302,11 @@ async function handleCallback(
     return;
   }
 
+  if (row.status !== "pending") {
+    await telegramAnswerCallbackQuery({ callbackQueryId: cb.id, text: "Отзыв уже обработан" });
+    return;
+  }
+
   const link = await fetchTelegramLinkByTelegramUserId(supabase, cb.from.id);
   if (!link || link.user_id !== row.user_id) {
     await telegramAnswerCallbackQuery({ callbackQueryId: cb.id, text: "Нет доступа" });

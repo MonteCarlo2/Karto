@@ -138,7 +138,12 @@ async function processAutoReplyInboxCronInner(
       const secret = secretByKey.get(mpKey);
       if (!secret?.apiKey?.trim()) {
         skipped += 1;
-        console.info("[auto-reply-inbox-cron] skip no_server_secret", userId, mpKey);
+        console.info(
+          "[auto-reply-inbox-cron] skip no_server_secret",
+          userId,
+          mpKey,
+          "— откройте Автоответы на karto.pro или нажмите «Проверить подключение» для сохранения ключа на сервере"
+        );
         continue;
       }
 
@@ -274,6 +279,35 @@ async function processAutoReplyInboxCronInner(
             marketplaceId,
             result.autoSentCount
           );
+          try {
+            const { markTelegramReviewMessageSent } = await import("@/lib/telegram/telegram-db");
+            const { editTelegramReviewCard } = await import("@/lib/telegram/send-review-card");
+            for (const item of result.items ?? []) {
+              if (item.status !== "sent" || !item.autoSent) continue;
+              const tgRow = await markTelegramReviewMessageSent(supabase, {
+                userId,
+                shopId,
+                marketplaceId,
+                reviewId: item.id,
+              });
+              if (!tgRow) continue;
+              try {
+                await editTelegramReviewCard({
+                  chatId: tgRow.chat_id,
+                  messageId: tgRow.telegram_message_id,
+                  item,
+                  messageRowId: tgRow.id,
+                  hasPhoto: Boolean(tgRow.has_photo),
+                  status: "sent",
+                  footer: "✅ Отправлено автоматически · синхронизировано с karto.pro",
+                });
+              } catch (editErr) {
+                console.warn("[auto-reply-inbox-cron] telegram_edit_after_auto_sent", item.id, editErr);
+              }
+            }
+          } catch (e) {
+            console.warn("[auto-reply-inbox-cron] telegram_sync_after_auto_sent", e);
+          }
         } else if (result.autoSendWarning) {
           console.warn(
             "[auto-reply-inbox-cron] auto_send_blocked",

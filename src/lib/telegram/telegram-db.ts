@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createHash, randomBytes } from "crypto";
+import { createHash, randomBytes, randomUUID } from "crypto";
 import type { AutoRepliesMarketplaceId } from "@/lib/auto-replies/types";
 
 export type TelegramLinkRow = {
@@ -469,6 +469,9 @@ export async function fetchReviewMessageByShortId(
   shortId: string,
   telegramUserId: number
 ): Promise<TelegramReviewMessageRow | null> {
+  const trimmed = shortId.trim();
+  if (!trimmed) return null;
+
   const link = await fetchTelegramLinkByTelegramUserId(supabase, telegramUserId);
   if (!link) return null;
 
@@ -476,12 +479,36 @@ export async function fetchReviewMessageByShortId(
     .from("auto_reply_telegram_review_messages")
     .select("*")
     .eq("user_id", link.user_id)
-    .eq("status", "pending")
     .order("notified_at", { ascending: false })
-    .limit(50);
+    .limit(200);
 
   const rows = (data ?? []) as TelegramReviewMessageRow[];
-  return rows.find((r) => shortCallbackId(r.id) === shortId) ?? null;
+  return rows.find((r) => shortCallbackId(r.id) === trimmed) ?? null;
+}
+
+/** Стабильный id строки TG-карточки (совпадает с callback_data в кнопках). */
+export async function resolveTelegramReviewMessageRowId(
+  supabase: SupabaseClient,
+  input: {
+    userId: string;
+    shopId: string;
+    marketplaceId: string;
+    reviewId: string;
+  }
+): Promise<string> {
+  const { data } = await supabase
+    .from("auto_reply_telegram_review_messages")
+    .select("id, status")
+    .eq("user_id", input.userId)
+    .eq("shop_id", input.shopId)
+    .eq("marketplace_id", input.marketplaceId)
+    .eq("review_id", input.reviewId)
+    .maybeSingle();
+
+  if (data?.id && data.status === "pending") {
+    return data.id as string;
+  }
+  return randomUUID();
 }
 
 export async function upsertTelegramReviewMessage(
@@ -490,10 +517,12 @@ export async function upsertTelegramReviewMessage(
     status?: TelegramReviewMessageRow["status"];
   }
 ): Promise<TelegramReviewMessageRow | null> {
+  const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("auto_reply_telegram_review_messages")
     .upsert(
       {
+        id: row.id,
         user_id: row.user_id,
         shop_id: row.shop_id,
         marketplace_id: row.marketplace_id,
@@ -503,14 +532,17 @@ export async function upsertTelegramReviewMessage(
         reply_draft: row.reply_draft,
         status: row.status ?? "pending",
         has_photo: row.has_photo ?? false,
-        notified_at: new Date().toISOString(),
+        notified_at: now,
       },
       { onConflict: "user_id,shop_id,marketplace_id,review_id" }
     )
     .select("*")
     .maybeSingle();
 
-  if (error) return null;
+  if (error) {
+    console.warn("[telegram] upsertTelegramReviewMessage failed", error.message);
+    return null;
+  }
   return data as TelegramReviewMessageRow;
 }
 

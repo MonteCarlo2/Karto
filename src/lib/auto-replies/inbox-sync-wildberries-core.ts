@@ -121,7 +121,7 @@ export async function runWildberriesInboxSync(input: {
           maxPagesPerStatus: CRON_UNANSWERED_PAGES,
           includeAnswered: false,
         }),
-        fetchWildberriesAnsweredWithoutReplyText(apiKey, take, 5),
+        fetchWildberriesAnsweredWithoutReplyText(apiKey, take, 12),
       ]);
       const byFeedbackId = new Map<string, (typeof slice.feedbacks)[number]>();
       for (const f of slice.feedbacks ?? []) {
