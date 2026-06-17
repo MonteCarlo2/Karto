@@ -77,7 +77,7 @@ async function processAutoReplyInboxCronInner(
   for (const row of stateRows ?? []) {
     const uid = row.user_id as string;
     if (!settingsByUser.has(uid)) {
-      settingsByUser.set(uid, (row.settings_json as AutoRepliesSettingsRoot) ?? { marketplaces: {} });
+      settingsByUser.set(uid, (row.settings_json as AutoRepliesSettingsRoot) ?? { version: 1, marketplaces: {}, shops: {} });
     }
   }
 
@@ -92,13 +92,13 @@ async function processAutoReplyInboxCronInner(
       .in("user_id", missingStateIds.slice(0, 500));
     for (const row of extraStateRows ?? []) {
       const uid = row.user_id as string;
-      settingsByUser.set(uid, (row.settings_json as AutoRepliesSettingsRoot) ?? { marketplaces: {} });
+      settingsByUser.set(uid, (row.settings_json as AutoRepliesSettingsRoot) ?? { version: 1, marketplaces: {}, shops: {} });
     }
   }
 
   for (const uid of secretUserIds) {
     if (!settingsByUser.has(uid)) {
-      settingsByUser.set(uid, { marketplaces: {}, shops: {} });
+      settingsByUser.set(uid, { version: 1, marketplaces: {}, shops: {} });
     }
   }
 
