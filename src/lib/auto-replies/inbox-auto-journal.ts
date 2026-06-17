@@ -21,6 +21,8 @@ export function normalizeInboxItemAutoJournal(
 ): InboxReviewItem {
   if (item.status !== "sent") return item;
   if (item.autoSent === true && item.feed === "auto") return item;
+  /** Подтверждено вручную / через Telegram — всегда остаётся в «Подтверждение». */
+  if (item.autoSent !== true && item.feed === "semi") return item;
   if (isManualConfirmationSend(item)) return item;
   if (mp.usage === "manual") return item;
 

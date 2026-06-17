@@ -85,9 +85,9 @@ require(serverPath);
       console.warn("[karto] cron self-ping failed:", e && e.message ? e.message : e);
     });
   };
-  setTimeout(ping, 20000);
-  setInterval(ping, 2 * 60 * 1000);
-  console.info("[karto] cron self-ping enabled (every 2 min)");
+  setTimeout(ping, 10000);
+  setInterval(ping, 60 * 1000);
+  console.info("[karto] cron self-ping enabled (every 1 min)");
 })();
 `;
 

@@ -65,11 +65,12 @@ import { inboxTheme } from "./inbox-theme";
 
 
 
-const SYNC_COOLDOWN_MS = 120_000;
+const SYNC_COOLDOWN_MS = 60_000;
 const SYNC_COOLDOWN_MS_WB_INCOMPLETE = 1_500;
-const AUTO_SYNC_MS = 180_000;
-const AUTO_SYNC_MS_WB_BACKOFF = 600_000;
+const AUTO_SYNC_MS = 60_000;
+const AUTO_SYNC_MS_WB_BACKOFF = 300_000;
 const AUTO_SYNC_MS_WB_INCREMENTAL = 3_000;
+const INBOX_POLL_TICK_MS = 10_000;
 const WB_RATE_LIMIT_SESSION_KEY = "karto-wb-rate-limit-until";
 const WB_FAIL_STREAK_KEY = "karto-wb-fail-streak";
 
@@ -897,7 +898,7 @@ export function WorkspaceInbox({
 
       void refreshLiveInboxRef.current(false);
 
-    }, AUTO_SYNC_MS_WB_INCREMENTAL);
+    }, INBOX_POLL_TICK_MS);
 
     return () => window.clearInterval(id);
 

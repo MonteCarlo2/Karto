@@ -12,6 +12,7 @@ import {
   resolveConnectionStatus,
 } from "@/lib/auto-replies/marketplace-api-guide";
 import { verifyMarketplaceConnection } from "@/lib/auto-replies/marketplace-live";
+import { scheduleAutoRepliesSync } from "@/lib/auto-replies/auto-replies-sync";
 import { ozonReviewApiBlocked, ozonReviewApiReady } from "@/lib/auto-replies/ozon-subscription";
 import { AUTO_REPLIES_MARKETPLACE_UI } from "@/lib/auto-replies/workspace-prefs";
 import { OzonSubscriptionVerifyResult } from "./ozon-subscription-callout";
@@ -272,6 +273,7 @@ export function WorkspaceIntegrationPanel({
       ) {
         setVerifyError(null);
       }
+      scheduleAutoRepliesSync(200);
     } catch (e) {
       const err = e as Error & { retryAfterSec?: number; premiumPlusRequired?: boolean };
       let message = err.message || "Не удалось проверить подключение";

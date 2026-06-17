@@ -98,7 +98,13 @@ async function processAutoReplyInboxCronInner(
 
   for (const uid of secretUserIds) {
     if (!settingsByUser.has(uid)) {
-      console.info("[auto-reply-inbox-cron] skip user with secrets but no settings", uid);
+      settingsByUser.set(uid, { marketplaces: {}, shops: {} });
+    }
+  }
+
+  for (const uid of secretUserIds) {
+    if (!settingsByUser.get(uid)?.marketplaces || Object.keys(settingsByUser.get(uid)!.marketplaces ?? {}).length === 0) {
+      console.info("[auto-reply-inbox-cron] user has server secrets but empty settings", uid);
     }
   }
 
