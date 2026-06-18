@@ -12,6 +12,7 @@ import {
   getNormalizedOpenRouterApiKey,
   getOpenRouterRequestHeaders,
 } from "@/lib/openrouter-headers";
+import { resolveConceptModel } from "@/lib/openrouter-studio-models";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -92,7 +93,7 @@ ${safeUserPrompt ? " Учти пожелания пользователя в 4 �
     };
 
     const buildBody = (withSchema: boolean): Record<string, unknown> => ({
-      model: "qwen/qwen-2.5-72b-instruct",
+      model: resolveConceptModel(),
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },

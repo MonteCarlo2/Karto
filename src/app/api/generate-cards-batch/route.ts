@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateDesignConcepts } from "@/lib/services/style-concept-generator";
-import { getProductNamesFromReplicateGPT4oMini } from "@/lib/services/replicate";
+import {
+  getProductNamesWithVisionFallback,
+  isOpenRouterConfigured,
+  productNamesMatch,
+} from "@/lib/services/openrouter-product-vision";
 import { createServerClient } from "@/lib/supabase/server";
 import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
@@ -104,61 +108,35 @@ export async function POST(request: NextRequest) {
     }
 
     // Проверка соответствия товара на фото и названия (защита от злоупотребления)
-    // Если ключ Replicate отсутствует — просто пропускаем этот защитный шаг.
-    if (photoUrl && process.env.REPLICATE_API_TOKEN) {
+    if (photoUrl && isOpenRouterConfigured()) {
       try {
-        console.log("🔍 [BATCH] Проверяю соответствие товара на фото и названия через Replicate...");
-        
-        // Конвертируем base64 в URL, если нужно
-        let imageUrlForRecognition = photoUrl;
-        if (photoUrl.startsWith("data:")) {
-          // Для Replicate нужен URL, но можно попробовать использовать base64 напрямую
-          // Или пропустить проверку для base64 (так как Replicate может не принять base64)
-          console.log("⚠️ [BATCH] Base64 изображение - пропускаем проверку (Replicate требует URL)");
-        } else {
-          const recognizedNames = await getProductNamesFromReplicateGPT4oMini(photoUrl);
-          
-          if (recognizedNames.length > 0) {
-            // Нормализуем названия для сравнения (убираем регистр, лишние символы)
-            const normalize = (str: string) => str.toLowerCase().replace(/[^\w\s]/g, '').trim();
-            const normalizedProductName = normalize(productName);
-            
-            // Проверяем, есть ли совпадение хотя бы с одним распознанным названием
-            const hasMatch = recognizedNames.some(recognized => {
-              const normalizedRecognized = normalize(recognized);
-              // Проверяем совпадение ключевых слов (хотя бы 2 слова должны совпадать)
-              const productWords = normalizedProductName.split(/\s+/).filter(w => w.length > 2);
-              const recognizedWords = normalizedRecognized.split(/\s+/).filter(w => w.length > 2);
-              const commonWords = productWords.filter(w => recognizedWords.includes(w));
-              
-              // Также проверяем частичное совпадение (если одно название содержит другое)
-              return commonWords.length >= 2 || 
-                     normalizedProductName.includes(normalizedRecognized.substring(0, 10)) ||
-                     normalizedRecognized.includes(normalizedProductName.substring(0, 10));
-            });
-            
-            if (!hasMatch) {
-              console.warn("⚠️ [BATCH] Товар на фото не соответствует названию!");
-              console.warn("⚠️ [BATCH] Название:", productName);
-              console.warn("⚠️ [BATCH] Распознано на фото:", recognizedNames.slice(0, 3).join(", "));
-              
-              return NextResponse.json({
+        console.log("🔍 [BATCH] Проверяю соответствие товара на фото и названия через OpenRouter...");
+        const recognizedNames = await getProductNamesWithVisionFallback(photoUrl);
+
+        if (recognizedNames.length > 0) {
+          if (!productNamesMatch(productName, recognizedNames)) {
+            console.warn("⚠️ [BATCH] Товар на фото не соответствует названию!");
+            console.warn("⚠️ [BATCH] Название:", productName);
+            console.warn("⚠️ [BATCH] Распознано на фото:", recognizedNames.slice(0, 3).join(", "));
+
+            return NextResponse.json(
+              {
                 success: false,
                 error: "Товар на фотографии не соответствует указанному названию",
-                details: `На фотографии распознан товар: "${recognizedNames[0] || 'неизвестно'}", а указано название: "${productName}". Пожалуйста, загрузите фотографию соответствующего товара или измените название товара.`,
-              }, { status: 400 });
-            }
-            
-            console.log("✅ [BATCH] Соответствие товара подтверждено");
+                details: `На фотографии распознан товар: "${recognizedNames[0] || "неизвестно"}", а указано название: "${productName}". Пожалуйста, загрузите фотографию соответствующего товара или измените название товара.`,
+              },
+              { status: 400 }
+            );
           }
+
+          console.log("✅ [BATCH] Соответствие товара подтверждено");
         }
-      } catch (error: any) {
-        // Если проверка не удалась, продолжаем генерацию (не блокируем пользователя)
-        console.warn("⚠️ [BATCH] Не удалось проверить соответствие товара:", error.message);
+      } catch (error) {
+        console.warn("⚠️ [BATCH] Не удалось проверить соответствие товара:", (error as Error).message);
         console.warn("⚠️ [BATCH] Продолжаем генерацию без проверки...");
       }
     } else if (photoUrl) {
-      console.log("ℹ️ [BATCH] Проверка соответствия через Replicate пропущена: REPLICATE_API_TOKEN не настроен");
+      console.log("ℹ️ [BATCH] Проверка соответствия пропущена: OPENROUTER_API_KEY не настроен");
     }
 
     console.log("🎨 [BATCH] Генерация 4 дизайн-концепций через OpenRouter...");

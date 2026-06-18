@@ -1,105 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getReplicateClient } from "@/lib/services/replicate";
+import {
+  isOpenRouterConfigured,
+  suggestProductNameCompletionsOpenRouter,
+} from "@/lib/services/openrouter-product-vision";
 
 export async function POST(request: NextRequest) {
   try {
     const { text } = await request.json();
 
     if (!text || typeof text !== "string") {
-      return NextResponse.json(
-        { error: "Текст не предоставлен" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Текст не предоставлен" }, { status: 400 });
     }
 
-    const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+    const words = text.trim().split(/\s+/).filter((w) => w.length > 0);
     if (words.length === 0 || words.length > 4) {
+      return NextResponse.json({ suggestions: [] });
+    }
+
+    if (!isOpenRouterConfigured()) {
       return NextResponse.json({ suggestions: [] });
     }
 
     console.log("🔄 Генерируем подсказки для:", text);
 
-    const replicate = getReplicateClient();
-    
-    const prompt = `Пользователь начал вводить название товара для маркетплейса: "${text}"
-
-Твоя задача: дополнить это начало до полного названия товара, добавив наиболее популярные и релевантные характеристики.
-
-ВАЖНО:
-- Название должно начинаться с "${text}" и быть его логическим продолжением
-- Добавь 1-3 слова: назначение, материал, цвет, размер, тип, бренд или другую важную характеристику
-- Максимум 6 слов в итоговом названии
-- Названия должны быть реальными и популярными на маркетплейсах (Ozon, Wildberries)
-- Только названия товаров, БЕЗ предложений и описаний
-- Русский язык
-- Каждое название с новой строки, без нумерации, тире, точек
-
-Примеры правильных дополнений:
-Если введено "Принтер" → дополнения:
-Принтер для компьютера
-Принтер лазерный черно-белый
-Принтер струйный цветной
-Принтер для офиса
-
-Если введено "Наушники" → дополнения:
-Наушники для компьютера
-Наушники беспроводные Bluetooth
-Наушники игровые с микрофоном
-Наушники для музыки
-
-Если введено "Ведро" → дополнения:
-Ведро строительное 12 литров
-Ведро пластиковое хозяйственное
-Ведро для стройки черное
-Ведро с ручкой усиленное
-
-Сгенерируй 4 варианта дополнения для "${text}" (только названия, по одному на строку):`;
-
     try {
-      const output = await replicate.run(
-        "meta/meta-llama-3-8b-instruct" as any,
-        {
-          input: {
-            prompt: prompt,
-            max_new_tokens: 150,
-            temperature: 0.7,
-            prompt_template: "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nТы помощник для маркетплейсов. Отвечай только названиями товаров.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
-          },
-        }
-      );
-
-      let responseText = "";
-      if (Array.isArray(output)) {
-        responseText = output.join("");
-      } else {
-        responseText = String(output);
-      }
-
-      // Парсим названия
-      const suggestions = responseText
-        .split(/\n+/)
-        .map(line => line.replace(/^[\d.\-•*)\]\s]+/, "").trim())
-        .filter(line => {
-          if (!line || line.length < text.length + 3) return false;
-          if (line.length > 60) return false;
-          if (!line.toLowerCase().startsWith(text.toLowerCase())) return false;
-          if (/(имеет|стоит|является|представляет собой)/i.test(line)) return false;
-          return true;
-        })
-        .slice(0, 4);
-
+      const suggestions = await suggestProductNameCompletionsOpenRouter(text);
       console.log("✅ Подсказки сгенерированы:", suggestions);
-
       return NextResponse.json({ suggestions });
-    } catch (error: any) {
+    } catch (error) {
       console.error("❌ Ошибка генерации подсказок:", error);
       return NextResponse.json({ suggestions: [] });
     }
   } catch (error) {
     console.error("❌ Ошибка API:", error);
-    return NextResponse.json(
-      { error: "Ошибка при генерации подсказок" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Ошибка при генерации подсказок" }, { status: 500 });
   }
 }
