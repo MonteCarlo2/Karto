@@ -24,6 +24,77 @@ async function getUserIdFromRequest(request: NextRequest, supabase: ReturnType<t
   return null;
 }
 
+/** Base64-фото храним в localStorage на клиенте; в БД — только https URL или null. */
+function sanitizePhotoUrlForDb(photoUrl: unknown): string | null {
+  if (typeof photoUrl !== "string") return null;
+  const trimmed = photoUrl.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("data:")) return null;
+  if (trimmed.length > 2048) return null;
+  return trimmed;
+}
+
+function flowQuotaBypassEnabled(): boolean {
+  return process.env.NODE_ENV === "development" && process.env.FLOW_DEV_BYPASS === "1";
+}
+
+async function chargeFlowAndCreateSession(
+  supabase: ReturnType<typeof createServerClient>,
+  userId: string
+): Promise<{ sessionId: string } | { error: string; status: number }> {
+  if (flowQuotaBypassEnabled()) {
+    const { data: newSession, error: sessionError } = await supabase
+      .from("product_sessions")
+      .insert({ user_id: userId })
+      .select("id")
+      .single();
+    if (sessionError || !newSession?.id) {
+      console.error("Ошибка создания сессии (dev bypass):", sessionError);
+      return { error: "Ошибка создания сессии", status: 500 };
+    }
+    return { sessionId: newSession.id as string };
+  }
+
+  const sub = await getSubscriptionByUserId(supabase as any, userId);
+  if (!sub) {
+    return { error: "Выберите тариф «Поток» на главной странице", status: 403 };
+  }
+  if (sub.flowsLimit <= 0) {
+    return { error: "Поток не куплен. Выберите тариф «Поток» на главной.", status: 403 };
+  }
+  if (sub.flowsUsed >= sub.flowsLimit) {
+    const flowsLeft = Math.max(0, sub.flowsLimit - sub.flowsUsed);
+    return {
+      error: `Лимит потоков исчерпан. Доступно: ${flowsLeft}.`,
+      status: 403,
+    };
+  }
+  const flowRows = await getSubscriptionRowsByUserId(supabase as any, userId);
+  const flowRow = flowRows.find((r) => r.plan_type === "flow");
+  if (!flowRow) {
+    return { error: "Запись подписки «Поток» не найдена.", status: 403 };
+  }
+  const { error: updErr } = await supabase
+    .from("user_subscriptions")
+    .update({ flows_used: flowRow.flows_used + 1 })
+    .eq("user_id", userId)
+    .eq("plan_type", "flow");
+  if (updErr) {
+    console.error("Ошибка списания потока:", updErr);
+    return { error: "Ошибка списания потока", status: 500 };
+  }
+  const { data: newSession, error: sessionError } = await supabase
+    .from("product_sessions")
+    .insert({ user_id: userId })
+    .select("id")
+    .single();
+  if (sessionError || !newSession?.id) {
+    console.error("Ошибка создания сессии:", sessionError);
+    return { error: "Ошибка создания сессии", status: 500 };
+  }
+  return { sessionId: newSession.id as string };
+}
+
 /**
  * Сохранение данных этапа "Понимание" в Supabase
  * ВАЖНО: Все операции через серверный API route для безопасности
@@ -63,9 +134,11 @@ export async function POST(request: NextRequest) {
     });
 
     const { session_id, product_name, photo_url, selected_method } = body;
+    const safePhotoUrl = sanitizePhotoUrlForDb(photo_url);
+    const method = String(selected_method || "photo").trim() || "photo";
 
     // Валидация входных данных
-    if (!product_name || !selected_method) {
+    if (!product_name || !method) {
       return NextResponse.json(
         { error: "product_name и selected_method обязательны" },
         { status: 400 }
@@ -110,66 +183,13 @@ export async function POST(request: NextRequest) {
             { status: 403 }
           );
         }
-        const sub = await getSubscriptionByUserId(supabase as any, userId);
-        if (!sub) {
-          return NextResponse.json(
-            { error: "Выберите тариф (Поток или Свободное творчество) на главной" },
-            { status: 403 }
-          );
+        const charged = await chargeFlowAndCreateSession(supabase, userId);
+        if ("error" in charged) {
+          return NextResponse.json({ error: charged.error }, { status: charged.status });
         }
-        if (sub.flowsLimit <= 0) {
-          return NextResponse.json(
-            { error: "Поток не куплен. Выберите тариф «Поток» на главной." },
-            { status: 403 }
-          );
-        }
-        if (sub.flowsUsed >= sub.flowsLimit) {
-          const flowsLeft = Math.max(0, sub.flowsLimit - sub.flowsUsed);
-          return NextResponse.json(
-            { error: "Лимит потоков исчерпан. Доступно потоков: " + flowsLeft + "." },
-            { status: 403 }
-          );
-        }
-        const flowRows = await getSubscriptionRowsByUserId(supabase as any, userId);
-        const flowRow = flowRows.find((r) => r.plan_type === "flow");
-        if (!flowRow) {
-          return NextResponse.json(
-            { error: "Запись подписки «Поток» не найдена." },
-            { status: 403 }
-          );
-        }
-        const { error: updErr } = await supabase
-          .from("user_subscriptions")
-          .update({ flows_used: flowRow.flows_used + 1 })
-          .eq("user_id", userId)
-          .eq("plan_type", "flow");
-        if (updErr) {
-          console.error("Ошибка списания потока:", updErr);
-          return NextResponse.json(
-            { error: "Ошибка списания потока" },
-            { status: 500 }
-          );
-        }
-        // Создаем новую сессию для нового товара
-        const { data: newSession, error: sessionError } = await supabase
-          .from("product_sessions")
-          .insert({
-            user_id: userId, // Связываем с пользователем, если авторизован
-          })
-          .select("id")
-          .single();
-
-        if (sessionError) {
-          console.error("Ошибка создания новой сессии:", sessionError);
-          // Продолжаем со старым session_id, но очистим данные описания
-          await supabase
-            .from("description_data")
-            .delete()
-            .eq("session_id", finalSessionId);
-        } else {
-          finalSessionId = newSession.id;
-          console.log("✅ Создана новая сессия:", finalSessionId);
-        }
+        finalSessionId = charged.sessionId;
+        console.log("✅ Создана новая сессия:", finalSessionId);
+        await supabase.from("description_data").delete().eq("session_id", session_id);
       }
       // Если товар тот же, обновляем user_id если он был null
       if (finalSessionId) {
@@ -214,7 +234,6 @@ export async function POST(request: NextRequest) {
       }
       // Если товар тот же, не трогаем данные описания (они должны сохраниться при обновлении страницы)
     } else {
-      // Если session_id не передан, создаем новую сессию (новый поток)
       const userId = await getUserIdFromRequest(request, supabase);
       if (!userId) {
         return NextResponse.json(
@@ -222,74 +241,21 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
-      const sub = await getSubscriptionByUserId(supabase as any, userId);
-      if (!sub) {
-        return NextResponse.json(
-          { error: "Выберите тариф (Поток или Свободное творчество) на главной" },
-          { status: 403 }
-        );
+      const charged = await chargeFlowAndCreateSession(supabase, userId);
+      if ("error" in charged) {
+        return NextResponse.json({ error: charged.error }, { status: charged.status });
       }
-      if (sub.flowsLimit <= 0) {
-        return NextResponse.json(
-          { error: "Поток не куплен. Выберите тариф «Поток» на главной." },
-          { status: 403 }
-        );
-      }
-      if (sub.flowsUsed >= sub.flowsLimit) {
-        const flowsLeft = Math.max(0, sub.flowsLimit - sub.flowsUsed);
-        return NextResponse.json(
-          { error: "Лимит потоков исчерпан. Доступно потоков: " + flowsLeft + "." },
-          { status: 403 }
-        );
-      }
-      const flowRows = await getSubscriptionRowsByUserId(supabase as any, userId);
-      const flowRow = flowRows.find((r) => r.plan_type === "flow");
-      if (!flowRow) {
-        return NextResponse.json(
-          { error: "Запись подписки «Поток» не найдена." },
-          { status: 403 }
-        );
-      }
-      const { error: updErr } = await supabase
-        .from("user_subscriptions")
-        .update({ flows_used: flowRow.flows_used + 1 })
-        .eq("user_id", userId)
-        .eq("plan_type", "flow");
-      if (updErr) {
-        console.error("Ошибка списания потока:", updErr);
-        return NextResponse.json(
-          { error: "Ошибка списания потока" },
-          { status: 500 }
-        );
-      }
-      const { data: newSession, error: sessionError } = await supabase
-        .from("product_sessions")
-        .insert({
-          user_id: userId,
-        })
-        .select("id")
-        .single();
-
-      if (sessionError) {
-        console.error("Ошибка создания сессии:", sessionError);
-        return NextResponse.json(
-          { error: "Ошибка создания сессии" },
-          { status: 500 }
-        );
-      }
-
-      finalSessionId = newSession.id;
+      finalSessionId = charged.sessionId;
     }
 
-    // Сохраняем или обновляем данные этапа "Понимание"
     const { data, error } = await supabase
       .from("understanding_data")
       .upsert(
         {
           session_id: finalSessionId,
           product_name: product_name.trim(),
-          photo_url: photo_url || null,
-          selected_method: selected_method,
+          photo_url: safePhotoUrl,
+          selected_method: method,
         },
         {
           onConflict: "session_id",

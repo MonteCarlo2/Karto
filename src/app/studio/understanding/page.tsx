@@ -96,6 +96,8 @@ export default function UnderstandingPage() {
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const suggestAbortRef = useRef<AbortController | null>(null);
 
   // Сохранение состояния в localStorage
   useEffect(() => {
@@ -232,30 +234,36 @@ export default function UnderstandingPage() {
       return;
     }
 
+    suggestAbortRef.current?.abort();
+    const controller = new AbortController();
+    suggestAbortRef.current = controller;
+
     setIsLoadingSuggestions(true);
     try {
       const response = await fetch("/api/suggest-names", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
+        signal: controller.signal,
       });
       const data = await response.json();
+      if (controller.signal.aborted) return;
       if (data.suggestions && data.suggestions.length > 0) {
         setAiSuggestions(data.suggestions);
         setShowSuggestions(true);
-      } else {
-        // Очищаем только если нет подсказок и нет выбранного варианта
-        if (!selectedSuggestion) {
-          setAiSuggestions([]);
-          setShowSuggestions(false);
-        }
+      } else if (!selectedSuggestion) {
+        setAiSuggestions([]);
+        setShowSuggestions(false);
       }
     } catch (error) {
+      if ((error as Error)?.name === "AbortError") return;
       console.error("Ошибка получения подсказок:", error);
       setAiSuggestions([]);
       setShowSuggestions(false);
     } finally {
-      setIsLoadingSuggestions(false);
+      if (!controller.signal.aborted) {
+        setIsLoadingSuggestions(false);
+      }
     }
   };
 
@@ -270,7 +278,7 @@ export default function UnderstandingPage() {
     if (words.length >= 1 && words.length <= 4 && productName.trim().length > 0) {
       const timeoutId = setTimeout(() => {
         fetchAISuggestions(productName);
-      }, 300);
+      }, 700);
       return () => clearTimeout(timeoutId);
     } else if (words.length === 0) {
       // Очищаем только если поле полностью пустое
@@ -296,6 +304,7 @@ export default function UnderstandingPage() {
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      localStorage.removeItem("karto_session_id");
       setPhotoFile(file);
       // Сохраняем фото как data URL для восстановления
       const reader = new FileReader();
@@ -314,9 +323,12 @@ export default function UnderstandingPage() {
   /** Сохранение этапа «Понимание» и переход к описанию (список ИИ или своё название). */
   const saveUnderstandingAndContinue = async (finalProductName: string) => {
     const trimmed = finalProductName.trim();
-    if (!trimmed) return;
+    if (!trimmed || isSaving) return;
 
+    setIsSaving(true);
     const currentSessionId = localStorage.getItem("karto_session_id");
+    const photoForDb =
+      photoDataUrl && !photoDataUrl.startsWith("data:") ? photoDataUrl : null;
 
     try {
       const { data: { session } } = await createBrowserClient().auth.getSession();
@@ -328,8 +340,8 @@ export default function UnderstandingPage() {
         body: JSON.stringify({
           session_id: currentSessionId,
           product_name: trimmed,
-          photo_url: photoDataUrl,
-          selected_method: selectedMethod,
+          photo_url: photoForDb,
+          selected_method: selectedMethod || "photo",
         }),
       });
 
@@ -341,7 +353,6 @@ export default function UnderstandingPage() {
 
       const data = await response.json();
       if (data.success) {
-        console.log("✅ Данные этапа 'Понимание' сохранены:", data);
         if (data.session_id) {
           localStorage.setItem("karto_session_id", data.session_id);
         }
@@ -358,6 +369,8 @@ export default function UnderstandingPage() {
         errorMessage = "Ошибка соединения с сервером. Проверьте подключение к интернету.";
       }
       showNotification(errorMessage, "error");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -919,13 +932,14 @@ export default function UnderstandingPage() {
                                         style={{ marginBottom: showCustomInput ? "0" : "0" }}
                                       >
                                         <button
+                                          disabled={isSaving}
                                           onClick={async () => {
-                                            if (selectedNameIndex === null || !analysisResult) return;
+                                            if (selectedNameIndex === null || !analysisResult || isSaving) return;
                                             const finalProductName = analysisResult.names[selectedNameIndex];
                                             if (!finalProductName) return;
                                             await saveUnderstandingAndContinue(finalProductName);
                                           }}
-                                          className="w-full py-3 px-5 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all"
+                                          className="w-full py-3 px-5 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                           style={{
                                             background: "#2E5A43",
                                             color: "#ffffff",
@@ -942,7 +956,7 @@ export default function UnderstandingPage() {
                                           }}
                                         >
                                           <Check className="w-5 h-5" />
-                                          Продолжить с этим названием
+                                          {isSaving ? "Сохранение…" : "Продолжить с этим названием"}
                                         </button>
                                       </motion.div>
                                     )}
@@ -1507,76 +1521,20 @@ export default function UnderstandingPage() {
                         {/* Кнопка "Продолжить" - всегда видна внизу блока */}
                         <div className="mt-6 pt-4 border-t border-gray-200 flex justify-end">
                           <button
-                            disabled={!productName.trim()}
+                            disabled={!productName.trim() || isSaving}
                             onClick={async () => {
-                              if (!productName.trim()) return;
-                              
-                              try {
-                                let sessionId = localStorage.getItem("karto_session_id");
-                                const { data: { session } } = await createBrowserClient().auth.getSession();
-                                const headers: Record<string, string> = { "Content-Type": "application/json" };
-                                if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
-                                const response = await fetch("/api/supabase/save-understanding", {
-                                  method: "POST",
-                                  headers,
-                                  body: JSON.stringify({
-                                    session_id: sessionId || null,
-                                    product_name: productName.trim(),
-                                    photo_url: photoDataUrl || null,
-                                    selected_method: selectedMethod || "name",
-                                  }),
-                                });
-                                
-                                // Для ожидаемых бизнес-ошибок не бросаем exception,
-                                // чтобы не провоцировать dev-overlay в браузере.
-                                if (!response.ok) {
-                                  const errorData = await response.json().catch(() => ({ error: "Неизвестная ошибка сервера" }));
-                                  showNotification(
-                                    errorData.error || `Ошибка сервера: ${response.status}`,
-                                    "error"
-                                  );
-                                  return;
-                                }
-                                
-                                const data = await response.json();
-                                
-                                if (data.success) {
-                                  // Сохраняем session_id в localStorage
-                                  localStorage.setItem("karto_session_id", data.session_id);
-                                  
-                                  showNotification("Данные успешно сохранены", "success");
-                                  
-                                  // Переходим на этап "Описание"
-                                  setTimeout(() => {
-                                    router.push("/studio/description");
-                                  }, 500);
-                                } else {
-                                  showNotification(
-                                    data.error || "Ошибка сохранения данных. Попробуйте еще раз.",
-                                    "error"
-                                  );
-                                }
-                              } catch (error: any) {
-                                let errorMessage = "Ошибка соединения. Проверьте подключение к интернету.";
-                                
-                                if (error.message) {
-                                  errorMessage = error.message;
-                                } else if (error.name === "TypeError" && error.message?.includes("fetch")) {
-                                  errorMessage = "Ошибка соединения с сервером. Проверьте подключение к интернету.";
-                                }
-                                
-                                showNotification(errorMessage, "error");
-                              }
+                              if (!productName.trim() || isSaving) return;
+                              await saveUnderstandingAndContinue(productName.trim());
                             }}
                             className="px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{
-                              background: productName.trim() ? "#2E5A43" : "rgba(46, 90, 67, 0.3)",
+                              background: productName.trim() && !isSaving ? "#2E5A43" : "rgba(46, 90, 67, 0.3)",
                               color: "#ffffff",
                               border: "none",
                             }}
                           >
                             <Check className="w-5 h-5" />
-                            Принять и продолжить →
+                            {isSaving ? "Сохранение…" : "Принять и продолжить →"}
                           </button>
                         </div>
                       </motion.div>

@@ -75,7 +75,7 @@ export function Notification({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -20, scale: 0.95 }}
           transition={{ duration: 0.3, ease: "easeOut" }}
-          className={`fixed top-6 right-6 z-50 max-w-md rounded-xl border-2 shadow-2xl p-4 ${getStyles()}`}
+          className={`fixed top-6 right-6 z-[10000] max-w-md rounded-xl border-2 shadow-2xl p-4 ${getStyles()}`}
         >
           <div className="flex items-start gap-3">
             <div className="flex-shrink-0 mt-0.5">{getIcon()}</div>
