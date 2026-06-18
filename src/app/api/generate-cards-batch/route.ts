@@ -5,46 +5,45 @@ import {
   isOpenRouterConfigured,
   productNamesMatch,
 } from "@/lib/services/openrouter-product-vision";
+import { isFlowImageProviderConfigured } from "@/lib/services/flow-image-generation";
+import { classifyFlowImageError, type FlowImageErrorCode } from "@/lib/flow-image-errors";
 import { createServerClient } from "@/lib/supabase/server";
 import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
+import { ensurePublicProductPhotoUrl } from "@/lib/flow/upload-flow-product-photo";
+import {
+  CARD_BATCH_MAX_WAIT_MS,
+  CARD_SLOT_CHECKPOINT_MS,
+  persistVisualGeneratedCards,
+  runVisualBatchRace,
+} from "@/lib/flow/visual-batch-race";
+import { setVisualBatchProgress } from "@/lib/flow/visual-batch-progress";
+import { runFlowGenerateCardForBatch } from "@/app/api/generate-card/route";
+import { ensureFlowCardDisplayUrl } from "@/lib/flow/cache-flow-card-image";
 
-// 4K через WaveSpeed может занимать >100s; 100s давали массовый Abort → несколько слотов «упали» сразу.
-// По умолчанию 3 мин на слот; переопределение: WAVESPEED_BATCH_CARD_TIMEOUT_MS или KIE_BATCH_CARD_TIMEOUT_MS.
-const CARD_GENERATE_TIMEOUT_MS =
-  Number(process.env.WAVESPEED_BATCH_CARD_TIMEOUT_MS) ||
-  Number(process.env.KIE_BATCH_CARD_TIMEOUT_MS) ||
-  180_000;
-
-/** Сессии, для которых уже выполняется батч — не запускаем второй параллельный батч. */
-const batchLockBySession = new Set<string>();
+export const maxDuration = 600;
 
 /**
  * Генерация 4 карточек одновременно с уникальными концепциями
  */
 export async function POST(request: NextRequest) {
-  console.log("🚀 [BATCH] ========== НАЧАЛО BATCH ГЕНЕРАЦИИ ==========");
-
-  let sessionIdForLock: string | null = null;
+  let sessionIdForLog: string | null = null;
 
   try {
-    console.log("📥 [BATCH] Получаю body запроса...");
     const body = await request.json();
-    console.log("📥 [BATCH] Body получен, ключи:", Object.keys(body));
-    
+
     const {
       sessionId,
       productName,
       photoUrl,
-      customPrompt, // Пожелания к стилю
-      addText, // Включен ли текст на карточке
-      title, // Заголовок
-      bullets, // Буллиты (массив)
-      aspectRatio, // "3:4" или "1:1"
-      count = 4, // Количество карточек для генерации (по умолчанию 4)
+      customPrompt,
+      addText,
+      title,
+      bullets,
+      aspectRatio,
+      count = 4,
     } = body;
 
-    // Проверяем обязательные поля
     if (!productName) {
       return NextResponse.json(
         { success: false, error: "Требуется название товара" },
@@ -58,40 +57,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = createServerClient();
-
-    // Защита от повторного запуска батча для той же сессии
-    if (batchLockBySession.has(sessionId)) {
-      console.warn("⚠️ [BATCH] Сессия уже в процессе генерации, повторный запрос:", sessionId);
-
-      // Если результат уже успели сохранить — отдаем его сразу, чтобы фронт не «терял» карточки.
-      const { data: visualRow } = await supabase
-        .from("visual_data")
-        .select("visual_state")
-        .eq("session_id", sessionId)
-        .maybeSingle();
-
-      const generatedCards = (visualRow?.visual_state as any)?.generatedCards;
-      if (Array.isArray(generatedCards) && generatedCards.length > 0) {
-        console.log("✅ [BATCH] Найдены сохранённые generatedCards, возвращаем без новой генерации");
-        return NextResponse.json(
-          { success: true, imageUrls: generatedCards, code: "BATCH_CACHED_RESULT" },
-          { status: 200 }
-        );
-      }
-
-      // Иначе сообщаем «в процессе» — фронт может подождать и забрать результат из Supabase.
+    if (!isFlowImageProviderConfigured()) {
       return NextResponse.json(
         {
           success: false,
-          error: "Генерация уже выполняется для этой сессии. Дождитесь завершения.",
-          code: "BATCH_ALREADY_RUNNING",
+          error:
+            "Не настроен ключ генерации изображений. Добавьте WAVESPEED_API_KEY или EVOLINK_API_KEY в .env.local.",
+          code: "IMAGE_PROVIDER_NOT_CONFIGURED",
         },
-        { status: 202 }
+        { status: 500 }
       );
     }
-    batchLockBySession.add(sessionId);
-    sessionIdForLock = sessionId;
+
+    sessionIdForLog = sessionId;
+    const supabase = createServerClient();
+
     const quotaBefore = await getVisualQuota(supabase as any, sessionId);
     if (quotaBefore.remaining <= 0) {
       return NextResponse.json(
@@ -107,7 +87,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Проверка соответствия товара на фото и названия (защита от злоупотребления)
     if (photoUrl && isOpenRouterConfigured()) {
       try {
         console.log("🔍 [BATCH] Проверяю соответствие товара на фото и названия через OpenRouter...");
@@ -142,8 +121,7 @@ export async function POST(request: NextRequest) {
     console.log("🎨 [BATCH] Генерация 4 дизайн-концепций через OpenRouter...");
     console.log("🎨 [BATCH] Товар:", productName);
     console.log("🎨 [BATCH] Пожелания:", customPrompt || "нет");
-    
-    // Генерируем 4 уникальные концепции через OpenRouter
+
     let concepts;
     try {
       concepts = await generateDesignConcepts(productName, customPrompt);
@@ -161,15 +139,16 @@ export async function POST(request: NextRequest) {
     } catch (error: any) {
       console.error("❌ [BATCH] ОШИБКА генерации концепций!");
       console.error("❌ [BATCH] Error:", error);
-      // Пробрасываем ошибку, чтобы пользователь видел проблему
-      return NextResponse.json({
-        success: false,
-        error: "Ошибка генерации концепций через OpenRouter",
-        details: error.message || String(error),
-      }, { status: 500 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Ошибка генерации концепций через OpenRouter",
+          details: error.message || String(error),
+        },
+        { status: 500 }
+      );
     }
 
-    // Генерируем карточки (максимум 4, используем все доступные концепции)
     const cardsToGenerate = Math.min(count, 4, concepts.length, quotaBefore.remaining);
     if (cardsToGenerate <= 0) {
       return NextResponse.json(
@@ -184,120 +163,183 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
-    console.log(`🎯 [BATCH] Генерируем ${cardsToGenerate} карточек с уникальными концепциями`);
+    console.log(`🎯 [BATCH] Генерируем ${cardsToGenerate} карточек`);
 
-    const port = process.env.PORT || "3000";
-    const host = process.env.VERCEL ? request.nextUrl.origin : `http://127.0.0.1:${port}`;
-    const generateOne = async (index: number): Promise<string | null> => {
-      const concept = concepts[index];
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), CARD_GENERATE_TIMEOUT_MS);
+    let rawPhoto =
+      typeof photoUrl === "string" && photoUrl.trim() ? photoUrl.trim() : "";
+    if (!rawPhoto) {
       try {
-        const response = await fetch(`${host}/api/generate-card`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            productName,
-            photoUrl,
-            customPrompt,
-            addText,
-            title,
-            bullets,
-            aspectRatio,
-            variation: index,
-            designConcept: concept,
-          }),
-          signal: controller.signal,
+        const { data } = await supabase
+          .from("understanding_data")
+          .select("photo_url")
+          .eq("session_id", sessionId)
+          .maybeSingle();
+        const fromDb = typeof data?.photo_url === "string" ? data.photo_url.trim() : "";
+        if (fromDb) rawPhoto = fromDb;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (!rawPhoto) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Фото товара не найдено. Вернитесь на этап «Понимание» и загрузите фото.",
+          code: "PHOTO_REQUIRED",
+        },
+        { status: 400 }
+      );
+    }
+
+    let effectivePhotoUrl = rawPhoto;
+    try {
+      const uploaded = await ensurePublicProductPhotoUrl(rawPhoto, sessionId);
+      if (uploaded) effectivePhotoUrl = uploaded;
+    } catch (e) {
+      console.warn("⚠️ [BATCH] Публичный URL не получен, generate-card загрузит в WaveSpeed:", e);
+    }
+
+    if (!effectivePhotoUrl) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Фото товара не передано.",
+          code: "PHOTO_REQUIRED",
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log(`📷 [BATCH] Референс для WaveSpeed: ${effectivePhotoUrl.slice(0, 96)}…`);
+
+    const cardRequestBase = {
+      productName,
+      photoUrl: effectivePhotoUrl,
+      customPrompt,
+      addText,
+      title,
+      bullets,
+      aspectRatio,
+      returnRemoteUrl: true,
+    };
+
+    const generateOne = async (
+      conceptIndex: number,
+      attemptLabel: string
+    ): Promise<{ url: string | null; error?: string; code?: string }> => {
+      const concept = concepts[conceptIndex];
+      try {
+        console.log(`🎴 [BATCH] Запрос ${attemptLabel} (концепция ${conceptIndex + 1})`);
+        const result = await runFlowGenerateCardForBatch({
+          ...cardRequestBase,
+          variation: conceptIndex,
+          designConcept: concept,
         });
-        clearTimeout(timeoutId);
-        const data = await response.json();
-        if (!response.ok || !data.success) throw new Error(data.error || `Ошибка карточки ${index + 1}`);
-        return data.imageUrl;
+        if (!result.url) {
+          return {
+            url: null,
+            error: result.error || `Ошибка карточки (${attemptLabel})`,
+            code: result.code,
+          };
+        }
+        const displayUrl = await ensureFlowCardDisplayUrl(result.url);
+        return { url: displayUrl };
       } catch (error: unknown) {
-        clearTimeout(timeoutId);
         const msg = (error as { message?: string })?.message ?? String(error);
-        console.error(`❌ Ошибка генерации карточки ${index + 1}:`, msg);
-        return null;
+        console.error(`❌ [BATCH] ${attemptLabel}:`, msg);
+        const classified = classifyFlowImageError(msg);
+        return { url: null, error: classified.userMessage, code: classified.code };
       }
     };
 
-    let cardUrls: (string | null)[] = await Promise.all(
-      concepts.slice(0, cardsToGenerate).map((_, index) => generateOne(index))
-    );
+    const emptySlots = Array(cardsToGenerate).fill(null) as (string | null)[];
+    setVisualBatchProgress(sessionId, emptySlots, true);
 
-    // Ровно один повторный раунд — только для слотов, где по-прежнему null (не дублируем успешные).
-    const failedIndices = cardUrls
-      .map((url, i) => (url === null ? i : -1))
-      .filter((i) => i >= 0);
-    if (failedIndices.length > 0) {
-      console.log(
-        `🔄 [BATCH] Повтор только для ${failedIndices.length} слот(ов) без результата:`,
-        failedIndices.map((i) => i + 1)
-      );
-      const retries = await Promise.all(failedIndices.map((index) => generateOne(index)));
-      failedIndices.forEach((origIndex, i) => {
-        if (retries[i] !== null) cardUrls[origIndex] = retries[i];
-      });
-    }
+    const { slots: cardUrls, errors: cardErrors } = await runVisualBatchRace({
+      slotCount: cardsToGenerate,
+      concepts,
+      checkpointMs: CARD_SLOT_CHECKPOINT_MS,
+      maxWaitMs: CARD_BATCH_MAX_WAIT_MS,
+      generateOne,
+      onSlotFilled: (slots) => {
+        setVisualBatchProgress(sessionId, slots, true);
+      },
+    });
 
+    const cardResults = cardErrors;
     const successfulCards = cardUrls.filter((url): url is string => url !== null);
 
-    // UI всегда 4 слота вариантов — дополняем null, если квота/концепций меньше четырёх.
+    function pickBatchFailure(
+      failures: Array<{ error?: string; code?: string }>
+    ): { error: string; code: FlowImageErrorCode; status: number } {
+      const codes = failures.map((f) => f.code).filter(Boolean) as FlowImageErrorCode[];
+      if (codes.length > 0 && codes.every((c) => c === "IMAGE_PROVIDER_AUTH")) {
+        return {
+          error:
+            "Неверный ключ WaveSpeed. Ключ в WAVESPEED_API_KEY отклонён; проверьте ключ в кабинете WaveSpeed или используйте рабочий EVOLINK_API_KEY.",
+          code: "IMAGE_PROVIDER_AUTH",
+          status: 401,
+        };
+      }
+      if (codes.some((c) => c === "INSUFFICIENT_CREDITS")) {
+        return {
+          error:
+            "Недостаточно кредитов на счёте EvoLink/WaveSpeed для генерации карточек. Пополните баланс и повторите.",
+          code: "INSUFFICIENT_CREDITS",
+          status: 402,
+        };
+      }
+      const first = failures.find((f) => f.error)?.error;
+      return {
+        error:
+          first ||
+          "Сервис генерации временно недоступен. Попробуйте позже или проверьте подключение.",
+        code: "SERVICE_UNAVAILABLE",
+        status: 503,
+      };
+    }
+
     while (cardUrls.length < 4) {
       cardUrls.push(null);
     }
 
     if (successfulCards.length === 0) {
-      return NextResponse.json({
-        success: false,
-        error: "Сервис генерации временно недоступен. Попробуйте позже или проверьте подключение.",
-        code: "SERVICE_UNAVAILABLE",
-      }, { status: 503 });
+      setVisualBatchProgress(sessionId, cardUrls, false);
+      const failure = pickBatchFailure(cardResults);
+      console.error("❌ [BATCH] Все слоты пустые:", failure);
+      return NextResponse.json(
+        {
+          success: false,
+          error: failure.error,
+          code: failure.code,
+        },
+        { status: failure.status }
+      );
     }
 
     console.log(`✅ Успешно сгенерировано ${successfulCards.length}/${cardsToGenerate} карточек`);
     const quotaAfter = await incrementVisualQuota(supabase as any, sessionId, successfulCards.length);
 
-    // Сохраняем generatedCards в Supabase, чтобы фронт мог восстановить результат даже при обрыве/повторе запроса.
-    try {
-      const { data: existingVisualRow } = await supabase
-        .from("visual_data")
-        .select("visual_state")
-        .eq("session_id", sessionId)
-        .maybeSingle();
+    setVisualBatchProgress(sessionId, cardUrls, false);
 
-      const existingState = (existingVisualRow?.visual_state || {}) as Record<string, unknown>;
-      const nextState = {
-        ...existingState,
-        // Фиксированные слоты 0..cardsToGenerate-1 (null = нет картинки) — UI и ретраи по индексу варианта.
-        generatedCards: cardUrls,
+    try {
+      await persistVisualGeneratedCards(sessionId, cardUrls, {
         selectedCardIndex: null,
         isSeriesMode: false,
         generation_used: quotaAfter.used,
         generation_limit: quotaAfter.limit,
-        lastGeneratedAt: new Date().toISOString(),
-      };
-
-      const { error: saveErr } = await supabase
-        .from("visual_data")
-        .upsert(
-          {
-            session_id: sessionId,
-            visual_state: nextState,
-          },
-          { onConflict: "session_id" }
-        );
-      if (saveErr) console.error("❌ [BATCH] Не удалось сохранить generatedCards в Supabase:", saveErr);
-      else console.log("💾 [BATCH] generatedCards сохранены в Supabase");
+      });
+      console.log("💾 [BATCH] generatedCards сохранены в Supabase");
     } catch (e) {
       console.error("❌ [BATCH] Ошибка сохранения generatedCards:", e);
     }
 
     return NextResponse.json({
       success: true,
-      // Параллельно с слотами вариантов (1..4); не сжимаем — иначе сетка путает «Вариант 4» с пустым слотом.
       imageUrls: cardUrls,
-      concepts: concepts.slice(0, cardsToGenerate).map(c => ({
+      concepts: concepts.slice(0, cardsToGenerate).map((c) => ({
         style: c.style,
         composition: c.composition,
         colors: c.colors,
@@ -308,26 +350,30 @@ export async function POST(request: NextRequest) {
       generationRemaining: quotaAfter.remaining,
       generationLimit: quotaAfter.limit,
     });
-
   } catch (error: unknown) {
     if (isSupabaseNetworkError(error)) {
       console.warn("⚠️ [BATCH] Supabase/сеть недоступны при генерации карточек");
-      return NextResponse.json({
-        success: false,
-        error: "Сервис генерации временно недоступен. Попробуйте позже.",
-        code: "SERVICE_UNAVAILABLE",
-      }, { status: 503 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Сервис генерации временно недоступен. Попробуйте позже.",
+          code: "SERVICE_UNAVAILABLE",
+        },
+        { status: 503 }
+      );
     }
     console.error("❌ Ошибка batch генерации:", error);
-    return NextResponse.json({
-      success: false,
-      error: "Ошибка генерации карточек",
-      details: (error as { message?: string })?.message || String(error),
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Ошибка генерации карточек",
+        details: (error as { message?: string })?.message || String(error),
+      },
+      { status: 500 }
+    );
   } finally {
-    if (sessionIdForLock) {
-      batchLockBySession.delete(sessionIdForLock);
-      console.log("🔓 [BATCH] Снята блокировка сессии:", sessionIdForLock);
+    if (sessionIdForLog) {
+      console.log("🔓 [BATCH] Завершено для сессии:", sessionIdForLog);
     }
   }
 }

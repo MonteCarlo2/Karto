@@ -16,26 +16,40 @@ function toNonNegativeInt(value: unknown): number {
   return Math.max(0, Math.floor(value));
 }
 
+function defaultQuota(): VisualQuota {
+  return {
+    used: 0,
+    remaining: VISUAL_GENERATION_LIMIT,
+    limit: VISUAL_GENERATION_LIMIT,
+  };
+}
+
 export async function getVisualQuota(
   supabase: any,
   sessionId: string
 ): Promise<VisualQuota> {
-  const { data, error } = await supabase
-    .from("visual_data")
-    .select("visual_state")
-    .eq("session_id", sessionId)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from("visual_data")
+      .select("visual_state")
+      .eq("session_id", sessionId)
+      .maybeSingle();
 
-  if (error) {
-    throw new Error(`Ошибка чтения лимита визуала: ${error.message || String(error)}`);
+    if (error) {
+      console.warn("⚠️ [visual-quota] Чтение лимита не удалось, используем дефолт:", error.message);
+      return defaultQuota();
+    }
+
+    const state = (data?.visual_state || {}) as VisualQuotaState;
+    const used = toNonNegativeInt(state.generation_used);
+    const limit = toNonNegativeInt(state.generation_limit) || VISUAL_GENERATION_LIMIT;
+    const remaining = Math.max(0, limit - used);
+
+    return { used, remaining, limit };
+  } catch (error) {
+    console.warn("⚠️ [visual-quota] Сеть/Supabase недоступны, используем дефолт:", error);
+    return defaultQuota();
   }
-
-  const state = (data?.visual_state || {}) as VisualQuotaState;
-  const used = toNonNegativeInt(state.generation_used);
-  const limit = toNonNegativeInt(state.generation_limit) || VISUAL_GENERATION_LIMIT;
-  const remaining = Math.max(0, limit - used);
-
-  return { used, remaining, limit };
 }
 
 export async function incrementVisualQuota(

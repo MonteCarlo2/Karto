@@ -9,6 +9,7 @@ import type { PriceAnalysis } from "@/lib/services/price-analyzer";
 import { formatForCopy } from "@/lib/utils/marketplace-formatter";
 import { ResultsProductDescription } from "@/components/studio/ProductDescriptionDisplay";
 import { resolveFlowPhoto, resolveFlowProductName } from "@/lib/flow/flow-photo-cache";
+import { flowPriceCacheKey, flowVisualSlidesKey } from "@/lib/flow/flow-persistence-keys";
 import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
 import {
   GALLERY_GRID_PROXY_MAX_WIDTH,
@@ -116,10 +117,28 @@ export default function ResultsPage() {
               visualData = resultsData.visual_slides.filter(
                 (slide: VisualSlide) => slide.imageUrl
               );
+            }
+
+            if (
+              visualData.length === 0 &&
+              resultsData.visual_state?.generatedCards &&
+              Array.isArray(resultsData.visual_state.generatedCards)
+            ) {
+              visualData = resultsData.visual_state.generatedCards
+                .filter((url: unknown): url is string => typeof url === "string" && url.length > 0)
+                .map((url: string, index: number) => ({
+                  id: index + 1,
+                  imageUrl: url,
+                  variants: [],
+                  prompt: "",
+                  scenario: null,
+                  aspectRatio: "3:4" as const,
+                }));
+            }
+
+            if (visualData.length > 0) {
               setVisualSlides(visualData);
-              if (visualData.length > 0) {
-                setActiveImageIndex(0);
-              }
+              setActiveImageIndex(0);
               console.log("✅ Визуальные данные загружены из Supabase:", visualData.length, "слайдов");
             }
             
@@ -136,7 +155,7 @@ export default function ResultsPage() {
         
         // Fallback: если в Supabase нет данных, пытаемся загрузить из localStorage
         if (visualData.length === 0) {
-          const visualCacheKey = `karto_visual_slides_${savedSessionId}`;
+          const visualCacheKey = flowVisualSlidesKey(savedSessionId);
           const visualCachedRaw = localStorage.getItem(visualCacheKey);
           if (visualCachedRaw) {
             try {
@@ -158,9 +177,24 @@ export default function ResultsPage() {
         }
         
         if (!priceData) {
-          const cacheKey = `karto_price_analysis_${savedSessionId}`;
+          const cacheKey = flowPriceCacheKey(savedSessionId);
           const cachedRaw = localStorage.getItem(cacheKey);
-          if (cachedRaw) {
+          if (!cachedRaw) {
+            const legacyKey = `karto_price_analysis_${savedSessionId}`;
+            const legacyRaw = localStorage.getItem(legacyKey);
+            if (legacyRaw) {
+              try {
+                const cached = JSON.parse(legacyRaw);
+                if (cached?.analysis) {
+                  priceData = cached.analysis as PriceAnalysis;
+                  setPriceAnalysis(priceData);
+                }
+              } catch {
+                /* ignore */
+              }
+            }
+          }
+          if (!priceData && cachedRaw) {
             try {
               const cached = JSON.parse(cachedRaw);
               if (cached?.analysis) {

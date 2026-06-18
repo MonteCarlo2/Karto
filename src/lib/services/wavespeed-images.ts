@@ -10,6 +10,7 @@
  */
 
 import { prepareEvolinkImageUrls } from "@/lib/services/evolink-images";
+import sharp from "sharp";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -343,13 +344,116 @@ async function pollUntilImageUrl(
   throw new Error("Превышено время ожидания результата WaveSpeed");
 }
 
+/** Загрузка референса на CDN WaveSpeed (обход Supabase Storage). */
+export async function uploadBufferToWaveSpeedMedia(
+  buffer: Buffer,
+  filename = "ref.jpg"
+): Promise<string> {
+  const apiKey = getWsApiKey();
+  const uploadUrl = `${wsOrigin()}/api/v3/media/upload/binary`;
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([new Uint8Array(buffer)], { type: "image/jpeg" }),
+    filename
+  );
+
+  const response = await fetchWithTimeout(
+    uploadUrl,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+    },
+    60_000
+  );
+
+  const text = await response.text();
+  let json: Record<string, unknown>;
+  try {
+    json = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error(`WaveSpeed upload: некорректный JSON (${response.status})`);
+  }
+
+  if (!response.ok) {
+    const msg =
+      typeof json.message === "string" ? json.message : text.slice(0, 400);
+    throw new Error(`WaveSpeed upload ${response.status}: ${msg}`);
+  }
+
+  const data = json.data as Record<string, unknown> | undefined;
+  const url =
+    (typeof data?.download_url === "string" && data.download_url) ||
+    (typeof data?.url === "string" && data.url) ||
+    "";
+  if (!url.startsWith("http")) {
+    throw new Error("WaveSpeed upload не вернул download_url");
+  }
+  console.log(`✅ [WaveSpeed] Референс загружен: ${url.slice(0, 80)}…`);
+  return url;
+}
+
+async function referenceSourceToBuffer(source: string): Promise<Buffer> {
+  if (source.startsWith("data:image")) {
+    const comma = source.indexOf(",");
+    if (comma === -1) throw new Error("Invalid data URL");
+    const raw = Buffer.from(source.slice(comma + 1), "base64");
+    return raw.length > 400_000
+      ? sharp(raw)
+          .rotate()
+          .resize({ width: 1200, withoutEnlargement: true })
+          .jpeg({ quality: 80 })
+          .toBuffer()
+      : sharp(raw).rotate().jpeg({ quality: 85 }).toBuffer();
+  }
+  const res = await fetch(source);
+  if (!res.ok) throw new Error(`Download ref failed: ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/** Публичные URL референсов для edit: сначала WaveSpeed CDN, иначе Supabase/EvoLink. */
+export async function prepareWaveSpeedReferenceUrls(inputs: string[]): Promise<string[]> {
+  const slice = inputs.slice(0, 14);
+  const out: string[] = [];
+
+  for (let i = 0; i < slice.length; i++) {
+    const source = slice[i]?.trim();
+    if (!source) continue;
+
+    if (source.startsWith("https://") && !source.includes("localhost")) {
+      out.push(source);
+      continue;
+    }
+    if (
+      source.startsWith("http://") &&
+      !source.includes("localhost") &&
+      !source.includes("127.0.0.1")
+    ) {
+      out.push(source);
+      continue;
+    }
+
+    try {
+      const buf = await referenceSourceToBuffer(source);
+      out.push(await uploadBufferToWaveSpeedMedia(buf, `flow-ref-${i + 1}.jpg`));
+    } catch (wsErr) {
+      console.warn(`⚠️ [WaveSpeed] upload ref ${i + 1} failed, fallback:`, wsErr);
+      const fallback = await prepareEvolinkImageUrls([source]);
+      if (fallback[0]) out.push(fallback[0]);
+    }
+  }
+
+  return out;
+}
+
 export type WavespeedNanoGenerationResult = {
   imageUrl: string;
   referenceUsed: boolean;
 };
 
 /**
- * Nano Banana 2 на WaveSpeed: text-to-image или edit с референсами (публичные URL через Supabase).
+ * Nano Banana 2 на WaveSpeed: text-to-image или edit с референсами (URL через WaveSpeed CDN).
  */
 export async function generateWithWaveSpeedNanoBanana2(
   prompt: string,
@@ -360,8 +464,14 @@ export async function generateWithWaveSpeedNanoBanana2(
   const ar = wavespeedNanoAspectRatio(aspectRatio);
 
   let imageUrls: string[] | null = null;
-  if (imageInput && imageInput.length > 0) {
-    imageUrls = await prepareEvolinkImageUrls(imageInput.slice(0, 4));
+  const hasReferenceInput = Boolean(imageInput && imageInput.length > 0);
+  if (hasReferenceInput) {
+    imageUrls = await prepareWaveSpeedReferenceUrls(imageInput!.slice(0, 4));
+    if (imageUrls.length === 0) {
+      throw new Error(
+        "Не удалось подготовить фото товара для WaveSpeed. Загрузите фото на этапе «Понимание»."
+      );
+    }
   }
 
   let pathRel: string;

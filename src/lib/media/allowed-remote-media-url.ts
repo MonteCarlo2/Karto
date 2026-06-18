@@ -101,6 +101,9 @@ export function isAllowedRemoteMediaUrl(url: URL, sameOrigin: string): boolean {
 
   if (host.endsWith(".blob.vercel-storage.com")) return true;
 
+  /** WaveSpeed / EvoLink отдают PNG с CloudFront — без этого прокси 403 и пустые карточки в Потоке. */
+  if (host.endsWith(".cloudfront.net")) return true;
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL;
   if (appUrl) {
     try {

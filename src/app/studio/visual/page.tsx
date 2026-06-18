@@ -48,14 +48,23 @@ import {
 import { fetchUserBrandOnboarding } from "@/lib/brand/user-brand-onboarding-db";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
-import { resolveFlowPhoto, resolveFlowProductName } from "@/lib/flow/flow-photo-cache";
+import { resolveFlowPhoto, resolveFlowProductName, saveFlowSessionPhoto } from "@/lib/flow/flow-photo-cache";
+import { compressFlowPhotoDataUrl } from "@/lib/flow/compress-flow-photo";
+import {
+  flowVisualSlidesKey,
+  readVisualPageStateFromLs,
+  writeVisualPageStateToLs,
+  type PersistedVisualFormSettings,
+} from "@/lib/flow/flow-persistence-keys";
 import { BugReportModal } from "@/components/ui/bug-report-modal";
 import { useToast } from "@/components/ui/toast";
 import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
 import {
   GALLERY_GRID_PROXY_MAX_WIDTH,
   GALLERY_REFERENCE_PROXY_MAX_WIDTH,
+  withServeFilePreviewParam,
 } from "@/lib/client/gallery-display-url";
+import type { ImgHTMLAttributes } from "react";
 
 /** 4 слота вариантов; null = нет картинки (ожидание / сбой). Старые сохранения без null дополняем. */
 function normalizeVisualCardSlots(raw: unknown): (string | null)[] {
@@ -70,6 +79,77 @@ function normalizeVisualCardSlots(raw: unknown): (string | null)[] {
 
 function countFilledCardSlots(slots: (string | null)[]): number {
   return slots.filter((x): x is string => typeof x === "string" && x.length > 0).length;
+}
+
+function slotsNeedRemoteHydrate(slots: (string | null)[]): boolean {
+  return slots.some((u) => typeof u === "string" && /^https?:\/\//i.test(u.trim()));
+}
+
+async function hydrateCardUrlSlots(slots: (string | null)[]): Promise<(string | null)[]> {
+  if (!slotsNeedRemoteHydrate(slots)) return slots;
+  try {
+    const res = await fetch("/api/flow/hydrate-card-urls", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls: slots }),
+    });
+    const data = await res.json();
+    if (data?.success && Array.isArray(data.urls)) {
+      return normalizeVisualCardSlots(data.urls);
+    }
+  } catch (e) {
+    console.warn("[visual] hydrate-card-urls failed:", e);
+  }
+  return slots;
+}
+
+/** Локальные /api/serve-file — напрямую в <img>, без proxy-display. */
+function FlowCardImage({
+  imageUrl,
+  alt = "",
+  className,
+  previewMaxWidth,
+  fullResolution = false,
+  ...rest
+}: {
+  imageUrl: string;
+  alt?: string;
+  className?: string;
+  previewMaxWidth?: number;
+  fullResolution?: boolean;
+} & Omit<ImgHTMLAttributes<HTMLImageElement>, "src">) {
+  const directSrc = useMemo(() => {
+    const t = imageUrl.trim();
+    if (!t) return null;
+    if (t.startsWith("/api/serve-file")) {
+      return fullResolution ? t : withServeFilePreviewParam(t);
+    }
+    if (t.startsWith("/") && !t.startsWith("//")) return t;
+    return null;
+  }, [imageUrl, fullResolution]);
+
+  if (directSrc) {
+    return (
+      <img
+        {...rest}
+        src={directSrc}
+        alt={alt}
+        className={className}
+        decoding="async"
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+
+  return (
+    <GalleryProxiedImg
+      remoteUrl={imageUrl}
+      alt={alt}
+      className={className}
+      previewMaxWidth={previewMaxWidth}
+      {...rest}
+    />
+  );
 }
 
 /** Те же ключи, что в «Свободное творчество» — настройки учёта бренда синхронизируются. */
@@ -506,8 +586,9 @@ function CardModal({
             >
               <div className="relative w-full h-full flex items-center justify-center">
                 <div className="relative max-w-full max-h-[85vh]">
-                  <GalleryProxiedImg
-                    remoteUrl={imageUrl}
+                  <FlowCardImage
+                    imageUrl={imageUrl}
+                    fullResolution
                     alt="Сгенерированная карточка"
                     className="max-w-full max-h-[85vh] w-auto h-auto rounded-lg shadow-2xl object-contain"
                     loading="eager"
@@ -601,8 +682,8 @@ function ResultCard({
         className="absolute inset-0 cursor-pointer"
         onClick={isSelectionMode && onSelect ? onSelect : onOpenModal}
       >
-        <GalleryProxiedImg
-          remoteUrl={imageUrl}
+        <FlowCardImage
+          imageUrl={imageUrl}
           previewMaxWidth={GALLERY_GRID_PROXY_MAX_WIDTH}
           alt="Сгенерированная карточка"
           className="absolute inset-0 w-full h-full object-contain"
@@ -705,6 +786,11 @@ export default function VisualPage() {
   const fetchAbortRef = useRef<AbortController | null>(null);
   /** Защита от повторного запуска батча (двойной клик / Повторить пока первый запрос ещё в полёте). */
   const batchInFlightRef = useRef(false);
+  /** Опрос прогресса, пока батч на сервере (даже если isGenerating уже сброшен). */
+  const [batchPolling, setBatchPolling] = useState(false);
+  const lastCardsJsonRef = useRef("");
+  const pollInFlightRef = useRef(false);
+  const cardHydrateAttemptRef = useRef("");
   const [visualQuota, setVisualQuota] = useState<{ used: number; remaining: number; limit: number }>({
     used: 0,
     remaining: 12,
@@ -847,8 +933,19 @@ export default function VisualPage() {
   }, []);
 
 
-  // Загрузка данных из Supabase
+  // Загрузка данных из Supabase (+ localStorage fallback)
   useEffect(() => {
+    const applyFormSettings = (fs?: PersistedVisualFormSettings | null) => {
+      if (!fs) return;
+      if (fs.aspectRatio === "3:4" || fs.aspectRatio === "1:1") setAspectRatio(fs.aspectRatio);
+      if (typeof fs.addText === "boolean") setAddText(fs.addText);
+      if (typeof fs.title === "string") setTitle(fs.title);
+      if (Array.isArray(fs.bullets)) setBullets(fs.bullets);
+      if (typeof fs.customPrompt === "string") setCustomPrompt(fs.customPrompt);
+      if (typeof fs.selectedStyle === "string") setSelectedStyle(fs.selectedStyle);
+      if (fs.selectedColor !== undefined) setSelectedColor(fs.selectedColor);
+    };
+
     const loadData = async () => {
       const savedSessionId = localStorage.getItem("karto_session_id");
       if (!savedSessionId) {
@@ -889,12 +986,27 @@ export default function VisualPage() {
         
         const descriptionData = await descriptionResponse.json();
         if (descriptionData.success && descriptionData.data) {
-          const finalDesc = descriptionData.data.final_description || "";
-          setProductDescription(finalDesc);
-          if (finalDesc) {
-            setTitle(productName || "");
+          const row = descriptionData.data as {
+            final_description?: string | null;
+            generated_descriptions?: Array<{ description?: string }>;
+          };
+          let descText = (row.final_description || "").trim();
+          if (!descText && Array.isArray(row.generated_descriptions)) {
+            for (const item of row.generated_descriptions) {
+              const d = String(item?.description || "").trim();
+              if (d) {
+                descText = d;
+                break;
+              }
+            }
+          }
+          setProductDescription(descText);
+          if (descText) {
+            setTitle((prev) => prev || productName || "");
           }
         }
+
+        const lsState = readVisualPageStateFromLs(savedSessionId);
 
         // Загружаем состояние визуала (промежуточное состояние)
         const visualStateResponse = await fetch("/api/supabase/get-results", {
@@ -905,6 +1017,8 @@ export default function VisualPage() {
         
         const visualStateData = await visualStateResponse.json();
         
+        let restoredCards = false;
+
         // Приоритет 1: Если есть сохраненное состояние
         if (visualStateData.success && visualStateData.visual_state) {
           const state = visualStateData.visual_state;
@@ -918,21 +1032,20 @@ export default function VisualPage() {
             });
           }
           
-          // Восстанавливаем generatedCards (4 слота; старый формат без null — нормализуем)
           if (state.generatedCards && Array.isArray(state.generatedCards)) {
             const norm = normalizeVisualCardSlots(state.generatedCards);
-            if (norm.some(Boolean)) setGeneratedCards(norm);
+            if (norm.some(Boolean)) {
+              setGeneratedCards(norm);
+              restoredCards = true;
+            }
           }
           
-          // Восстанавливаем selectedCardIndex
           if (state.selectedCardIndex !== null && state.selectedCardIndex !== undefined) {
             setSelectedCardIndex(state.selectedCardIndex);
           }
           
-          // Восстанавливаем режим серии
           if (state.isSeriesMode === true) {
             setIsSeriesMode(true);
-            // Если есть слайды, восстанавливаем их
             if (visualStateData.visual_slides && Array.isArray(visualStateData.visual_slides) && visualStateData.visual_slides.length > 0) {
               setSlides(visualStateData.visual_slides);
               if (visualStateData.visual_slides[0]?.id) {
@@ -940,8 +1053,9 @@ export default function VisualPage() {
               }
             }
           }
+
+          applyFormSettings(state.formSettings as PersistedVisualFormSettings | undefined);
         } 
-        // Приоритет 2: Если нет состояния, но есть слайды - значит пользователь уже создал слайды (режим серии)
         else if (visualStateData.success && visualStateData.visual_slides && Array.isArray(visualStateData.visual_slides) && visualStateData.visual_slides.length > 0) {
           setSlides(visualStateData.visual_slides);
           if (visualStateData.visual_slides[0]?.id) {
@@ -949,19 +1063,162 @@ export default function VisualPage() {
           }
           setIsSeriesMode(true);
         }
+
+        if (!restoredCards && lsState?.generatedCards?.length) {
+          const norm = normalizeVisualCardSlots(lsState.generatedCards);
+          if (norm.some(Boolean)) setGeneratedCards(norm);
+        }
+
+        try {
+          const progressRes = await fetch(
+            `/api/flow/visual-progress?sessionId=${encodeURIComponent(savedSessionId)}`
+          );
+          const progressData = await progressRes.json().catch(() => ({} as Record<string, unknown>));
+          if (Array.isArray(progressData.slots)) {
+            const norm = normalizeVisualCardSlots(progressData.slots);
+            if (norm.some(Boolean)) {
+              setGeneratedCards(norm);
+            }
+            if (progressData.inProgress === true) {
+              setIsGenerating(true);
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+
+        if (lsState?.formSettings) applyFormSettings(lsState.formSettings);
+        if (lsState?.selectedCardIndex != null) {
+          setSelectedCardIndex(lsState.selectedCardIndex);
+        }
+
+        const hasSlidesFromDb =
+          visualStateData.success &&
+          Array.isArray(visualStateData.visual_slides) &&
+          visualStateData.visual_slides.length > 0;
+        if (!hasSlidesFromDb) {
+          const slidesRaw = localStorage.getItem(flowVisualSlidesKey(savedSessionId));
+          if (slidesRaw) {
+            try {
+              const parsed = JSON.parse(slidesRaw);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setSlides(parsed);
+                setIsSeriesMode(true);
+                if (parsed[0]?.id) setActiveSlideId(parsed[0].id);
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+        }
       } catch (error) {
         console.error("Ошибка загрузки данных:", error);
       }
     };
     
     loadData();
-  }, [router, productName]);
+  }, [router]);
+
+  const syncGeneratedCardsFromServer = async (
+    sid: string,
+    opts?: { progressOnly?: boolean }
+  ): Promise<(string | null)[] | null> => {
+    try {
+      const res = await fetch(
+        `/api/flow/visual-progress?sessionId=${encodeURIComponent(sid)}`
+      );
+      const data = await res.json().catch(() => ({} as Record<string, unknown>));
+      if (Array.isArray(data.slots)) {
+        const norm = normalizeVisualCardSlots(data.slots);
+        if (norm.some(Boolean)) return norm;
+      }
+    } catch {
+      /* fallback */
+    }
+
+    if (opts?.progressOnly) return null;
+
+    try {
+      const res = await fetch("/api/supabase/get-results", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sid }),
+      });
+      const data = await res.json().catch(() => ({} as Record<string, unknown>));
+      const state = data?.visual_state as Record<string, unknown> | undefined;
+      if (state?.generatedCards) {
+        const norm = normalizeVisualCardSlots(state.generatedCards);
+        if (norm.some(Boolean)) return norm;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const lsState = readVisualPageStateFromLs(sid);
+    if (lsState?.generatedCards) {
+      const norm = normalizeVisualCardSlots(lsState.generatedCards);
+      if (norm.some(Boolean)) return norm;
+    }
+    return null;
+  };
+
+  const applyGeneratedCardsIfChanged = (norm: (string | null)[]) => {
+    const key = JSON.stringify(norm);
+    if (key === lastCardsJsonRef.current) return;
+    lastCardsJsonRef.current = key;
+    setGeneratedCards(norm);
+    if (sessionId) {
+      writeVisualPageStateToLs(sessionId, { generatedCards: norm });
+    }
+  };
+
+  // CDN → /api/serve-file без повторной генерации WaveSpeed
+  useEffect(() => {
+    if (filledCardCount === 0 || !slotsNeedRemoteHydrate(generatedCards)) return;
+    const key = JSON.stringify(generatedCards);
+    if (cardHydrateAttemptRef.current === key) return;
+    cardHydrateAttemptRef.current = key;
+
+    let cancelled = false;
+    void (async () => {
+      const hydrated = await hydrateCardUrlSlots(generatedCards);
+      if (cancelled) return;
+      const hydratedKey = JSON.stringify(hydrated);
+      if (hydratedKey !== key) {
+        cardHydrateAttemptRef.current = hydratedKey;
+        applyGeneratedCardsIfChanged(hydrated);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [generatedCards, filledCardCount, sessionId]);
+
+  // Прогресс батча: только быстрый in-memory API (не Supabase — иначе зависает UI)
+  useEffect(() => {
+    if (!sessionId || (!isGenerating && !batchPolling)) return;
+
+    const pollProgress = async () => {
+      if (pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
+      try {
+        const norm = await syncGeneratedCardsFromServer(sessionId, { progressOnly: true });
+        if (norm) applyGeneratedCardsIfChanged(norm);
+      } finally {
+        pollInFlightRef.current = false;
+      }
+    };
+
+    void pollProgress();
+    const id = setInterval(() => void pollProgress(), 2500);
+    return () => clearInterval(id);
+  }, [isGenerating, batchPolling, sessionId]);
 
   // Сохраняем slides в localStorage и Supabase при изменении
   useEffect(() => {
     if (slides.length > 0 && sessionId) {
-      const cacheKey = `karto_visual_slides_${sessionId}`;
-      localStorage.setItem(cacheKey, JSON.stringify(slides));
+      localStorage.setItem(flowVisualSlidesKey(sessionId), JSON.stringify(slides));
       
       // Сохраняем в Supabase сразу
       fetch("/api/supabase/save-results", {
@@ -978,18 +1235,38 @@ export default function VisualPage() {
     }
   }, [slides, sessionId]);
 
-  // Сохраняем промежуточное состояние визуала (generatedCards, selectedCardIndex, isSeriesMode)
+  // Сохраняем промежуточное состояние визуала — только когда есть готовые карточки и батч не идёт
   useEffect(() => {
-    if (sessionId && (filledCardCount > 0 || generatedCards.length > 0 || isSeriesMode || selectedCardIndex !== null)) {
-      const visualState = {
-        generatedCards: generatedCards,
-        selectedCardIndex: selectedCardIndex,
-        isSeriesMode: isSeriesMode,
-        generation_used: visualQuota.used,
-        generation_limit: visualQuota.limit,
-      };
-      
-      // Сохраняем в Supabase
+    if (
+      !sessionId ||
+      batchPolling ||
+      isGenerating ||
+      filledCardCount === 0
+    ) {
+      return;
+    }
+
+    const formSettings: PersistedVisualFormSettings = {
+      aspectRatio,
+      addText,
+      title,
+      bullets,
+      customPrompt,
+      selectedStyle,
+      selectedColor,
+    };
+    const visualState = {
+      generatedCards: generatedCards,
+      selectedCardIndex: selectedCardIndex,
+      isSeriesMode: isSeriesMode,
+      generation_used: visualQuota.used,
+      generation_limit: visualQuota.limit,
+      formSettings,
+    };
+
+    writeVisualPageStateToLs(sessionId, visualState);
+
+    const timer = setTimeout(() => {
       fetch("/api/supabase/save-results", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1000,8 +1277,27 @@ export default function VisualPage() {
       }).catch((error) => {
         console.warn("Не удалось сохранить состояние визуала в Supabase:", error);
       });
-    }
-  }, [generatedCards, filledCardCount, selectedCardIndex, isSeriesMode, sessionId, visualQuota.used, visualQuota.limit]);
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, [
+    generatedCards,
+    filledCardCount,
+    selectedCardIndex,
+    isSeriesMode,
+    sessionId,
+    batchPolling,
+    isGenerating,
+    visualQuota.used,
+    visualQuota.limit,
+    aspectRatio,
+    addText,
+    title,
+    bullets,
+    customPrompt,
+    selectedStyle,
+    selectedColor,
+  ]);
 
   const flowBrandHasReadyProfile = Boolean(
     user?.id &&
@@ -1029,6 +1325,24 @@ export default function VisualPage() {
   ): Promise<(string | null)[] | null> => {
     const startedAt = Date.now();
     while (Date.now() - startedAt < maxWaitMs) {
+      try {
+        const progressRes = await fetch(
+          `/api/flow/visual-progress?sessionId=${encodeURIComponent(sid)}`
+        );
+        const progressData = await progressRes.json().catch(() => ({} as Record<string, unknown>));
+        if (Array.isArray(progressData.slots)) {
+          const norm = normalizeVisualCardSlots(progressData.slots);
+          if (norm.some(Boolean)) {
+            if (progressData.inProgress === false || countFilledCardSlots(norm) >= 4) {
+              return norm;
+            }
+            return norm;
+          }
+        }
+      } catch {
+        /* fallback */
+      }
+
       try {
         const res = await fetch("/api/supabase/get-results", {
           method: "POST",
@@ -1062,7 +1376,7 @@ export default function VisualPage() {
   };
 
   // Генерация карточки
-  const handleGenerate = async () => {
+  const handleGenerate = async (options?: { forceRetry?: boolean }) => {
     // Не генерируем, если уже в режиме серии
     if (isSeriesMode) {
       return;
@@ -1094,12 +1408,33 @@ export default function VisualPage() {
     console.log("🔴 [FRONTEND] isGenerating:", isGenerating);
 
     setIsGenerating(true);
-    setGeneratedCards([]);
+    setGeneratedCards([null, null, null, null]);
     setGenerationError({ show: false });
 
-    // Батч: 4 слота до 3 мин параллельно + при необходимости второй раунн только по пустым слотам (ещё до 3 мин) — не обрывать раньше сервера
-    const FETCH_TIMEOUT_MS = 420_000;
-    const LONG_WAIT_NOTIFY_MS = 120_000; // через 2 мин — уведомление пользователю
+    const refPhoto = resolveFlowPhoto(sessionId, photoUrl);
+    if (!refPhoto) {
+      setGenerationError({
+        show: true,
+        message:
+          "Фото товара не найдено. Вернитесь на этап «Понимание», загрузите фото и снова откройте «Визуал».",
+        canRetry: false,
+      });
+      setIsGenerating(false);
+      return;
+    }
+
+    let photoForBatch = refPhoto;
+    if (refPhoto.startsWith("data:")) {
+      try {
+        photoForBatch = await compressFlowPhotoDataUrl(refPhoto);
+      } catch (e) {
+        console.warn("⚠️ [FRONTEND] Сжатие фото не удалось, отправляем как есть:", e);
+      }
+    }
+
+    // Батч: чекпоинт 3 мин на сервере + гонка за 4 URL; клиент ждёт до 7 мин и опрашивает прогресс
+    const FETCH_TIMEOUT_MS = 480_000;
+    const LONG_WAIT_NOTIFY_MS = 120_000;
 
     if (longWaitTimerRef.current) clearTimeout(longWaitTimerRef.current);
     longWaitTimerRef.current = null;
@@ -1117,21 +1452,27 @@ export default function VisualPage() {
       // Подготовка данных для генерации
       const requestData = {
         productName: productName,
-        photoUrl: photoUrl,
+        photoUrl: photoForBatch,
         customPrompt: augmentVisualPrompt(customPrompt || ""),
         addText: addText,
         title: addText ? (title || productName) : "",
         bullets: addText ? bullets.filter((b: string) => b && b.trim()) : [],
         aspectRatio: aspectRatio,
-        count: 4, // Генерируем все 4 карточки одновременно
+        count: 4,
         sessionId: sessionId,
       };
 
       console.log("🚀 [FRONTEND] Запуск генерации 4 карточек с умными концепциями");
-      console.log("🚀 [FRONTEND] Данные:", requestData);
+      console.log("🚀 [FRONTEND] Данные:", {
+        ...requestData,
+        photoUrl: photoForBatch.startsWith("data:")
+          ? `data:image… (${Math.round(photoForBatch.length / 1024)} KB)`
+          : photoForBatch.slice(0, 80),
+      });
       console.log("🚀 [FRONTEND] Вызываю endpoint: /api/generate-cards-batch");
 
       batchInFlightRef.current = true;
+      setBatchPolling(true);
       // Используем batch endpoint для генерации 4 карточек с разными концепциями от OpenRouter
       const response = await fetch("/api/generate-cards-batch", {
         method: "POST",
@@ -1151,32 +1492,70 @@ export default function VisualPage() {
       if (!response.ok || !data.success) {
         console.error("❌ [FRONTEND] Ошибка в ответе:", data);
 
-        // Генерация уже выполняется для этой сессии — НЕ показываем ошибку, просто ждём результат.
-        if (response.status === 202 || response.status === 409 || data.code === "BATCH_ALREADY_RUNNING") {
-          showToast({
-            type: "info",
-            title: "Генерация уже идёт",
-            message: "Сервер уже генерирует карточки. Ожидаем результат…",
-          });
-          const cards = await pollForGeneratedCards(sessionId, 480_000);
-          if (cards && cards.some(Boolean)) {
-            setGeneratedCards(normalizeVisualCardSlots(cards));
-            return;
-          }
+        if (data.code === "PHOTO_REQUIRED") {
           setGenerationError({
             show: true,
-            message: "Генерация занимает слишком много времени. Попробуйте ещё раз.",
-            canRetry: true,
+            message: data.error || "Загрузите фото товара на этапе «Понимание».",
+            canRetry: false,
           });
+          setIsGenerating(false);
           return;
         }
 
-        // Сервис временно недоступен (сеть/хостинг не дотягивается до WaveSpeed или Supabase)
+        if (data.code === "PHOTO_UPLOAD_FAILED") {
+          setGenerationError({
+            show: true,
+            message:
+              data.error ||
+              "Не удалось загрузить фото для WaveSpeed. Проверьте Supabase Storage (bucket generated-images).",
+            canRetry: true,
+          });
+          setIsGenerating(false);
+          return;
+        }
+
+        // Сервис временно недоступен (сеть/хостинг)
         if (response.status === 503 || data.code === "SERVICE_UNAVAILABLE") {
           setGenerationError({
             show: true,
             message: data.error || "Сервис генерации временно недоступен. Попробуйте позже или нажмите «Повторить».",
             canRetry: true,
+          });
+          setIsGenerating(false);
+          return;
+        }
+
+        if (data.code === "IMAGE_PROVIDER_AUTH" || response.status === 401) {
+          setGenerationError({
+            show: true,
+            message:
+              data.error ||
+              "Неверный ключ WaveSpeed/EvoLink. Проверьте WAVESPEED_API_KEY и EVOLINK_API_KEY в .env.local.",
+            canRetry: true,
+          });
+          setIsGenerating(false);
+          return;
+        }
+
+        if (data.code === "INSUFFICIENT_CREDITS" || response.status === 402) {
+          setGenerationError({
+            show: true,
+            message:
+              data.error ||
+              "Недостаточно кредитов на счёте WaveSpeed/EvoLink. Пополните баланс в личном кабинете провайдера.",
+            canRetry: true,
+          });
+          setIsGenerating(false);
+          return;
+        }
+
+        if (data.code === "IMAGE_PROVIDER_NOT_CONFIGURED") {
+          setGenerationError({
+            show: true,
+            message:
+              data.error ||
+              "Не настроен ключ генерации изображений (WAVESPEED_API_KEY или EVOLINK_API_KEY).",
+            canRetry: false,
           });
           setIsGenerating(false);
           return;
@@ -1206,7 +1585,11 @@ export default function VisualPage() {
 
       // Сохраняем слоты 1..4 (с null для неготовых вариантов)
       if (data.imageUrls && Array.isArray(data.imageUrls) && data.imageUrls.some(Boolean)) {
-        setGeneratedCards(normalizeVisualCardSlots(data.imageUrls));
+        const norm = normalizeVisualCardSlots(data.imageUrls);
+        applyGeneratedCardsIfChanged(norm);
+        if (sessionId) {
+          writeVisualPageStateToLs(sessionId, { generatedCards: norm });
+        }
         if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
           const limit = Math.max(1, Number(data.generationLimit || 12));
           const used = Math.max(0, Number(data.generationUsed || 0));
@@ -1283,7 +1666,12 @@ export default function VisualPage() {
         clearTimeout(longWaitTimerRef.current);
         longWaitTimerRef.current = null;
       }
+      if (sessionId) {
+        const synced = await syncGeneratedCardsFromServer(sessionId);
+        if (synced) applyGeneratedCardsIfChanged(synced);
+      }
       batchInFlightRef.current = false;
+      setBatchPolling(false);
       setIsGenerating(false);
     }
   };
@@ -1431,7 +1819,7 @@ export default function VisualPage() {
                       <button
                         onClick={() => {
                           setGenerationError({ show: false });
-                          handleGenerate();
+                          handleGenerate({ forceRetry: true });
                         }}
                         className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors"
                       >
@@ -1532,10 +1920,16 @@ export default function VisualPage() {
                           }
                         }
                         if (sessionId) {
+                          saveFlowSessionPhoto(sessionId, result);
                           fetch("/api/supabase/save-understanding", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ session_id: sessionId, photo_url: result }),
+                            body: JSON.stringify({
+                              session_id: sessionId,
+                              product_name: productName.trim(),
+                              photo_url: result.startsWith("data:") ? null : result,
+                              selected_method: "photo",
+                            }),
                           }).catch(console.error);
                         }
                       } catch (err) {
@@ -1815,7 +2209,7 @@ export default function VisualPage() {
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          onClick={handleGenerate}
+          onClick={() => handleGenerate()}
           disabled={isGenerating || visualQuota.remaining <= 0}
           className="w-full py-4 px-6 bg-[#4ADE80] text-black rounded-xl font-bold text-base flex items-center justify-center gap-2 shadow-xl shadow-green-400/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all overflow-hidden"
           style={{ willChange: 'transform' }}
@@ -1843,7 +2237,7 @@ export default function VisualPage() {
       <div className="fixed top-0 right-0 bottom-0 left-[420px] flex flex-col bg-transparent z-0 overflow-y-auto" suppressHydrationWarning>
         <div className="flex-1 flex items-start justify-center p-6 min-h-full" suppressHydrationWarning>
           <AnimatePresence mode="wait">
-            {!isGenerating && filledCardCount === 0 && generatedCards.length === 0 ? (
+            {!isGenerating && filledCardCount === 0 ? (
               // Состояние 1: Пустое
               <motion.div
                 key="empty"
@@ -1857,33 +2251,16 @@ export default function VisualPage() {
                   Здесь появятся результаты после генерации.
                 </p>
               </motion.div>
-            ) : isGenerating ? (
-              // Состояние 2: Загрузка - сетка 2x2 с анимацией точек
-              // ВАЖНО: Размеры сетки должны быть ОДИНАКОВЫМИ для форматов 3:4 и 1:1!
-              <motion.div
-                key="loading"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className={`w-full grid grid-cols-2 gap-4 ${aspectRatio === "1:1" ? "max-w-3xl" : "max-w-2xl"}`}
-                suppressHydrationWarning
-              >
-                {[0, 1, 2, 3].map((index) => (
-                  <LoadingDotsCard key={index} aspectRatio={aspectRatio} cardIndex={index} />
-                ))}
-              </motion.div>
             ) : (
-              // Состояние 3: Результат (всегда сетка 2x2, заполняем карточками + заглушками)
-              // ВАЖНО: Размеры сетки должны быть ОДИНАКОВЫМИ для форматов 3:4 и 1:1!
+              // Сетка 2×2: готовые карточки сразу, пустые — загрузка или заглушка
               <motion.div
-                key="result"
+                key="grid"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 className={`w-full grid grid-cols-2 gap-4 ${aspectRatio === "1:1" ? "max-w-3xl" : "max-w-2xl"}`}
                 suppressHydrationWarning
               >
-                {/* Ровно 4 слота: индекс = номер варианта (не сжимаем массив URL) */}
                 {[0, 1, 2, 3].map((index) => {
                   const imageUrl = generatedCards[index];
                   if (typeof imageUrl === "string" && imageUrl.length > 0) {
@@ -1897,12 +2274,14 @@ export default function VisualPage() {
                         isSelected={selectedCardIndex === index}
                         onSelect={() => {
                           if (isSelectionMode) {
-                            console.log("Выбрана карточка с индексом:", index);
                             setSelectedCardIndex(index);
                           }
                         }}
                       />
                     );
+                  }
+                  if (isGenerating) {
+                    return <LoadingDotsCard key={index} aspectRatio={aspectRatio} cardIndex={index} />;
                   }
                   return <CardSlot key={`slot-${index}`} index={index} aspectRatio={aspectRatio} />;
                 })}
@@ -2105,8 +2484,8 @@ export default function VisualPage() {
                 generatedCards[selectedCardIndex]!.length > 0 ? (
                   <div className="flex justify-center w-full">
                     <div className="relative w-full max-w-xl bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: aspectRatio === "3:4" ? "3 / 4" : "1 / 1" }}>
-                      <GalleryProxiedImg
-                        remoteUrl={generatedCards[selectedCardIndex]!}
+                      <FlowCardImage
+                        imageUrl={generatedCards[selectedCardIndex]!}
                         previewMaxWidth={GALLERY_GRID_PROXY_MAX_WIDTH}
                         alt="Выбранная карточка"
                         className="w-full h-full object-contain"
@@ -2291,7 +2670,7 @@ export default function VisualPage() {
                             <button
                               onClick={() => {
                                 setGenerationError({ show: false });
-                                handleGenerate();
+                                handleGenerate({ forceRetry: true });
                               }}
                               className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors"
                             >

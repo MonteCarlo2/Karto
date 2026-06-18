@@ -1,3 +1,4 @@
+import { resolveOpenRouterTextPrimary } from "@/lib/openrouter-default-models";
 import {
   getNormalizedOpenRouterApiKey,
   getOpenRouterRequestHeaders,
@@ -8,7 +9,7 @@ const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 function getBrandNameModel(): string {
   const fromEnv = (process.env.OPENROUTER_BRAND_NAME_MODEL || "").trim();
   if (fromEnv) return fromEnv;
-  return (process.env.OPENROUTER_DESCRIPTION_MODEL || "").trim() || "qwen/qwen-2.5-72b-instruct";
+  return resolveOpenRouterTextPrimary();
 }
 
 function arraysFromParsed(parsed: Record<string, unknown>): { ru: string[]; en: string[] } {

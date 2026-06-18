@@ -9,7 +9,7 @@ import { Logo } from "@/components/ui/logo";
 import { useRouter } from "next/navigation";
 import { useNotification } from "@/components/ui/notification";
 import { createBrowserClient } from "@/lib/supabase/client";
-import { saveFlowSessionPhoto } from "@/lib/flow/flow-photo-cache";
+import { saveFlowSessionPhoto, resolveFlowPhoto } from "@/lib/flow/flow-photo-cache";
 
 // Статичный эффект рельефной бумаги
 function CanvasTexture({ patternAlpha = 12 }: { patternAlpha?: number }) {
@@ -99,9 +99,11 @@ export default function UnderstandingPage() {
   const [selectedSuggestion, setSelectedSuggestion] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const suggestAbortRef = useRef<AbortController | null>(null);
+  const [pageHydrated, setPageHydrated] = useState(false);
 
-  // Сохранение состояния в localStorage
+  // Сохранение состояния в localStorage (только после первичной загрузки)
   useEffect(() => {
+    if (!pageHydrated) return;
     const state = {
       selectedMethod,
       photoDataUrl,
@@ -128,14 +130,46 @@ export default function UnderstandingPage() {
     showSuggestions,
     aiSuggestions,
     selectedSuggestion,
+    pageHydrated,
   ]);
+
+  const applyUnderstandingLocalState = (state: Record<string, unknown>) => {
+    if (state.selectedMethod) {
+      setSelectedMethod(state.selectedMethod as FlowStartMethod);
+      setIsExpanded(true);
+    } else if (state.isExpanded !== undefined) {
+      setIsExpanded(Boolean(state.isExpanded));
+    }
+    if (state.photoDataUrl && typeof state.photoDataUrl === "string") {
+      setPhotoDataUrl(state.photoDataUrl);
+      fetch(state.photoDataUrl)
+        .then((res) => res.blob())
+        .then((blob) => {
+          const file = new File([blob], "saved-photo.jpg", { type: blob.type });
+          setPhotoFile(file);
+        })
+        .catch(console.error);
+    }
+    if (state.productName && typeof state.productName === "string") setProductName(state.productName);
+    if (state.analysisResult) setAnalysisResult(state.analysisResult as { names: string[]; _error?: string });
+    if (state.selectedNameIndex !== null && state.selectedNameIndex !== undefined) {
+      setSelectedNameIndex(state.selectedNameIndex as number);
+    }
+    if (state.customName && typeof state.customName === "string") setCustomName(state.customName);
+    if (state.showCustomInput !== undefined) setShowCustomInput(Boolean(state.showCustomInput));
+    if (state.showSuggestions !== undefined) setShowSuggestions(Boolean(state.showSuggestions));
+    if (Array.isArray(state.aiSuggestions)) setAiSuggestions(state.aiSuggestions as string[]);
+    if (state.selectedSuggestion && typeof state.selectedSuggestion === "string") {
+      setSelectedSuggestion(state.selectedSuggestion);
+    }
+  };
 
   // Восстановление состояния из Supabase или localStorage
   useEffect(() => {
     const loadState = async () => {
       const savedSessionId = localStorage.getItem("karto_session_id");
-      
-      // Сначала пытаемся загрузить из Supabase, если есть session_id
+      let loadedFromDb = false;
+
       if (savedSessionId) {
         try {
           const response = await fetch("/api/supabase/get-understanding", {
@@ -143,87 +177,75 @@ export default function UnderstandingPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ session_id: savedSessionId }),
           });
-          
+
           const result = await response.json();
-          
+
           if (result.success && result.data) {
+            loadedFromDb = true;
             const data = result.data;
-            
-            // Восстанавливаем состояние из Supabase
+
             if (data.product_name) {
               setProductName(data.product_name);
             }
-            
-            if (data.photo_url) {
-              setPhotoDataUrl(data.photo_url);
-              // Восстанавливаем File из URL
-              fetch(data.photo_url)
-                .then(res => res.blob())
-                .then(blob => {
-                  const file = new File([blob], "saved-photo.jpg", { type: blob.type });
-                  setPhotoFile(file);
-                })
-                .catch(console.error);
+
+            const photo = resolveFlowPhoto(savedSessionId, data.photo_url);
+            if (photo) {
+              setPhotoDataUrl(photo);
+              if (!photo.startsWith("data:")) {
+                fetch(photo)
+                  .then((res) => res.blob())
+                  .then((blob) => {
+                    const file = new File([blob], "saved-photo.jpg", { type: blob.type });
+                    setPhotoFile(file);
+                  })
+                  .catch(console.error);
+              }
             }
-            
+
             if (data.selected_method) {
               setSelectedMethod(data.selected_method as FlowStartMethod);
               setIsExpanded(true);
             }
-            
-            // Не загружаем из localStorage, если данные есть в Supabase
-            return;
           }
         } catch (error) {
           console.error("Ошибка загрузки из Supabase:", error);
-          // Продолжаем с localStorage fallback
         }
       }
-      
-      // Fallback: восстановление из localStorage
+
       const savedState = localStorage.getItem("understandingPageState");
       if (savedState) {
         try {
-          const state = JSON.parse(savedState);
-          // КРИТИЧЕСКИ ВАЖНО: Восстанавливаем selectedMethod и isExpanded СИНХРОННО
-          // Если есть selectedMethod, ОБЯЗАТЕЛЬНО устанавливаем isExpanded = true
-          // Это предотвращает возврат на экран выбора метода
-          if (state.selectedMethod) {
-            // Устанавливаем оба состояния одновременно
-            setSelectedMethod(state.selectedMethod);
-            setIsExpanded(true);
+          const state = JSON.parse(savedState) as Record<string, unknown>;
+          if (!loadedFromDb) {
+            applyUnderstandingLocalState(state);
           } else {
-            // Если метода нет, восстанавливаем isExpanded из сохраненного состояния
-            if (state.isExpanded !== undefined) {
-              setIsExpanded(state.isExpanded);
+            if (!dataHasPhoto(savedSessionId) && state.photoDataUrl) {
+              applyUnderstandingLocalState({ photoDataUrl: state.photoDataUrl });
             }
+            if (state.analysisResult) setAnalysisResult(state.analysisResult as { names: string[]; _error?: string });
+            if (state.selectedNameIndex !== null && state.selectedNameIndex !== undefined) {
+              setSelectedNameIndex(state.selectedNameIndex as number);
+            }
+            if (state.customName) setCustomName(String(state.customName));
+            if (state.showCustomInput !== undefined) setShowCustomInput(Boolean(state.showCustomInput));
+            if (state.showSuggestions !== undefined) setShowSuggestions(Boolean(state.showSuggestions));
+            if (Array.isArray(state.aiSuggestions)) setAiSuggestions(state.aiSuggestions as string[]);
+            if (state.selectedSuggestion) setSelectedSuggestion(String(state.selectedSuggestion));
           }
-          if (state.photoDataUrl) {
-            setPhotoDataUrl(state.photoDataUrl);
-            // Восстанавливаем File из data URL
-            fetch(state.photoDataUrl)
-              .then(res => res.blob())
-              .then(blob => {
-                const file = new File([blob], "saved-photo.jpg", { type: blob.type });
-                setPhotoFile(file);
-              })
-              .catch(console.error);
-          }
-          if (state.productName) setProductName(state.productName);
-          if (state.analysisResult) setAnalysisResult(state.analysisResult);
-          if (state.selectedNameIndex !== null) setSelectedNameIndex(state.selectedNameIndex);
-          if (state.customName) setCustomName(state.customName);
-          if (state.showCustomInput !== undefined) setShowCustomInput(state.showCustomInput);
-          if (state.showSuggestions !== undefined) setShowSuggestions(state.showSuggestions);
-          if (state.aiSuggestions) setAiSuggestions(state.aiSuggestions);
-          if (state.selectedSuggestion) setSelectedSuggestion(state.selectedSuggestion);
         } catch (error) {
           console.error("Ошибка восстановления состояния:", error);
         }
       }
+
+      setPageHydrated(true);
     };
-    
-    loadState();
+
+    function dataHasPhoto(sessionId: string | null): boolean {
+      if (!sessionId) return false;
+      return Boolean(resolveFlowPhoto(sessionId, null));
+    }
+
+    void loadState();
   }, []);
   
   // Функция для получения подсказок от ИИ
@@ -324,6 +346,44 @@ export default function UnderstandingPage() {
   };
 
   /** Сохранение этапа «Понимание» и переход к описанию (список ИИ или своё название). */
+  const syncUnderstandingToServer = async (
+    trimmed: string,
+    sessionId: string | null,
+    photoForDb: string | null
+  ) => {
+    try {
+      const sessionResult = await Promise.race([
+        createBrowserClient().auth.getSession(),
+        new Promise<{ data: { session: null } }>((resolve) =>
+          setTimeout(() => resolve({ data: { session: null } }), 3000)
+        ),
+      ]);
+      const token = sessionResult.data?.session?.access_token;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const controller = new AbortController();
+      const saveTimeout = setTimeout(() => controller.abort(), 12_000);
+      const res = await fetch("/api/supabase/save-understanding", {
+        method: "POST",
+        headers,
+        signal: controller.signal,
+        body: JSON.stringify({
+          session_id: sessionId,
+          product_name: trimmed,
+          photo_url: photoForDb,
+          selected_method: selectedMethod || "photo",
+        }),
+      });
+      clearTimeout(saveTimeout);
+      const data = await res.json().catch(() => ({} as { session_id?: string }));
+      if (data.session_id) {
+        localStorage.setItem("karto_session_id", data.session_id);
+      }
+    } catch {
+      /* фоновая синхронизация — не блокируем UI */
+    }
+  };
+
   const saveUnderstandingAndContinue = async (finalProductName: string) => {
     const trimmed = finalProductName.trim();
     if (!trimmed || isSaving) return;
@@ -333,13 +393,35 @@ export default function UnderstandingPage() {
     const photoForDb =
       photoDataUrl && !photoDataUrl.startsWith("data:") ? photoDataUrl : null;
 
+    setProductName(trimmed);
+    if (currentSessionId && photoDataUrl) {
+      saveFlowSessionPhoto(currentSessionId, photoDataUrl);
+    }
+
+    // Сессия уже есть — переход сразу (как раньше), Supabase догоняет в фоне
+    if (currentSessionId) {
+      setIsSaving(false);
+      router.push("/studio/description");
+      void syncUnderstandingToServer(trimmed, currentSessionId, photoForDb);
+      return;
+    }
+
     try {
-      const { data: { session } } = await createBrowserClient().auth.getSession();
+      const sessionResult = await Promise.race([
+        createBrowserClient().auth.getSession(),
+        new Promise<{ data: { session: null } }>((resolve) =>
+          setTimeout(() => resolve({ data: { session: null } }), 3000)
+        ),
+      ]);
+      const session = sessionResult.data?.session;
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+      const controller = new AbortController();
+      const saveTimeout = setTimeout(() => controller.abort(), 12_000);
       const response = await fetch("/api/supabase/save-understanding", {
         method: "POST",
         headers,
+        signal: controller.signal,
         body: JSON.stringify({
           session_id: currentSessionId,
           product_name: trimmed,
@@ -347,33 +429,29 @@ export default function UnderstandingPage() {
           selected_method: selectedMethod || "photo",
         }),
       });
+      clearTimeout(saveTimeout);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Неизвестная ошибка сервера" }));
-        showNotification(errorData.error || `Ошибка сервера: ${response.status}`, "error");
+      const data = await response.json().catch(() => ({} as { success?: boolean; session_id?: string; error?: string }));
+
+      if (data.success && data.session_id) {
+        localStorage.setItem("karto_session_id", data.session_id);
+        if (photoDataUrl) saveFlowSessionPhoto(data.session_id, photoDataUrl);
+        router.push("/studio/description");
         return;
       }
 
-      const data = await response.json();
-      if (data.success) {
-        if (data.session_id) {
-          localStorage.setItem("karto_session_id", data.session_id);
-          if (photoDataUrl) {
-            saveFlowSessionPhoto(data.session_id, photoDataUrl);
-          }
-        }
-        setProductName(trimmed);
-        router.push("/studio/description");
-      } else {
-        showNotification(data.error || "Ошибка сохранения данных. Попробуйте еще раз.", "error");
+      if (!response.ok) {
+        showNotification(data.error || `Ошибка сервера: ${response.status}`, "error");
+        return;
       }
+
+      showNotification(data.error || "Ошибка сохранения данных. Попробуйте еще раз.", "error");
     } catch (error: unknown) {
       const err = error as { message?: string; name?: string };
       let errorMessage = "Ошибка соединения. Проверьте подключение к интернету.";
-      if (err?.message) errorMessage = err.message;
-      else if (err?.name === "TypeError" && err.message?.includes("fetch")) {
-        errorMessage = "Ошибка соединения с сервером. Проверьте подключение к интернету.";
-      }
+      if (err?.name === "AbortError") {
+        errorMessage = "Сохранение заняло слишком много времени. Попробуйте снова.";
+      } else if (err?.message) errorMessage = err.message;
       showNotification(errorMessage, "error");
     } finally {
       setIsSaving(false);

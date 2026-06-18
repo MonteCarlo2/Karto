@@ -5,7 +5,6 @@
  */
 
 import sharp from "sharp";
-import { createClient } from "@supabase/supabase-js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -174,19 +173,9 @@ function formatEvolinkPostError(status: number, raw: string): string {
 }
 
 async function uploadBufferToSupabase(buffer: Buffer, index: number): Promise<string> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceKey) {
-    throw new Error("Supabase не настроен (NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)");
-  }
-  const supabase = createClient(supabaseUrl, serviceKey);
-  const fileName = `${REF_PREFIX}/${Date.now()}-${index}-${Math.random().toString(36).slice(2, 9)}.jpg`;
-  const { error: uploadError } = await supabase.storage
-    .from(REF_BUCKET)
-    .upload(fileName, buffer, { contentType: "image/jpeg", upsert: true });
-  if (uploadError) throw new Error(`Supabase Storage: ${uploadError.message}`);
-  const { data } = supabase.storage.from(REF_BUCKET).getPublicUrl(fileName);
-  return data.publicUrl;
+  const sessionId = `ref-${index}`;
+  const { uploadFlowProductPhotoBuffer } = await import("@/lib/flow/upload-flow-product-photo");
+  return uploadFlowProductPhotoBuffer(buffer, sessionId);
 }
 
 async function dataUrlToBuffer(dataUrl: string): Promise<Buffer> {
@@ -455,6 +444,11 @@ export async function generateWithEvolinkGemini(
   let image_urls: string[] | undefined;
   if (imageInput && imageInput.length > 0) {
     image_urls = await prepareEvolinkImageUrls(imageInput.slice(0, 4));
+    if (image_urls.length === 0) {
+      throw new Error(
+        "Не удалось подготовить фото товара для EvoLink. Проверьте Supabase Storage (generated-images)."
+      );
+    }
   }
 
   const taskId = await createGenerationTask({

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { createServerClientWithAuth } from "@/lib/supabase/server-auth";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
+import { isSupabaseFailure, withTimeout } from "@/lib/supabase/with-timeout";
 import { getSubscriptionByUserId, getSubscriptionRowsByUserId } from "@/lib/subscription";
 
 /** Получить user id: сначала из Authorization, затем из cookies */
@@ -100,6 +101,8 @@ async function chargeFlowAndCreateSession(
  * ВАЖНО: Все операции через серверный API route для безопасности
  */
 export async function POST(request: NextRequest) {
+  let resolvedSessionId: string | null = null;
+
   try {
     console.log("🔄 Сохранение данных этапа 'Понимание'...");
     
@@ -248,23 +251,35 @@ export async function POST(request: NextRequest) {
       finalSessionId = charged.sessionId;
     }
 
-    const { data, error } = await supabase
-      .from("understanding_data")
-      .upsert(
-        {
-          session_id: finalSessionId,
-          product_name: product_name.trim(),
-          photo_url: safePhotoUrl,
-          selected_method: method,
-        },
-        {
-          onConflict: "session_id",
-        }
-      )
-      .select()
-      .single();
+    resolvedSessionId = finalSessionId;
+
+    const { data, error } = await withTimeout(
+      supabase
+        .from("understanding_data")
+        .upsert(
+          {
+            session_id: finalSessionId,
+            product_name: product_name.trim(),
+            photo_url: safePhotoUrl,
+            selected_method: method,
+          },
+          { onConflict: "session_id" }
+        )
+        .select()
+        .single(),
+      12_000,
+      "understanding_data upsert"
+    );
 
     if (error) {
+      if (isSupabaseFailure(error) && finalSessionId) {
+        console.warn("⚠️ [save-understanding] Сеть/Supabase — отдаём offline success:", finalSessionId);
+        return NextResponse.json({
+          success: true,
+          session_id: finalSessionId,
+          offline: true,
+        });
+      }
       console.error("❌ Ошибка сохранения данных:", error);
       console.error("Детали ошибки:", JSON.stringify(error, null, 2));
       console.error("Код ошибки:", error.code);
@@ -302,8 +317,11 @@ export async function POST(request: NextRequest) {
       data,
     });
   } catch (error: unknown) {
-    if (isSupabaseNetworkError(error)) {
+    if (isSupabaseNetworkError(error) || isSupabaseFailure(error)) {
       console.warn("⚠️ [save-understanding] Supabase недоступен (сеть/таймаут)");
+      if (resolvedSessionId) {
+        return NextResponse.json({ success: true, session_id: resolvedSessionId, offline: true });
+      }
       return NextResponse.json(
         { error: "Сервис временно недоступен. Попробуйте позже." },
         { status: 503 }

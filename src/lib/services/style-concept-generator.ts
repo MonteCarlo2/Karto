@@ -13,6 +13,10 @@ import {
   getOpenRouterRequestHeaders,
 } from "@/lib/openrouter-headers";
 import { resolveConceptModel } from "@/lib/openrouter-studio-models";
+import {
+  buildOpenRouterModelChain,
+  isOpenRouterModelRoutingError,
+} from "@/lib/openrouter-default-models";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -103,31 +107,56 @@ ${safeUserPrompt ? " Учти пожелания пользователя в 4 �
       ...(withSchema ? { response_format: responseFormat } : {}),
     });
 
+    const modelChain = buildOpenRouterModelChain(resolveConceptModel());
     const headers = getOpenRouterRequestHeaders("KARTO - Product Card Generator");
 
-    let response = await fetch(OPENROUTER_API_URL, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(buildBody(true)),
-    });
+    let response: Response | null = null;
+    let lastErrorText = "";
 
-    if (response.status === 400) {
-      const errText = await response.text();
-      const retryWithoutSchema = /response_format|json_schema|structured|schema/i.test(errText);
-      if (retryWithoutSchema) {
-        console.warn("⚠️ [OpenRouter] Модель не поддерживает response_format, повтор без схемы");
-        response = await fetch(OPENROUTER_API_URL, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(buildBody(false)),
-        });
+    for (let modelIndex = 0; modelIndex < modelChain.length; modelIndex++) {
+      const model = modelChain[modelIndex];
+      let attempt = await fetch(OPENROUTER_API_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ ...buildBody(true), model }),
+      });
+
+      if (attempt.status === 400) {
+        const errText = await attempt.text();
+        const retryWithoutSchema = /response_format|json_schema|structured|schema/i.test(errText);
+        if (retryWithoutSchema) {
+          console.warn(`⚠️ [OpenRouter] ${model}: response_format не поддерживается, повтор без схемы`);
+          attempt = await fetch(OPENROUTER_API_URL, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ ...buildBody(false), model }),
+          });
+        } else if (isOpenRouterModelRoutingError(400, errText) && modelIndex < modelChain.length - 1) {
+          console.warn(`⚠️ [OpenRouter] Модель ${model} недоступна, пробуем ${modelChain[modelIndex + 1]}`);
+          lastErrorText = errText;
+          continue;
+        } else {
+          lastErrorText = errText;
+          throw new Error(`OpenRouter API error (400): ${errText.substring(0, 300)}`);
+        }
       }
-      if (!response.ok) {
-        throw new Error(`OpenRouter API error (400): ${errText.substring(0, 300)}`);
+
+      if (!attempt.ok) {
+        const errorText = await attempt.text().catch(() => "не удалось прочитать");
+        lastErrorText = errorText;
+        if (isOpenRouterModelRoutingError(attempt.status, errorText) && modelIndex < modelChain.length - 1) {
+          console.warn(`⚠️ [OpenRouter] Модель ${model}: ${attempt.status}, fallback`);
+          continue;
+        }
+        throw new Error(`OpenRouter API error: ${attempt.status} - ${errorText.substring(0, 500)}`);
       }
-    } else if (!response.ok) {
-      const errorText = await response.text().catch(() => "не удалось прочитать");
-      throw new Error(`OpenRouter API error: ${response.status} - ${errorText.substring(0, 500)}`);
+
+      response = attempt;
+      break;
+    }
+
+    if (!response) {
+      throw new Error(`OpenRouter API error: ${lastErrorText.substring(0, 500) || "нет ответа"}`);
     }
 
     let data: any;

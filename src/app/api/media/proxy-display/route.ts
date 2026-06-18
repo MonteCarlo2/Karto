@@ -55,8 +55,8 @@ export async function GET(request: NextRequest) {
     900_000,
     Math.max(60_000, Number(process.env.MEDIA_DOWNLOAD_UPSTREAM_MS) || 600_000)
   );
-  const attemptTimeout = Math.min(upstreamFetchMs, 270_000);
-  const maxUpstreamAttempts = 4;
+  const attemptTimeout = Math.min(upstreamFetchMs, 45_000);
+  const maxUpstreamAttempts = 5;
 
   let upstream: Response | undefined;
   for (let attempt = 0; attempt < maxUpstreamAttempts; attempt++) {

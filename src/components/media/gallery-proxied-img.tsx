@@ -47,6 +47,15 @@ export type GalleryProxiedImgProps = Omit<
  * Галерея: сначала same-origin прокси (обход Chromium PNA/CORS на CDN),
  * при ошибке — прямой URL там, где браузер это допускает.
  */
+function isWaveSpeedCdnUrl(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h.endsWith(".cloudfront.net");
+  } catch {
+    return false;
+  }
+}
+
 export function GalleryProxiedImg({
   remoteUrl,
   alt = "",
@@ -71,10 +80,23 @@ export function GalleryProxiedImg({
 
   const chain = useMemo(() => {
     const list: string[] = [];
+    if (prepared.startsWith("/")) {
+      list.push(prepared);
+      return [...new Set(list)];
+    }
+    // WaveSpeed CDN: сначала прямой URL (прокси на dev часто 502/71s), потом same-origin прокси
+    if (isWaveSpeedCdnUrl(prepared)) {
+      list.push(prepared);
+    }
     if (proxied) list.push(proxied);
     const directWouldBeBlockedByPna =
       isNonPublicDocumentHost() && isHttpsRemoteUrl(prepared);
-    if (prepared && prepared !== proxied && !directWouldBeBlockedByPna) {
+    if (
+      prepared &&
+      prepared !== proxied &&
+      !list.includes(prepared) &&
+      !directWouldBeBlockedByPna
+    ) {
       list.push(prepared);
     }
     return [...new Set(list)];

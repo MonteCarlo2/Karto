@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildProductCardPrompt, CARD_STYLES } from "@/lib/services/nanobanana";
+import { classifyFlowImageError } from "@/lib/flow-image-errors";
 import { generateFlowImage, isFlowImageProviderConfigured } from "@/lib/services/flow-image-generation";
 import { KieAiContentFilteredError, kieErrorToClient } from "@/lib/services/kie-ai-errors";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
@@ -11,6 +12,25 @@ import {
 import { generateDesignConcepts, DesignConcept } from "@/lib/services/style-concept-generator";
 import path from "path";
 import fs from "fs/promises";
+
+/** Батч ждёт WaveSpeed до 7+ мин — без этого route обрывается ~2 мин и URL не доходят до UI. */
+export const maxDuration = 600;
+
+async function resolveCardDisplayUrl(
+  remoteUrl: string,
+  preferRemote: boolean
+): Promise<string> {
+  if (preferRemote && /^https?:\/\//i.test(remoteUrl)) {
+    return remoteUrl;
+  }
+  try {
+    const localPath = await downloadImage(remoteUrl);
+    return getPublicUrl(localPath);
+  } catch (e) {
+    console.warn("⚠️ Не удалось скачать результат WaveSpeed, отдаём CDN URL:", e);
+    return remoteUrl;
+  }
+}
 
 /**
  * Умный выбор стиля и фона на основе названия товара
@@ -135,8 +155,9 @@ export async function POST(request: NextRequest) {
   if (!isFlowImageProviderConfigured()) {
     return NextResponse.json({
       success: false,
-      error: "WAVESPEED_API_KEY не настроен",
-      details: "Добавьте WAVESPEED_API_KEY в файл .env.local (генерация Потока на WaveSpeed)",
+      error: "Не настроен ключ генерации изображений",
+      details: "Добавьте WAVESPEED_API_KEY или EVOLINK_API_KEY в .env.local (генерация Потока)",
+      code: "IMAGE_PROVIDER_NOT_CONFIGURED",
     }, { status: 500 });
   }
 
@@ -153,12 +174,24 @@ export async function POST(request: NextRequest) {
       aspectRatio, // "3:4" или "1:1"
       variation = 0, // Номер вариации (0-3) для разных концепций
       designConcept, // Готовая дизайн-концепция (если передана)
+      /** Батч: сразу CDN URL WaveSpeed, без локального download (быстрее, без ECONNRESET). */
+      returnRemoteUrl = false,
     } = body;
 
     // Проверяем обязательные поля
     if (!productName) {
       return NextResponse.json(
         { success: false, error: "Требуется название товара" },
+        { status: 400 }
+      );
+    }
+    if (!photoUrl || (typeof photoUrl === "string" && !photoUrl.trim())) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Фото товара обязательно для генерации карточки с референсом",
+          code: "PHOTO_REQUIRED",
+        },
         { status: 400 }
       );
     }
@@ -263,6 +296,18 @@ export async function POST(request: NextRequest) {
           imageForApi = undefined;
         }
       }
+    }
+
+    if (!imageForApi) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Не удалось подготовить фото товара для генерации. Загрузите фото заново на этапе «Понимание».",
+          code: "PHOTO_REQUIRED",
+        },
+        { status: 400 }
+      );
     }
 
     // Используем переданную концепцию или генерируем на основе старых функций
@@ -560,7 +605,9 @@ ${finalTextPresentation}
     try {
       const result = await generateFlowImage(finalPrompt, imageForApi, finalAspectRatio);
       generatedImageUrl = result.imageUrl;
-      console.log("✅ Генерация успешна");
+      console.log(
+        `✅ Генерация успешна (референс: ${result.referenceUsed ? "да, edit" : "НЕТ — только текст!"})`
+      );
     } catch (error: unknown) {
       console.error("❌ Ошибка в generateFlowImage:", error);
       if (error instanceof KieAiContentFilteredError) throw error;
@@ -570,15 +617,16 @@ ${finalTextPresentation}
       );
     }
     
-    // Скачиваем результат
-    const generatedPath = await downloadImage(generatedImageUrl);
-    const generatedLocalUrl = getPublicUrl(generatedPath);
+    const displayUrl = await resolveCardDisplayUrl(
+      generatedImageUrl,
+      Boolean(returnRemoteUrl)
+    );
 
-    console.log(`✅ Карточка сгенерирована: ${generatedLocalUrl}`);
+    console.log(`✅ Карточка сгенерирована: ${displayUrl.slice(0, 96)}…`);
 
     return NextResponse.json({
       success: true,
-      imageUrl: generatedLocalUrl,
+      imageUrl: displayUrl,
       message: "Карточка товара создана!",
     });
 
@@ -588,17 +636,26 @@ ${finalTextPresentation}
     console.error("❌ Ошибка генерации:", error);
 
     if (isSupabaseNetworkError(error) || errorString.includes("fetch failed") || errorString.includes("timeout") || errorString.includes("ECONNREFUSED") || errorString.includes("ETIMEDOUT")) {
+      const classified = classifyFlowImageError(errorString);
       return NextResponse.json({
         success: false,
-        error: "Сервис генерации временно недоступен. Попробуйте позже.",
-        code: "SERVICE_UNAVAILABLE",
-      }, { status: 503 });
+        error: classified.userMessage,
+        code: classified.code,
+      }, { status: classified.status });
+    }
+
+    const classified = classifyFlowImageError(errorString);
+    if (classified.code === "IMAGE_PROVIDER_AUTH" || classified.code === "INSUFFICIENT_CREDITS") {
+      return NextResponse.json(
+        { success: false, error: classified.userMessage, code: classified.code },
+        { status: classified.status }
+      );
     }
 
     if (errorString.includes("401") || errorString.includes("Unauthorized")) {
       return NextResponse.json(
-        { success: false, error: "Ошибка авторизации сервиса генерации." },
-        { status: 500 }
+        { success: false, error: "Ошибка авторизации сервиса генерации.", code: "IMAGE_PROVIDER_AUTH" },
+        { status: 401 }
       );
     }
     if (errorString.includes("429")) {
@@ -609,8 +666,12 @@ ${finalTextPresentation}
     }
     if (errorString.includes("insufficient") || errorString.includes("402")) {
       return NextResponse.json(
-        { success: false, error: "Временная недоступность сервиса генерации." },
-        { status: 503 }
+        {
+          success: false,
+          error: "Недостаточно кредитов на счёте WaveSpeed/EvoLink. Пополните баланс в личном кабинете.",
+          code: "INSUFFICIENT_CREDITS",
+        },
+        { status: 402 }
       );
     }
 
@@ -621,4 +682,21 @@ ${finalTextPresentation}
       { status }
     );
   }
+}
+
+/** Прямой вызов из батча — без HTTP на localhost (не блокирует dev-сервер и UI). */
+export async function runFlowGenerateCardForBatch(
+  body: Record<string, unknown>
+): Promise<{ url: string | null; error?: string; code?: string }> {
+  const response = await POST({ json: async () => body } as NextRequest);
+  const data = (await response.json()) as {
+    success?: boolean;
+    imageUrl?: string;
+    error?: string;
+    code?: string;
+  };
+  if (!response.ok || !data.success || !data.imageUrl) {
+    return { url: null, error: data.error || "Ошибка генерации карточки", code: data.code };
+  }
+  return { url: data.imageUrl };
 }

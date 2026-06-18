@@ -3,6 +3,8 @@
  * Переопределение через env на Timeweb — без правок кода.
  */
 
+import { resolveOpenRouterTextPrimary } from "@/lib/openrouter-default-models";
+
 /** Vision: названия товара по фото (основная — как GPT-4o-mini на Replicate). */
 export function resolveVisionPrimaryModel(): string {
   return (process.env.OPENROUTER_VISION_PRIMARY_MODEL || "").trim() || "openai/gpt-4o-mini";
@@ -24,9 +26,7 @@ export function resolveSuggestNamesModel(): string {
 
 /** Концепции карточек (Поток). */
 export function resolveConceptModel(): string {
-  return (
-    (process.env.OPENROUTER_CONCEPT_MODEL || "").trim() ||
-    (process.env.OPENROUTER_DESCRIPTION_MODEL || "").trim() ||
-    "qwen/qwen-2.5-72b-instruct"
-  );
+  const fromEnv = (process.env.OPENROUTER_CONCEPT_MODEL || "").trim();
+  if (fromEnv) return fromEnv;
+  return resolveOpenRouterTextPrimary();
 }

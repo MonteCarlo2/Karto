@@ -9,6 +9,7 @@ import type { PriceAnalysis } from "@/lib/services/price-analyzer";
 import Image from "next/image";
 import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
 import { resolveFlowPhoto, resolveFlowProductName } from "@/lib/flow/flow-photo-cache";
+import { flowPriceCacheKey } from "@/lib/flow/flow-persistence-keys";
 import { GALLERY_THUMB_PROXY_MAX_WIDTH } from "@/lib/client/gallery-display-url";
 
 const LOGOS = {
@@ -139,7 +140,33 @@ export default function PriceStrategyPage() {
         setIsLoading(true);
         setError(null);
 
-        const cacheKey = `karto_price_analysis_v2_${savedSessionId}`;
+        // 1) Supabase (не перегенерировать при F5)
+        try {
+          const resultsResponse = await fetch("/api/supabase/get-results", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: savedSessionId }),
+          });
+          const resultsData = await resultsResponse.json();
+          if (resultsData.success && resultsData.price_analysis) {
+            const fromDb = resultsData.price_analysis as PriceAnalysis;
+            setAnalysis(fromDb);
+            try {
+              localStorage.setItem(
+                flowPriceCacheKey(savedSessionId),
+                JSON.stringify({ productName: name, analysis: fromDb })
+              );
+            } catch {
+              /* ignore */
+            }
+            setIsLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.warn("get-results price load failed:", e);
+        }
+
+        const cacheKey = flowPriceCacheKey(savedSessionId);
         const cachedRaw = localStorage.getItem(cacheKey);
         if (cachedRaw) {
           try {
@@ -187,9 +214,8 @@ export default function PriceStrategyPage() {
         } catch {
           // игнорируем, если localStorage переполнен
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error(e);
-        // Безошибочный UX: даже при сбое показываем резервный результат, не красную ошибку.
         const fallback = buildUiPriceFallback(productName || "");
         setAnalysis(fallback);
         setError(null);

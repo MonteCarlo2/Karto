@@ -268,6 +268,19 @@ export default function DescriptionPage() {
             if (desc.final_description) {
               setFinalDescription(desc.final_description);
             }
+
+            if (
+              Array.isArray(desc.generated_descriptions) &&
+              desc.generated_descriptions.length > 0
+            ) {
+              const finalText = (desc.final_description || "").trim();
+              if (finalText) {
+                const matched = desc.generated_descriptions.find(
+                  (v: DescriptionVariant) => v?.description?.trim() === finalText
+                );
+                if (matched?.id != null) setSelectedVariantId(matched.id);
+              }
+            }
           } else {
             setVariants([]);
             setIsStarted(false);
@@ -283,6 +296,32 @@ export default function DescriptionPage() {
 
     loadData();
   }, [router]);
+
+  useEffect(() => {
+    if (!sessionId || isRestoring) return;
+    const hasContent =
+      userPreferences.trim().length > 0 ||
+      selectedBlocks.length > 0 ||
+      variants.length > 0 ||
+      Boolean(finalDescription);
+    if (!hasContent) return;
+
+    const timer = setTimeout(() => {
+      void fetch("/api/supabase/save-description", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_preferences: userPreferences.trim(),
+          selected_blocks: selectedBlocks,
+          generated_descriptions: variants.length > 0 ? variants : undefined,
+          final_description: finalDescription || undefined,
+        }),
+      }).catch((e) => console.warn("autosave description:", e));
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [sessionId, isRestoring, userPreferences, selectedBlocks, variants, finalDescription]);
   
   // Переключение блока
   const toggleBlock = (blockName: string) => {
@@ -471,7 +510,7 @@ export default function DescriptionPage() {
   };
   
   // Подтверждение и переход
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const descriptionToSave =
       finalDescription ||
       (selectedVariantId ? variants.find((v) => v.id === selectedVariantId)?.description : null);
@@ -484,23 +523,31 @@ export default function DescriptionPage() {
     if (isNavigatingToVisual) return;
     setIsNavigatingToVisual(true);
 
-    router.push("/studio/visual");
-
     if (sessionId) {
-      void fetch("/api/supabase/save-description", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionId,
-          user_preferences: userPreferences.trim(),
-          selected_blocks: selectedBlocks,
-          generated_descriptions: variants,
-          final_description: descriptionToSave,
-        }),
-      }).catch((error) => {
-        console.warn("save-description background:", error);
-      });
+      const controller = new AbortController();
+      const saveTimeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        await fetch("/api/supabase/save-description", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: sessionId,
+            user_preferences: userPreferences.trim(),
+            selected_blocks: selectedBlocks,
+            generated_descriptions: variants,
+            final_description: descriptionToSave,
+          }),
+          signal: controller.signal,
+        });
+      } catch (error) {
+        console.warn("save-description before visual:", error);
+      } finally {
+        clearTimeout(saveTimeout);
+      }
     }
+
+    router.push("/studio/visual");
+    setIsNavigatingToVisual(false);
   };
 
   // Извлечение ключевых слов из названия товара

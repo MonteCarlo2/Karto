@@ -28,17 +28,43 @@ async function ensureDirs() {
  * Скачивание изображения по URL и сохранение локально
  */
 export async function downloadImage(url: string): Promise<string> {
+  return downloadImageRobust(url, 120_000);
+}
+
+/** Скачивание с таймаутом и заголовками — для CDN WaveSpeed / CloudFront. */
+export async function downloadImageRobust(
+  url: string,
+  timeoutMs = 120_000
+): Promise<string> {
   await ensureDirs();
-  
-  const response = await fetch(url);
-  const buffer = Buffer.from(await response.arrayBuffer());
-  
-  const filename = `${uuidv4()}.png`;
-  const filepath = path.join(TEMP_DIR, filename);
-  
-  await fs.writeFile(filepath, buffer);
-  
-  return filepath;
+
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        Accept: "image/avif,image/webp,image/apng,image/png,image/*,*/*",
+        "User-Agent": "KartoImageDownload/2.0",
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} при загрузке изображения`);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length < 128) {
+      throw new Error("Пустой ответ при загрузке изображения");
+    }
+
+    const filename = `${uuidv4()}.png`;
+    const filepath = path.join(TEMP_DIR, filename);
+    await fs.writeFile(filepath, buffer);
+    return filepath;
+  } finally {
+    clearTimeout(tid);
+  }
 }
 
 /**
@@ -487,8 +513,17 @@ export function getServeFileParams(filepath: string): { f: string; dir: "temp" |
  */
 export function getPublicUrl(filepath: string): string {
   const params = getServeFileParams(filepath);
-  if (params)
+  if (params) {
     return `/api/serve-file?f=${encodeURIComponent(params.f)}&dir=${params.dir}`;
+  }
+  const normalized = path.normalize(filepath);
+  const base = path.basename(filepath);
+  if (normalized.startsWith(path.normalize(TEMP_DIR))) {
+    return `/api/serve-file?f=${encodeURIComponent(base)}&dir=temp`;
+  }
+  if (normalized.startsWith(path.normalize(OUTPUT_DIR))) {
+    return `/api/serve-file?f=${encodeURIComponent(base)}&dir=output`;
+  }
   const relativePath = filepath.replace(path.join(process.cwd(), "public"), "");
   return relativePath.replace(/\\/g, "/");
 }

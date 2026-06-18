@@ -1,3 +1,4 @@
+import { resolveOpenRouterTextPrimary } from "@/lib/openrouter-default-models";
 import {
   getNormalizedOpenRouterApiKey,
   getOpenRouterRequestHeaders,
@@ -66,9 +67,7 @@ function getMarketplaceSearchLinks(productName: string): Record<PrimaryMarketpla
 function getPriceJsonRepairModel(): string {
   const fromEnv = (process.env.OPENROUTER_PRICE_JSON_REPAIR_MODEL || "").trim();
   if (fromEnv) return fromEnv;
-  const desc = (process.env.OPENROUTER_DESCRIPTION_MODEL || "").trim();
-  if (desc) return desc;
-  return "qwen/qwen-2.5-72b-instruct";
+  return resolveOpenRouterTextPrimary();
 }
 
 /** Убирает обёртки ```json ... ``` и лишний текст вокруг. */
