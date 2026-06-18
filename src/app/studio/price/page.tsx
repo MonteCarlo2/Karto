@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import type { PriceAnalysis } from "@/lib/services/price-analyzer";
 import Image from "next/image";
 import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
+import { resolveFlowPhoto, resolveFlowProductName } from "@/lib/flow/flow-photo-cache";
 import { GALLERY_THUMB_PROXY_MAX_WIDTH } from "@/lib/client/gallery-display-url";
 
 const LOGOS = {
@@ -129,8 +130,8 @@ export default function PriceStrategyPage() {
           return;
         }
 
-        const name: string = understandingData.data.product_name || "";
-        const photo: string | null = understandingData.data.photo_url || null;
+        const name = resolveFlowProductName(understandingData.data.product_name);
+        const photo = resolveFlowPhoto(savedSessionId, understandingData.data.photo_url);
 
         setProductName(name);
         setPhotoUrl(photo);

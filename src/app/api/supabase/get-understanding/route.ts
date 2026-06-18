@@ -34,18 +34,18 @@ export async function POST(request: NextRequest) {
       .from("understanding_data")
       .select("*")
       .eq("session_id", session_id)
-      .order("created_at", { ascending: false })
-      .limit(1);
+      .maybeSingle();
 
     if (error) {
       console.error("Ошибка загрузки данных:", error);
-      return NextResponse.json(
-        { error: "Ошибка загрузки данных" },
-        { status: 500 }
-      );
+      return NextResponse.json({
+        success: false,
+        data: null,
+        error: error.message,
+      });
     }
 
-    if (!data || data.length === 0) {
+    if (!data) {
       return NextResponse.json({
         success: false,
         data: null,
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: data[0],
+      data,
     });
   } catch (error: any) {
     console.error("Ошибка API:", error);

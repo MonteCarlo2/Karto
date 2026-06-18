@@ -48,6 +48,7 @@ import {
 import { fetchUserBrandOnboarding } from "@/lib/brand/user-brand-onboarding-db";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { resolveFlowPhoto, resolveFlowProductName } from "@/lib/flow/flow-photo-cache";
 import { BugReportModal } from "@/components/ui/bug-report-modal";
 import { useToast } from "@/components/ui/toast";
 import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
@@ -867,8 +868,16 @@ export default function VisualPage() {
         
         const understandingData = await understandingResponse.json();
         if (understandingData.success && understandingData.data) {
-          setProductName(understandingData.data.product_name || "");
-          setPhotoUrl(understandingData.data.photo_url || null);
+          const row = understandingData.data;
+          setProductName(
+            resolveFlowProductName(row.product_name)
+          );
+          setPhotoUrl(resolveFlowPhoto(savedSessionId, row.photo_url));
+        } else {
+          const name = resolveFlowProductName(null);
+          const photo = resolveFlowPhoto(savedSessionId, null);
+          if (name) setProductName(name);
+          if (photo) setPhotoUrl(photo);
         }
         
         // Загружаем описание

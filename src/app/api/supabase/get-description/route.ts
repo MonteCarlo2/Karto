@@ -51,10 +51,11 @@ export async function POST(request: NextRequest) {
       }
 
       console.error("Ошибка загрузки данных описания:", error);
-      return NextResponse.json(
-        { error: "Ошибка загрузки данных описания" },
-        { status: 500 }
-      );
+      return NextResponse.json({
+        success: false,
+        data: null,
+        error: error.message,
+      });
     }
 
     // Проверяем соответствие: если в description_data есть сохраненное product_name,

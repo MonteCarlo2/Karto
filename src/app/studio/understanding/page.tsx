@@ -9,6 +9,7 @@ import { Logo } from "@/components/ui/logo";
 import { useRouter } from "next/navigation";
 import { useNotification } from "@/components/ui/notification";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { saveFlowSessionPhoto } from "@/lib/flow/flow-photo-cache";
 
 // Статичный эффект рельефной бумаги
 function CanvasTexture({ patternAlpha = 12 }: { patternAlpha?: number }) {
@@ -311,6 +312,8 @@ export default function UnderstandingPage() {
       reader.onloadend = () => {
         const dataUrl = reader.result as string;
         setPhotoDataUrl(dataUrl);
+        const sid = localStorage.getItem("karto_session_id");
+        if (sid) saveFlowSessionPhoto(sid, dataUrl);
       };
       reader.readAsDataURL(file);
       setAnalysisResult(null); // Сбрасываем результат при новой загрузке
@@ -355,6 +358,9 @@ export default function UnderstandingPage() {
       if (data.success) {
         if (data.session_id) {
           localStorage.setItem("karto_session_id", data.session_id);
+          if (photoDataUrl) {
+            saveFlowSessionPhoto(data.session_id, photoDataUrl);
+          }
         }
         setProductName(trimmed);
         router.push("/studio/description");

@@ -8,6 +8,7 @@ import { triggerDownloadFromRemoteUrl } from "@/lib/client/media-download";
 import type { PriceAnalysis } from "@/lib/services/price-analyzer";
 import { formatForCopy } from "@/lib/utils/marketplace-formatter";
 import { ResultsProductDescription } from "@/components/studio/ProductDescriptionDisplay";
+import { resolveFlowPhoto, resolveFlowProductName } from "@/lib/flow/flow-photo-cache";
 import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
 import {
   GALLERY_GRID_PROXY_MAX_WIDTH,
@@ -65,8 +66,8 @@ export default function ResultsPage() {
         });
         const understandingData = await understandingResponse.json();
         if (understandingData.success && understandingData.data) {
-          setProductName(understandingData.data.product_name || "");
-          setPhotoUrl(understandingData.data.photo_url || null);
+          setProductName(resolveFlowProductName(understandingData.data.product_name));
+          setPhotoUrl(resolveFlowPhoto(savedSessionId, understandingData.data.photo_url));
         }
 
         // 2. Загружаем описание

@@ -37,6 +37,7 @@ import {
   lightSanitizeDescriptionStream,
 } from "@/lib/utils/marketplace-formatter";
 import { FlowProductDescription } from "@/components/studio/ProductDescriptionDisplay";
+import { resolveFlowPhoto, resolveFlowProductName } from "@/lib/flow/flow-photo-cache";
 
 // Статичный эффект рельефной бумаги (копируем из understanding)
 function CanvasTexture({ patternAlpha = 12 }: { patternAlpha?: number }) {
@@ -171,6 +172,7 @@ export default function DescriptionPage() {
   const [finalDescription, setFinalDescription] = useState<string | null>(null);
   const [copiedVariantId, setCopiedVariantId] = useState<number | null>(null);
   const [stopWordIssues, setStopWordIssues] = useState<Array<{ word: string; category: string; index: number }>>([]);
+  const [isNavigatingToVisual, setIsNavigatingToVisual] = useState(false);
   
   // Скрываем navbar и footer на этой странице
   useEffect(() => {
@@ -197,102 +199,88 @@ export default function DescriptionPage() {
     const loadData = async () => {
       const savedSessionId = localStorage.getItem("karto_session_id");
       if (!savedSessionId) {
-        // Если нет сессии, возвращаем на предыдущий этап
         router.push("/studio/understanding");
         setIsRestoring(false);
         return;
       }
-      
+
       setSessionId(savedSessionId);
-      
+
+      let understandingRow: { product_name?: string; photo_url?: string | null } | null = null;
+
       try {
-        // 1. Подтягиваем данные этапа "Понимание" (название, фото)
         const understandingResponse = await fetch("/api/supabase/get-understanding", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ session_id: savedSessionId }),
-        });
-        
-        const understandingData = await understandingResponse.json();
-        
-        if (understandingData.success && understandingData.data) {
-          setProductName(understandingData.data.product_name || "");
-          setPhotoUrl(understandingData.data.photo_url || null);
-        } else {
-          // Если данных нет, возвращаем на предыдущий этап
-          router.push("/studio/understanding");
-          return;
-        }
-
-        // 2. Пробуем восстановить этап "Описание"
-        // ВАЖНО: Загружаем только если название товара совпадает
-        const descriptionResponse = await fetch("/api/supabase/get-description", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_id: savedSessionId }),
         });
 
-        const descriptionData = await descriptionResponse.json();
-
-        // Загружаем данные описания только если они есть И если название товара совпадает
-        // (проверка на соответствие товара уже сделана в API)
-        if (descriptionData.success && descriptionData.data) {
-          const desc = descriptionData.data;
-          
-          // Дополнительная проверка: если название товара из "Понимание" не совпадает,
-          // не загружаем старые данные (это защита на случай, если API не сработал)
-          const currentProductName = understandingData.data?.product_name || "";
-          
-          // Загружаем данные только если они действительно относятся к текущему товару
-          if (desc.user_preferences) {
-            setUserPreferences(
-              typeof desc.user_preferences === "string"
-                ? desc.user_preferences
-                : ""
-            );
+        if (understandingResponse.ok) {
+          const understandingData = await understandingResponse.json();
+          if (understandingData.success && understandingData.data) {
+            understandingRow = understandingData.data;
           }
-
-          if (Array.isArray(desc.selected_blocks)) {
-            setSelectedBlocks(desc.selected_blocks);
-          }
-
-          if (Array.isArray(desc.generated_descriptions) && desc.generated_descriptions.length > 0) {
-            setVariants(desc.generated_descriptions);
-            setIsStarted(true); // сразу показываем второй экран, если уже есть варианты
-          }
-
-          if (desc.final_description) {
-            setFinalDescription(desc.final_description);
-          }
-        } else {
-          // Если данных описания нет, сбрасываем состояние
-          setVariants([]);
-          setIsStarted(false);
-          setFinalDescription(null);
         }
       } catch (error) {
-        console.error("Ошибка загрузки данных:", error);
-        // Fallback: пытаемся загрузить из localStorage
-        const savedState = localStorage.getItem("understandingPageState");
-        if (savedState) {
-          try {
-            const state = JSON.parse(savedState);
-            setProductName(state.productName || "");
-            setPhotoUrl(state.photoDataUrl || null);
-          } catch (e) {
-            router.push("/studio/understanding");
-          }
-        } else {
-          router.push("/studio/understanding");
-        }
+        console.warn("get-understanding failed, using local cache:", error);
       }
+
+      const productNameResolved = resolveFlowProductName(understandingRow?.product_name);
+      const photoResolved = resolveFlowPhoto(savedSessionId, understandingRow?.photo_url);
+
+      if (!productNameResolved) {
+        router.push("/studio/understanding");
+        setIsRestoring(false);
+        return;
+      }
+
+      setProductName(productNameResolved);
+      setPhotoUrl(photoResolved);
+
+      try {
+        const descriptionResponse = await fetch("/api/supabase/get-description", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: savedSessionId }),
+        });
+
+        if (descriptionResponse.ok) {
+          const descriptionData = await descriptionResponse.json();
+
+          if (descriptionData.success && descriptionData.data) {
+            const desc = descriptionData.data;
+
+            if (desc.user_preferences) {
+              setUserPreferences(
+                typeof desc.user_preferences === "string" ? desc.user_preferences : ""
+              );
+            }
+
+            if (Array.isArray(desc.selected_blocks)) {
+              setSelectedBlocks(desc.selected_blocks);
+            }
+
+            if (Array.isArray(desc.generated_descriptions) && desc.generated_descriptions.length > 0) {
+              setVariants(desc.generated_descriptions);
+              setIsStarted(true);
+            }
+
+            if (desc.final_description) {
+              setFinalDescription(desc.final_description);
+            }
+          } else {
+            setVariants([]);
+            setIsStarted(false);
+            setFinalDescription(null);
+          }
+        }
+      } catch (error) {
+        console.warn("get-description failed:", error);
+      }
+
       setIsRestoring(false);
     };
-    
+
     loadData();
   }, [router]);
   
@@ -483,38 +471,36 @@ export default function DescriptionPage() {
   };
   
   // Подтверждение и переход
-  const handleConfirm = async () => {
-    const descriptionToSave = finalDescription || 
+  const handleConfirm = () => {
+    const descriptionToSave =
+      finalDescription ||
       (selectedVariantId ? variants.find((v) => v.id === selectedVariantId)?.description : null);
-    
+
     if (!descriptionToSave) {
       alert("Выберите или сгенерируйте описание");
       return;
     }
-    
-    // Сохраняем финальное описание
-    if (sessionId) {
-      try {
-        await fetch("/api/supabase/save-description", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            session_id: sessionId,
-            user_preferences: userPreferences.trim(),
-            selected_blocks: selectedBlocks,
-            generated_descriptions: variants,
-            final_description: descriptionToSave,
-          }),
-        });
-      } catch (error) {
-        console.error("Ошибка сохранения:", error);
-      }
-    }
-    
-    // Автоматический переход на следующий этап
+
+    if (isNavigatingToVisual) return;
+    setIsNavigatingToVisual(true);
+
     router.push("/studio/visual");
+
+    if (sessionId) {
+      void fetch("/api/supabase/save-description", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_preferences: userPreferences.trim(),
+          selected_blocks: selectedBlocks,
+          generated_descriptions: variants,
+          final_description: descriptionToSave,
+        }),
+      }).catch((error) => {
+        console.warn("save-description background:", error);
+      });
+    }
   };
 
   // Извлечение ключевых слов из названия товара
@@ -1203,7 +1189,8 @@ export default function DescriptionPage() {
                     <div className="mt-auto pt-6 border-t border-gray-200">
                       <button
                         onClick={handleConfirm}
-                        className="w-full py-4 px-6 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all"
+                        disabled={isNavigatingToVisual}
+                        className="w-full py-4 px-6 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-60"
                         style={{
                           background: "#2E5A43",
                           color: "#ffffff",
@@ -1211,7 +1198,7 @@ export default function DescriptionPage() {
                         }}
                       >
                         <Check className="w-5 h-5" />
-                        Принять и продолжить →
+                        {isNavigatingToVisual ? "Переход…" : "Принять и продолжить →"}
                       </button>
                     </div>
                   </div>
@@ -1430,7 +1417,8 @@ export default function DescriptionPage() {
                                   </button>
                                   <button
                                     onClick={handleConfirm}
-                                    className="px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all"
+                                    disabled={isNavigatingToVisual}
+                                    className="px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-60"
                                     style={{
                                       background: "#2E5A43",
                                       color: "#ffffff",
