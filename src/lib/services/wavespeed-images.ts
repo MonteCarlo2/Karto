@@ -9,8 +9,8 @@
  * Док: submit-task / get-result, модели см. docs-api google nano-banana-2.*
  */
 
+import { readFlowImageBuffer, isWaveSpeedReadyReferenceUrl } from "@/lib/flow/resolve-flow-reference";
 import { prepareEvolinkImageUrls } from "@/lib/services/evolink-images";
-import sharp from "sharp";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -396,16 +396,15 @@ export async function uploadBufferToWaveSpeedMedia(
 
 async function referenceSourceToBuffer(source: string): Promise<Buffer> {
   if (source.startsWith("data:image")) {
-    const comma = source.indexOf(",");
-    if (comma === -1) throw new Error("Invalid data URL");
-    const raw = Buffer.from(source.slice(comma + 1), "base64");
-    return raw.length > 400_000
-      ? sharp(raw)
-          .rotate()
-          .resize({ width: 1200, withoutEnlargement: true })
-          .jpeg({ quality: 80 })
-          .toBuffer()
-      : sharp(raw).rotate().jpeg({ quality: 85 }).toBuffer();
+    return readFlowImageBuffer(source);
+  }
+  if (
+    source.includes("/api/serve-file") ||
+    source.startsWith("/temp/") ||
+    source.startsWith("/output/") ||
+    (source.startsWith("/") && !source.startsWith("//"))
+  ) {
+    return readFlowImageBuffer(source);
   }
   const res = await fetch(source);
   if (!res.ok) throw new Error(`Download ref failed: ${res.status}`);
@@ -421,7 +420,7 @@ export async function prepareWaveSpeedReferenceUrls(inputs: string[]): Promise<s
     const source = slice[i]?.trim();
     if (!source) continue;
 
-    if (source.startsWith("https://") && !source.includes("localhost")) {
+    if (source.startsWith("https://") && isWaveSpeedReadyReferenceUrl(source)) {
       out.push(source);
       continue;
     }
@@ -487,6 +486,11 @@ export async function generateWithWaveSpeedNanoBanana2(
       `🍌 [WaveSpeed] Edit (${pathRel}), refs=${imageUrls.length}, aspect_ratio=${ar}`
     );
   } else {
+    if (hasReferenceInput) {
+      throw new Error(
+        "Референс передан, но WaveSpeed edit не получил images — генерация без фото запрещена"
+      );
+    }
     pathRel = wsTextModelPath();
     body = commonNanoBody(prompt, ar);
     console.log(`🍌 [WaveSpeed] Text-to-image (${pathRel}), aspect_ratio=${ar}`);

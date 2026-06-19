@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { withTimeout } from "@/lib/supabase/with-timeout";
+
+const GET_UNDERSTANDING_TIMEOUT_MS = 12_000;
 
 /**
  * Загрузка данных этапа "Понимание" из Supabase
@@ -30,11 +33,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const { data, error } = await supabase
-      .from("understanding_data")
-      .select("*")
-      .eq("session_id", session_id)
-      .maybeSingle();
+    const { data, error } = await withTimeout(
+      supabase
+        .from("understanding_data")
+        .select("*")
+        .eq("session_id", session_id)
+        .maybeSingle(),
+      GET_UNDERSTANDING_TIMEOUT_MS,
+      "understanding_data"
+    );
 
     if (error) {
       console.error("Ошибка загрузки данных:", error);

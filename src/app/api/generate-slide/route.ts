@@ -5,10 +5,10 @@ import {
   downloadImage, 
   getPublicUrl,
 } from "@/lib/services/image-processing";
-import path from "path";
-import fs from "fs/promises";
 import { createServerClient } from "@/lib/supabase/server";
 import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
+import { ensureWaveSpeedReferenceUrl } from "@/lib/flow/resolve-flow-reference";
+import { ensureFlowCardDisplayUrl } from "@/lib/flow/cache-flow-card-image";
 
 /**
  * Генерация слайда для серии карточек
@@ -30,11 +30,12 @@ export async function POST(request: NextRequest) {
     const {
       sessionId,
       productName,
-      referenceImageUrl, // Референсное изображение товара из первого слайда
-      environmentImageUrl, // Референсное изображение обстановки из первого слайда (опционально)
-      userPrompt, // Описание обстановки от пользователя
-      scenario, // Сценарий: "studio", "living-space", "macro", "in-hands"
-      aspectRatio, // "3:4" | "4:3" | "9:16" | "1:1"
+      productPhotoUrl,
+      referenceImageUrl, // Карточка (при «Использовать обстановку»)
+      environmentImageUrl, // Та же карточка как фон, если включён чекбокс
+      userPrompt,
+      scenario,
+      aspectRatio,
     } = body;
 
     // Проверяем обязательные поля
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!referenceImageUrl) {
+    if (!referenceImageUrl && !productPhotoUrl) {
       return NextResponse.json(
         { success: false, error: "Требуется референсное изображение" },
         { status: 400 }
@@ -74,100 +75,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Подготовка изображений для API (товар + обстановка)
-    // Для KIE можно передавать base64 или URL, сервис сам загрузит их в file upload endpoint.
-    let imagesForApi: string[] = [];
-    
-    // Функция для конвертации изображения в data URL (KIE получает только data URL или публичный https — без localhost)
-    const convertImageToBase64 = async (imageUrl: string): Promise<string | null> => {
-      try {
-        // Если это base64, используем как есть
-        if (imageUrl.startsWith("data:")) {
-          const base64Size = imageUrl.length;
-          const maxSize = 10 * 1024 * 1024; // 10MB
-          if (base64Size > maxSize) {
-            console.warn("⚠️ Base64 изображение слишком большое");
-            return null;
-          }
-          return imageUrl;
-        }
-        
-        // Если это http(s) localhost — читаем с диска и отдаём data URL (KIE не дергает localhost)
-        if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
-          try {
-            const u = new URL(imageUrl);
-            if (u.hostname === "localhost" || u.hostname === "127.0.0.1") {
-              const localPath = path.join(process.cwd(), "public", u.pathname);
-              await fs.access(localPath);
-              const buffer = await fs.readFile(localPath);
-              if (buffer.length > 10 * 1024 * 1024) return null;
-              let mimeType = "image/jpeg";
-              const header = buffer.slice(0, 4);
-              if (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47) mimeType = "image/png";
-              else if (header[0] === 0xFF && header[1] === 0xD8 && header[2] === 0xFF) mimeType = "image/jpeg";
-              else {
-                const ext = path.extname(u.pathname).toLowerCase();
-                if (ext === ".png") mimeType = "image/png";
-                else if (ext === ".webp") mimeType = "image/webp";
-              }
-              return `data:${mimeType};base64,${buffer.toString("base64")}`;
-            }
-          } catch (_) { /* fallback: use URL as is */ }
-          return imageUrl;
-        }
-        
-        // Если это локальный путь, конвертируем в base64
-        const localPath = imageUrl.startsWith("/") 
-          ? path.join(process.cwd(), "public", imageUrl)
-          : imageUrl;
-        
-        await fs.access(localPath);
-        const buffer = await fs.readFile(localPath);
-        const fileSize = buffer.length;
-        
-        if (fileSize > 10 * 1024 * 1024) {
-          console.warn("⚠️ Изображение слишком большое");
-          return null;
-        }
-        
-        // Определяем MIME-тип
-        let mimeType = "image/jpeg";
-        const header = buffer.slice(0, 4);
-        
-        if (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47) {
-          mimeType = "image/png";
-        } else if (header[0] === 0xFF && header[1] === 0xD8 && header[2] === 0xFF) {
-          mimeType = "image/jpeg";
-        } else {
-          const ext = path.extname(imageUrl).toLowerCase();
-          if (ext === ".png") mimeType = "image/png";
-          else if (ext === ".jpg" || ext === ".jpeg") mimeType = "image/jpeg";
-          else if (ext === ".webp") mimeType = "image/webp";
-        }
-        
-        const base64 = buffer.toString("base64");
-        return `data:${mimeType};base64,${base64}`;
-      } catch (error) {
-        console.warn("⚠️ Не удалось загрузить изображение:", error);
-        return null;
-      }
-    };
-    
-    // Добавляем референс товара
-    if (referenceImageUrl) {
-      const productRef = await convertImageToBase64(referenceImageUrl);
-      if (productRef) {
-        imagesForApi.push(productRef);
-        console.log("📷 Референс товара добавлен");
-      }
+    const useEnvironment = Boolean(environmentImageUrl);
+    const rawProductSource = useEnvironment
+      ? String(referenceImageUrl || "").trim()
+      : String(productPhotoUrl || referenceImageUrl || "").trim();
+
+    if (!rawProductSource) {
+      return NextResponse.json(
+        { success: false, error: "Требуется фото товара или карточка-референс" },
+        { status: 400 }
+      );
     }
-    
-    // Добавляем референс обстановки (если указан)
-    if (environmentImageUrl) {
-      const envRef = await convertImageToBase64(environmentImageUrl);
-      if (envRef) {
+
+    const imagesForApi: string[] = [];
+
+    const productRef = await ensureWaveSpeedReferenceUrl(
+      rawProductSource,
+      sessionId,
+      "slide-product"
+    );
+    if (!productRef) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Не удалось подготовить фото товара для WaveSpeed. Вернитесь на «Понимание» и загрузите фото.",
+          code: "PHOTO_REQUIRED",
+        },
+        { status: 400 }
+      );
+    }
+    imagesForApi.push(productRef);
+    console.log("📷 [slide] Референс товара на WaveSpeed CDN:", productRef.slice(0, 96));
+
+    if (useEnvironment && environmentImageUrl) {
+      const envRef = await ensureWaveSpeedReferenceUrl(
+        String(environmentImageUrl),
+        sessionId,
+        "slide-env"
+      );
+      if (envRef && envRef !== productRef) {
         imagesForApi.push(envRef);
-        console.log("📷 Референс обстановки добавлен");
+        console.log("📷 [slide] Референс обстановки на WaveSpeed CDN:", envRef.slice(0, 96));
       }
     }
 
@@ -322,11 +271,16 @@ ${scenarioPrompt}${environmentReference}${userDescription}
     try {
       const result = await generateFlowImage(
         finalPrompt,
-        imagesForApi.length > 0 ? imagesForApi : undefined,
+        imagesForApi,
         finalAspectRatio
       );
       generatedImageUrl = result.imageUrl;
-      console.log("✅ Генерация успешна");
+      if (!result.referenceUsed) {
+        throw new Error(
+          "WaveSpeed не принял референс (text-to-image вместо edit). Проверьте фото товара."
+        );
+      }
+      console.log("✅ Генерация успешна (WaveSpeed edit с референсом)");
     } catch (error: unknown) {
       console.error("❌ Ошибка в generateFlowImage:", error);
       if (error instanceof KieAiContentFilteredError) throw error;
@@ -336,9 +290,9 @@ ${scenarioPrompt}${environmentReference}${userDescription}
       );
     }
     
-    // Скачиваем результат
+    // Скачиваем результат и кэшируем для UI
     const generatedPath = await downloadImage(generatedImageUrl);
-    const generatedLocalUrl = getPublicUrl(generatedPath);
+    const generatedLocalUrl = await ensureFlowCardDisplayUrl(getPublicUrl(generatedPath));
 
     console.log(`✅ Слайд сгенерирован: ${generatedLocalUrl}`);
 

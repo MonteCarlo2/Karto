@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import type { PriceAnalysis } from "@/lib/services/price-analyzer";
 import Image from "next/image";
 import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
-import { resolveFlowPhoto, resolveFlowProductName } from "@/lib/flow/flow-photo-cache";
+import { resolveFlowPhoto, resolveFlowProductName, readUnderstandingPageState } from "@/lib/flow/flow-photo-cache";
 import { flowPriceCacheKey } from "@/lib/flow/flow-persistence-keys";
 import { GALLERY_THUMB_PROXY_MAX_WIDTH } from "@/lib/client/gallery-display-url";
 
@@ -82,6 +82,28 @@ function buildUiPriceFallback(productName: string): PriceAnalysis {
   };
 }
 
+async function fetchJsonWithTimeout<T = Record<string, unknown>>(
+  url: string,
+  body: Record<string, unknown>,
+  timeoutMs = 10_000
+): Promise<T | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default function PriceStrategyPage() {
   const router = useRouter();
 
@@ -115,56 +137,16 @@ export default function PriceStrategyPage() {
         }
         setSessionId(savedSessionId);
 
-        // Данные этапа "Понимание"
-        const understandingResponse = await fetch(
-          "/api/supabase/get-understanding",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ session_id: savedSessionId }),
-          }
-        );
-        const understandingData = await understandingResponse.json();
-
-        if (!understandingData.success || !understandingData.data) {
-          router.push("/studio/understanding");
-          return;
-        }
-
-        const name = resolveFlowProductName(understandingData.data.product_name);
-        const photo = resolveFlowPhoto(savedSessionId, understandingData.data.photo_url);
+        const lsState = readUnderstandingPageState();
+        let name = resolveFlowProductName(null);
+        let photo = resolveFlowPhoto(savedSessionId, null);
+        if (!name && lsState.productName) name = lsState.productName.trim();
+        if (!photo && lsState.photoDataUrl) photo = lsState.photoDataUrl;
 
         setProductName(name);
         setPhotoUrl(photo);
-
         setIsLoading(true);
         setError(null);
-
-        // 1) Supabase (не перегенерировать при F5)
-        try {
-          const resultsResponse = await fetch("/api/supabase/get-results", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ session_id: savedSessionId }),
-          });
-          const resultsData = await resultsResponse.json();
-          if (resultsData.success && resultsData.price_analysis) {
-            const fromDb = resultsData.price_analysis as PriceAnalysis;
-            setAnalysis(fromDb);
-            try {
-              localStorage.setItem(
-                flowPriceCacheKey(savedSessionId),
-                JSON.stringify({ productName: name, analysis: fromDb })
-              );
-            } catch {
-              /* ignore */
-            }
-            setIsLoading(false);
-            return;
-          }
-        } catch (e) {
-          console.warn("get-results price load failed:", e);
-        }
 
         const cacheKey = flowPriceCacheKey(savedSessionId);
         const cachedRaw = localStorage.getItem(cacheKey);
@@ -177,8 +159,46 @@ export default function PriceStrategyPage() {
               return;
             }
           } catch {
-            // ignore parse error, пойдём в сеть
+            /* ignore */
           }
+        }
+
+        const [understandingData, resultsData] = await Promise.all([
+          fetchJsonWithTimeout<{ success?: boolean; data?: { product_name?: string; photo_url?: string } }>(
+            "/api/supabase/get-understanding",
+            { session_id: savedSessionId },
+            12_000
+          ),
+          fetchJsonWithTimeout<{ success?: boolean; price_analysis?: PriceAnalysis }>(
+            "/api/supabase/get-results",
+            { session_id: savedSessionId },
+            12_000
+          ),
+        ]);
+
+        if (understandingData?.success && understandingData.data) {
+          name = resolveFlowProductName(understandingData.data.product_name) || name;
+          photo = resolveFlowPhoto(savedSessionId, understandingData.data.photo_url) || photo;
+          setProductName(name);
+          setPhotoUrl(photo);
+        } else if (!name) {
+          router.push("/studio/understanding");
+          return;
+        }
+
+        if (resultsData?.success && resultsData.price_analysis) {
+          const fromDb = resultsData.price_analysis as PriceAnalysis;
+          setAnalysis(fromDb);
+          try {
+            localStorage.setItem(
+              cacheKey,
+              JSON.stringify({ productName: name, analysis: fromDb })
+            );
+          } catch {
+            /* ignore */
+          }
+          setIsLoading(false);
+          return;
         }
 
         const priceResponse = await fetch("/api/price-analysis", {
@@ -198,8 +218,7 @@ export default function PriceStrategyPage() {
             cacheKey,
             JSON.stringify({ productName: name, analysis: priceData.data })
           );
-          
-          // Сохраняем в Supabase сразу
+
           fetch("/api/supabase/save-results", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

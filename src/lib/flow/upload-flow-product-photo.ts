@@ -1,7 +1,6 @@
 import sharp from "sharp";
 import { createServerClient } from "@/lib/supabase/server";
-import { hasWaveSpeedApiKey } from "@/lib/image-provider-keys";
-import { uploadBufferToWaveSpeedMedia } from "@/lib/services/wavespeed-images";
+
 const REF_BUCKET = "generated-images";
 const REF_PREFIX = "flow-product-photos";
 
@@ -77,33 +76,12 @@ export async function uploadFlowProductPhotoFromDataUrl(
 }
 
 /**
- * Для WaveSpeed/EvoLink нужен публичный https URL. data: URL конвертируем один раз.
+ * Для WaveSpeed/EvoLink нужен публичный https URL (как в батче карточек).
  */
 export async function ensurePublicProductPhotoUrl(
   source: string,
   sessionId: string
 ): Promise<string> {
-  const trimmed = source?.trim() ?? "";
-  if (!trimmed) return "";
-  if (trimmed.startsWith("https://")) return trimmed;
-  if (trimmed.startsWith("http://") && !trimmed.includes("localhost") && !trimmed.includes("127.0.0.1")) {
-    return trimmed;
-  }
-  if (trimmed.startsWith("data:image")) {
-    const buffer = await dataUrlToBuffer(trimmed);
-    if (hasWaveSpeedApiKey()) {
-      try {
-        return await uploadBufferToWaveSpeedMedia(buffer, `flow-${sessionId}.jpg`);
-      } catch (e) {
-        console.warn("⚠️ [flow-photo] WaveSpeed upload failed, пробуем Supabase:", e);
-      }
-    }
-    return uploadFlowProductPhotoBuffer(buffer, sessionId);
-  }  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-    const res = await fetch(trimmed);
-    if (!res.ok) throw new Error(`Не удалось скачать фото: ${res.status}`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    return uploadFlowProductPhotoBuffer(buf, sessionId);
-  }
-  return "";
+  const { ensureWaveSpeedReferenceUrl } = await import("@/lib/flow/resolve-flow-reference");
+  return ensureWaveSpeedReferenceUrl(source, sessionId, "flow-product");
 }

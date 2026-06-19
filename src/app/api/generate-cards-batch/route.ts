@@ -322,7 +322,11 @@ export async function POST(request: NextRequest) {
     console.log(`✅ Успешно сгенерировано ${successfulCards.length}/${cardsToGenerate} карточек`);
     const quotaAfter = await incrementVisualQuota(supabase as any, sessionId, successfulCards.length);
 
-    setVisualBatchProgress(sessionId, cardUrls, false);
+    setVisualBatchProgress(sessionId, cardUrls, false, {
+      generationUsed: quotaAfter.used,
+      generationRemaining: quotaAfter.remaining,
+      generationLimit: quotaAfter.limit,
+    });
 
     try {
       await persistVisualGeneratedCards(sessionId, cardUrls, {

@@ -1203,8 +1203,23 @@ export default function VisualPage() {
       if (pollInFlightRef.current) return;
       pollInFlightRef.current = true;
       try {
-        const norm = await syncGeneratedCardsFromServer(sessionId, { progressOnly: true });
-        if (norm) applyGeneratedCardsIfChanged(norm);
+        const res = await fetch(
+          `/api/flow/visual-progress?sessionId=${encodeURIComponent(sessionId)}`
+        );
+        const data = await res.json().catch(() => ({} as Record<string, unknown>));
+        if (Array.isArray(data.slots)) {
+          const norm = normalizeVisualCardSlots(data.slots);
+          if (norm.some(Boolean)) applyGeneratedCardsIfChanged(norm);
+        }
+        if (typeof data.generationUsed === "number") {
+          const limit = Math.max(1, Number(data.generationLimit || 12));
+          const used = Math.max(0, Number(data.generationUsed));
+          setVisualQuota({
+            used,
+            limit,
+            remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
+          });
+        }
       } finally {
         pollInFlightRef.current = false;
       }
@@ -1214,6 +1229,32 @@ export default function VisualPage() {
     const id = setInterval(() => void pollProgress(), 2500);
     return () => clearInterval(id);
   }, [isGenerating, batchPolling, sessionId]);
+
+  // Все 4 слота заполнены — сразу показываем «Перегенерировать» / «Выбрать» (не ждём hydrate/persist батча)
+  useEffect(() => {
+    if (filledCardCount < 4 || !sessionId) return;
+    if (!isGenerating && !batchPolling) return;
+    setBatchPolling(false);
+    setIsGenerating(false);
+
+    void fetch(
+      `/api/flow/visual-progress?sessionId=${encodeURIComponent(sessionId)}`
+    )
+      .then((r) => r.json())
+      .then((data: Record<string, unknown>) => {
+        if (typeof data.generationUsed !== "number") return;
+        const limit = Math.max(1, Number(data.generationLimit || 12));
+        const used = Math.max(0, Number(data.generationUsed));
+        setVisualQuota({
+          used,
+          limit,
+          remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
+        });
+      })
+      .catch(() => {
+        /* ignore */
+      });
+  }, [filledCardCount, isGenerating, batchPolling, sessionId]);
 
   // Сохраняем slides в localStorage и Supabase при изменении
   useEffect(() => {
@@ -3169,17 +3210,23 @@ export default function VisualPage() {
                       
                       setIsGeneratingSlide(true);
                       try {
-                        // Вызываем API для генерации слайда
+                        const productPhoto = resolveFlowPhoto(sessionId, photoUrl);
+                        if (!productPhoto) {
+                          alert("Фото товара не найдено. Вернитесь на этап «Понимание».");
+                          return;
+                        }
+
                         const response = await fetch("/api/generate-slide", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
                             sessionId,
                             productName: productName,
-                            referenceImageUrl: firstSlide.imageUrl, // Референс товара из первого слайда
-                            environmentImageUrl: useEnvironment ? firstSlide.imageUrl : null, // Референс обстановки только если включен чекбокс
-                            userPrompt: slidePrompt.trim() || "", // Описание от пользователя (может быть пустым)
-                            scenario: selectedScenario || null, // Сценарий (может быть null)
+                            productPhotoUrl: productPhoto,
+                            referenceImageUrl: firstSlide.imageUrl,
+                            environmentImageUrl: useEnvironment ? firstSlide.imageUrl : null,
+                            userPrompt: slidePrompt.trim() || "",
+                            scenario: selectedScenario || null,
                             aspectRatio: slideAspectRatio,
                           }),
                         });

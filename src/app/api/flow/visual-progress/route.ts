@@ -16,5 +16,8 @@ export async function GET(request: NextRequest) {
     slots: progress.slots,
     inProgress: progress.inProgress,
     updatedAt: progress.updatedAt,
+    generationUsed: progress.quota?.generationUsed,
+    generationRemaining: progress.quota?.generationRemaining,
+    generationLimit: progress.quota?.generationLimit,
   });
 }

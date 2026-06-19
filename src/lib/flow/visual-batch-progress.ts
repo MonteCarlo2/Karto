@@ -1,9 +1,16 @@
 /** In-memory прогресс батча визуала — для опроса клиентом без Supabase. */
 
+export type VisualBatchQuota = {
+  generationUsed: number;
+  generationRemaining: number;
+  generationLimit: number;
+};
+
 export type VisualBatchProgress = {
   slots: (string | null)[];
   inProgress: boolean;
   updatedAt: number;
+  quota?: VisualBatchQuota;
 };
 
 const TTL_MS = 30 * 60 * 1000;
@@ -25,13 +32,16 @@ function pruneStale(): void {
 export function setVisualBatchProgress(
   sessionId: string,
   slots: (string | null)[],
-  inProgress: boolean
+  inProgress: boolean,
+  quota?: VisualBatchQuota
 ): void {
   pruneStale();
+  const prev = bySession.get(sessionId);
   bySession.set(sessionId, {
     slots: padSlots(slots),
     inProgress,
     updatedAt: Date.now(),
+    quota: quota ?? prev?.quota,
   });
 }
 
