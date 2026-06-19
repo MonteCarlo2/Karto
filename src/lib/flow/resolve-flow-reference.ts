@@ -47,32 +47,8 @@ export function isLocalServeFileMissing(err: unknown): boolean {
   return code === "ENOENT" || code === "ENOTDIR";
 }
 
-function appOriginForServeFileFetch(): string {
-  const raw =
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    process.env.VERCEL_URL?.trim() ||
-    "";
-  if (!raw) return "";
-  if (raw.startsWith("http://") || raw.startsWith("https://")) {
-    return raw.replace(/\/+$/, "");
-  }
-  return `https://${raw.replace(/\/+$/, "")}`;
-}
-
 async function readServeFileFromDisk(f: string, dir: "temp" | "output"): Promise<Buffer> {
-  const filePath = getWritableFilePath(f, dir);
-  try {
-    return await fs.readFile(filePath);
-  } catch (e) {
-    if (!isLocalServeFileMissing(e)) throw e;
-    const origin = appOriginForServeFileFetch();
-    if (!origin) throw e;
-    const fetchUrl = `${origin}/api/serve-file?f=${encodeURIComponent(f)}&dir=${dir}`;
-    console.warn(`⚠️ [flow-ref] локальный файл отсутствует, пробуем HTTP: ${fetchUrl.slice(0, 120)}…`);
-    const res = await fetch(fetchUrl);
-    if (!res.ok) throw e;
-    return Buffer.from(await res.arrayBuffer());
-  }
+  return fs.readFile(getWritableFilePath(f, dir));
 }
 
 export async function readFlowImageBuffer(imageUrl: string): Promise<Buffer> {

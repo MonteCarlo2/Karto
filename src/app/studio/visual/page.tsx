@@ -1471,6 +1471,15 @@ export default function VisualPage() {
       } catch (e) {
         console.warn("⚠️ [FRONTEND] Сжатие фото не удалось, отправляем как есть:", e);
       }
+      try {
+        await fetch("/api/flow/session-photo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, photoUrl: photoForBatch }),
+        });
+      } catch {
+        /* сервер подхватит photoUrl из тела батча */
+      }
     }
 
     // Батч: чекпоинт 3 мин на сервере + гонка за 4 URL; клиент ждёт до 7 мин и опрашивает прогресс

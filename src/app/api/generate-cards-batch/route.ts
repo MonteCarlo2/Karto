@@ -12,6 +12,10 @@ import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-gene
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { ensurePublicProductPhotoUrl } from "@/lib/flow/upload-flow-product-photo";
 import {
+  getFlowSessionPhoto,
+  setFlowSessionPhoto,
+} from "@/lib/flow/flow-session-photo-store";
+import {
   CARD_BATCH_MAX_WAIT_MS,
   CARD_SLOT_CHECKPOINT_MS,
   persistVisualGeneratedCards,
@@ -165,8 +169,13 @@ export async function POST(request: NextRequest) {
     }
     console.log(`🎯 [BATCH] Генерируем ${cardsToGenerate} карточек`);
 
-    let rawPhoto =
-      typeof photoUrl === "string" && photoUrl.trim() ? photoUrl.trim() : "";
+    let rawPhoto = getFlowSessionPhoto(sessionId) || "";
+    if (!rawPhoto && typeof photoUrl === "string" && photoUrl.trim()) {
+      rawPhoto = photoUrl.trim();
+      if (rawPhoto.startsWith("data:")) {
+        setFlowSessionPhoto(sessionId, rawPhoto);
+      }
+    }
     if (!rawPhoto) {
       try {
         const { data } = await supabase
@@ -212,7 +221,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`📷 [BATCH] Референс для WaveSpeed: ${effectivePhotoUrl.slice(0, 96)}…`);
+    console.log(
+      `📷 [BATCH] Референс для WaveSpeed: ${effectivePhotoUrl.slice(0, 96)}… (источник: ${rawPhoto.startsWith("data:") ? "data-url" : "url"})`
+    );
 
     const cardRequestBase = {
       productName,

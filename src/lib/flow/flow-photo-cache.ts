@@ -36,17 +36,17 @@ export function readUnderstandingPageState(): {
   }
 }
 
-/** Фото: Supabase URL → кэш по session → understandingPageState. */
+/** Фото: сначала кэш сессии (актуальное с «Понимания»), потом БД, потом legacy state. */
 export function resolveFlowPhoto(
   sessionId: string | null | undefined,
   dbPhotoUrl: string | null | undefined
 ): string | null {
-  const fromDb = dbPhotoUrl?.trim();
-  if (fromDb && !fromDb.startsWith("data:")) return fromDb;
-  if (fromDb?.startsWith("data:")) return fromDb;
-
   const fromSession = loadFlowSessionPhoto(sessionId);
   if (fromSession) return fromSession;
+
+  const fromDb = dbPhotoUrl?.trim();
+  if (fromDb?.startsWith("data:")) return fromDb;
+  if (fromDb) return fromDb;
 
   const state = readUnderstandingPageState();
   return state.photoDataUrl?.trim() || null;

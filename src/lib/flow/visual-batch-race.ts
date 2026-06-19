@@ -51,6 +51,7 @@ export async function runVisualBatchRace(
   const errors: CardGenAttemptResult[] = [];
   let inFlight = 0;
   let acceptChain = Promise.resolve();
+  let raceDone = false;
 
   const notifySlotFilled = (filled: number) => {
     void onSlotFilled?.([...slots], filled);
@@ -65,6 +66,7 @@ export async function runVisualBatchRace(
       if (emptyIdx < 0) return;
       slots[emptyIdx] = url;
       const filled = countFilled(slots);
+      if (filled >= slotCount) raceDone = true;
       console.log(`✅ [BATCH/RACE] Карточка ${filled}/${slotCount} (слот ${emptyIdx + 1})`);
       notifySlotFilled(filled);
     });
@@ -72,6 +74,7 @@ export async function runVisualBatchRace(
   };
 
   const launch = (conceptIndex: number, label: string) => {
+    if (raceDone || countFilled(slots) >= slotCount) return;
     const idx = conceptIndex % concepts.length;
     inFlight++;
     void generateOne(idx, label)
@@ -95,13 +98,32 @@ export async function runVisualBatchRace(
   }
 
   await sleep(checkpointMs);
+  await acceptChain;
 
-  const filledAtCheckpoint = countFilled(slots);
-  let missingAtCheckpoint: number;
-  if (filledAtCheckpoint > 0) {
+  let filledAtCheckpoint = countFilled(slots);
+
+  // Запросы ещё в полёте — ждём, не шлём дубли (иначе 8 запросов в WaveSpeed)
+  if (filledAtCheckpoint < slotCount && inFlight > 0) {
+    console.log(
+      `⏳ [BATCH/RACE] Чекпоинт ${checkpointMs / 1000}s: готово ${filledAtCheckpoint}, in-flight ${inFlight} — ждём завершения`
+    );
+    const graceUntil = Date.now() + 120_000;
+    while (inFlight > 0 && countFilled(slots) < slotCount && Date.now() < graceUntil) {
+      await sleep(500);
+    }
+    await acceptChain;
+    filledAtCheckpoint = countFilled(slots);
+  }
+
+  let missingAtCheckpoint = 0;
+  if (filledAtCheckpoint >= slotCount || raceDone) {
+    missingAtCheckpoint = 0;
+  } else if (filledAtCheckpoint > 0) {
     missingAtCheckpoint = slotCount - filledAtCheckpoint;
+  } else if (inFlight > 0) {
+    missingAtCheckpoint = 0;
   } else {
-    missingAtCheckpoint = Math.max(0, slotCount - inFlight);
+    missingAtCheckpoint = slotCount;
   }
 
   if (missingAtCheckpoint > 0) {
