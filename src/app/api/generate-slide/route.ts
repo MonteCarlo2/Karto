@@ -7,7 +7,7 @@ import {
 } from "@/lib/services/image-processing";
 import { createServerClient } from "@/lib/supabase/server";
 import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
-import { ensureWaveSpeedReferenceUrl } from "@/lib/flow/resolve-flow-reference";
+import { ensureWaveSpeedReferenceUrlWithFallback } from "@/lib/flow/resolve-flow-reference";
 import { ensureFlowCardDisplayUrl } from "@/lib/flow/cache-flow-card-image";
 
 /**
@@ -88,9 +88,12 @@ export async function POST(request: NextRequest) {
     }
 
     const imagesForApi: string[] = [];
+    const productPhotoFallback =
+      typeof productPhotoUrl === "string" ? productPhotoUrl.trim() : "";
 
-    const productRef = await ensureWaveSpeedReferenceUrl(
+    const productRef = await ensureWaveSpeedReferenceUrlWithFallback(
       rawProductSource,
+      productPhotoFallback || undefined,
       sessionId,
       "slide-product"
     );
@@ -109,8 +112,9 @@ export async function POST(request: NextRequest) {
     console.log("📷 [slide] Референс товара на WaveSpeed CDN:", productRef.slice(0, 96));
 
     if (useEnvironment && environmentImageUrl) {
-      const envRef = await ensureWaveSpeedReferenceUrl(
+      const envRef = await ensureWaveSpeedReferenceUrlWithFallback(
         String(environmentImageUrl),
+        productPhotoFallback || rawProductSource,
         sessionId,
         "slide-env"
       );

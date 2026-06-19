@@ -42,6 +42,39 @@ export function flowReferenceNeedsUpload(url: string): boolean {
   return true;
 }
 
+export function isLocalServeFileMissing(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException)?.code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
+function appOriginForServeFileFetch(): string {
+  const raw =
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.VERCEL_URL?.trim() ||
+    "";
+  if (!raw) return "";
+  if (raw.startsWith("http://") || raw.startsWith("https://")) {
+    return raw.replace(/\/+$/, "");
+  }
+  return `https://${raw.replace(/\/+$/, "")}`;
+}
+
+async function readServeFileFromDisk(f: string, dir: "temp" | "output"): Promise<Buffer> {
+  const filePath = getWritableFilePath(f, dir);
+  try {
+    return await fs.readFile(filePath);
+  } catch (e) {
+    if (!isLocalServeFileMissing(e)) throw e;
+    const origin = appOriginForServeFileFetch();
+    if (!origin) throw e;
+    const fetchUrl = `${origin}/api/serve-file?f=${encodeURIComponent(f)}&dir=${dir}`;
+    console.warn(`⚠️ [flow-ref] локальный файл отсутствует, пробуем HTTP: ${fetchUrl.slice(0, 120)}…`);
+    const res = await fetch(fetchUrl);
+    if (!res.ok) throw e;
+    return Buffer.from(await res.arrayBuffer());
+  }
+}
+
 export async function readFlowImageBuffer(imageUrl: string): Promise<Buffer> {
   const trimmed = imageUrl.trim();
 
@@ -52,7 +85,7 @@ export async function readFlowImageBuffer(imageUrl: string): Promise<Buffer> {
     if (!f || (dir !== "temp" && dir !== "output")) {
       throw new Error("Некорректный URL serve-file");
     }
-    return fs.readFile(getWritableFilePath(f, dir));
+    return readServeFileFromDisk(f, dir);
   }
 
   const publicRelative = trimmed.split("?")[0];
@@ -137,4 +170,34 @@ export async function resolveFlowReferenceForApi(
   label = "flow-ref"
 ): Promise<string> {
   return ensureWaveSpeedReferenceUrl(imageUrl, sessionId, label);
+}
+
+/** Референс для слайда: при пропавшем файле карточки — фото с «Понимания». */
+export async function ensureWaveSpeedReferenceUrlWithFallback(
+  primary: string,
+  fallback: string | undefined,
+  sessionId: string,
+  label: string
+): Promise<string> {
+  const primaryTrim = primary?.trim() ?? "";
+  const fallbackTrim = fallback?.trim() ?? "";
+
+  if (primaryTrim) {
+    try {
+      const url = await ensureWaveSpeedReferenceUrl(primaryTrim, sessionId, label);
+      if (url) return url;
+    } catch (e) {
+      if (fallbackTrim && fallbackTrim !== primaryTrim) {
+        console.warn(`⚠️ [flow-ref] ${label}: основной референс недоступен, fallback:`, e);
+        return ensureWaveSpeedReferenceUrl(fallbackTrim, sessionId, `${label}-fb`);
+      }
+      throw e;
+    }
+  }
+
+  if (fallbackTrim) {
+    return ensureWaveSpeedReferenceUrl(fallbackTrim, sessionId, `${label}-fb`);
+  }
+
+  return "";
 }
