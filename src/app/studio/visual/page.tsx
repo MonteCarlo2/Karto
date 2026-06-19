@@ -3218,6 +3218,11 @@ export default function VisualPage() {
                       }
                       
                       setIsGeneratingSlide(true);
+                      const slideAbort = new AbortController();
+                      const slideFetchTimeout = setTimeout(
+                        () => slideAbort.abort(),
+                        480_000
+                      );
                       try {
                         const productPhoto = resolveFlowPhoto(sessionId, photoUrl);
                         if (!productPhoto) {
@@ -3228,6 +3233,7 @@ export default function VisualPage() {
                         const response = await fetch("/api/generate-slide", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
+                          signal: slideAbort.signal,
                           body: JSON.stringify({
                             sessionId,
                             productName: productName,
@@ -3297,13 +3303,17 @@ export default function VisualPage() {
                         
                         setSlidePrompt("");
                         setSelectedScenario(null);
-                      } catch (_error: unknown) {
+                      } catch (error: unknown) {
+                        const aborted =
+                          error instanceof DOMException && error.name === "AbortError";
                         setGenerationError({
                           show: true,
-                          message:
-                            "Ошибка произошла на нашей стороне. Извиняемся, пожалуйста, попробуйте еще раз чуть позже.",
+                          message: aborted
+                            ? "Время ожидания истекло (генерация заняла более 8 минут). Попробуйте ещё раз."
+                            : "Ошибка произошла на нашей стороне. Извиняемся, пожалуйста, попробуйте еще раз чуть позже.",
                         });
                       } finally {
+                        clearTimeout(slideFetchTimeout);
                         setIsGeneratingSlide(false);
                       }
                     }}

@@ -9,6 +9,13 @@ import { createServerClient } from "@/lib/supabase/server";
 import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
 import { ensureWaveSpeedReferenceUrlWithFallback } from "@/lib/flow/resolve-flow-reference";
 import { ensureFlowCardDisplayUrl } from "@/lib/flow/cache-flow-card-image";
+import {
+  runSlideGenerationRace,
+  SLIDE_GENERATION_CHECKPOINT_MS,
+  SLIDE_GENERATION_MAX_WAIT_MS,
+} from "@/lib/flow/slide-generation-race";
+
+export const maxDuration = 600;
 
 /**
  * Генерация слайда для серии карточек
@@ -262,41 +269,59 @@ ${scenarioPrompt}${environmentReference}${userDescription}
     console.log("  - Референс обстановки:", environmentImageUrl ? "да" : "нет");
     console.log("═══════════════════════════════════════");
     
-    // Генерируем через WaveSpeed (Nano Banana 2)
+    // Генерируем через WaveSpeed (Nano Banana 2) — гонка: через 3 мин без успеха второй запрос параллельно
     const finalAspectRatio = aspectRatio || "3:4";
-    
+
     console.log("📐 Final Aspect Ratio:", finalAspectRatio);
     console.log("🖼️ Image Inputs:", imagesForApi.length);
     console.log("📏 Длина промпта:", finalPrompt.length, "символов");
-    
-    // Генерируем через WaveSpeed с изображением(ями)
-    let generatedImageUrl: string;
+    console.log(
+      `⏱️ [slide] checkpoint=${SLIDE_GENERATION_CHECKPOINT_MS / 1000}s maxWait=${SLIDE_GENERATION_MAX_WAIT_MS / 1000}s`
+    );
 
-    try {
-      const result = await generateFlowImage(
-        finalPrompt,
-        imagesForApi,
-        finalAspectRatio
-      );
-      generatedImageUrl = result.imageUrl;
-      if (!result.referenceUsed) {
-        throw new Error(
-          "WaveSpeed не принял референс (text-to-image вместо edit). Проверьте фото товара."
+    const runWaveSpeedOnce = async (
+      attemptLabel: string
+    ): Promise<{ url: string | null; error?: string; code?: string }> => {
+      try {
+        console.log(`🎬 [slide] Запрос ${attemptLabel}`);
+        const result = await generateFlowImage(
+          finalPrompt,
+          imagesForApi,
+          finalAspectRatio
         );
+        if (!result.referenceUsed) {
+          return {
+            url: null,
+            error:
+              "WaveSpeed не принял референс (text-to-image вместо edit). Проверьте фото товара.",
+          };
+        }
+        const generatedPath = await downloadImage(result.imageUrl);
+        const displayUrl = await ensureFlowCardDisplayUrl(getPublicUrl(generatedPath));
+        console.log(`✅ [slide] ${attemptLabel} готово`);
+        return { url: displayUrl };
+      } catch (error: unknown) {
+        if (error instanceof KieAiContentFilteredError) throw error;
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error(`❌ [slide] ${attemptLabel}:`, msg);
+        return {
+          url: null,
+          error: `Модель не смогла сгенерировать изображение. Ошибка: ${msg || "Неизвестная ошибка"}`,
+        };
       }
-      console.log("✅ Генерация успешна (WaveSpeed edit с референсом)");
-    } catch (error: unknown) {
-      console.error("❌ Ошибка в generateFlowImage:", error);
-      if (error instanceof KieAiContentFilteredError) throw error;
-      const msg = error instanceof Error ? error.message : String(error);
+    };
+
+    const { url: generatedLocalUrl, errors: slideErrors } = await runSlideGenerationRace(
+      runWaveSpeedOnce
+    );
+
+    if (!generatedLocalUrl) {
+      const firstErr = slideErrors.find((e) => e.error)?.error;
       throw new Error(
-        `Модель не смогла сгенерировать изображение. Ошибка: ${msg || "Неизвестная ошибка"}`
+        firstErr ||
+          `Не удалось сгенерировать слайд за ${SLIDE_GENERATION_MAX_WAIT_MS / 60_000} мин. Попробуйте ещё раз.`
       );
     }
-    
-    // Скачиваем результат и кэшируем для UI
-    const generatedPath = await downloadImage(generatedImageUrl);
-    const generatedLocalUrl = await ensureFlowCardDisplayUrl(getPublicUrl(generatedPath));
 
     console.log(`✅ Слайд сгенерирован: ${generatedLocalUrl}`);
 
