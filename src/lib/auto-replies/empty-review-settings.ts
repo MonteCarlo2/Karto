@@ -61,6 +61,14 @@ export function shouldUseEmptyReviewTemplate(style: AutoRepliesStyleSettings): b
   return style.emptyReviewEnabled && style.emptyReviewCustomText.trim().length > 0;
 }
 
+/** Списывать пакетный остаток при отправке (не для шаблона на пустой отзыв). */
+export function shouldChargeAutoReplyCreditForSend(
+  reviewText: string,
+  shop: AutoRepliesShopSettings
+): boolean {
+  return !(isReviewWithoutText(reviewText) && shouldUseEmptyReviewTemplate(shop.style));
+}
+
 export function resolveEmptyReviewBody(style: AutoRepliesStyleSettings): string {
   return style.emptyReviewCustomText.trim();
 }

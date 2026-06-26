@@ -268,6 +268,7 @@ async function handleRegenHintStep(
     messageRowId: row.id,
     chatId: row.chat_id,
     telegramMessageId: row.telegram_message_id,
+    extraMessageIds: row.extra_message_ids ?? [],
     hasPhoto: Boolean(row.has_photo),
     revisionHint: hint,
     item,
@@ -314,32 +315,70 @@ async function handleCallback(
   }
 
   if (action === "edt") {
+    const draft = row.reply_draft?.trim() ?? "";
+    if (draft.length < 2) {
+      await telegramAnswerCallbackQuery({ callbackQueryId: cb.id, text: "Черновик пуст" });
+      return;
+    }
+
+    const chatId = cb.message?.chat.id ?? row.chat_id;
     await setTelegramSession(supabase, {
       telegramUserId: cb.from.id,
-      chatId: cb.message?.chat.id ?? row.chat_id,
+      chatId,
       state: "awaiting_edit_text",
       payload: { messageRowId: row.id },
     });
     await telegramAnswerCallbackQuery({ callbackQueryId: cb.id });
     await telegramSendMessage({
-      chatId: cb.message?.chat.id ?? row.chat_id,
-      text: "✏️ Пришлите <b>новый текст ответа</b> одним сообщением — он сразу уйдёт на маркетплейс.",
+      chatId,
+      text: draft,
+      parseMode: null,
+      replyMarkup: {
+        force_reply: true,
+        selective: true,
+        input_field_placeholder: "Отредактируйте ответ и отправьте",
+      },
     });
     return;
   }
 
   if (action === "rgn") {
-    await setTelegramSession(supabase, {
-      telegramUserId: cb.from.id,
-      chatId: cb.message?.chat.id ?? row.chat_id,
-      state: "awaiting_regen_hint",
-      payload: { messageRowId: row.id },
+    await telegramAnswerCallbackQuery({ callbackQueryId: cb.id, text: "Перегенерируем…" });
+    const item = await loadInboxItem(
+      supabase,
+      row.user_id,
+      row.shop_id,
+      row.marketplace_id,
+      row.review_id
+    );
+    if (!item) {
+      await telegramSendMessage({
+        chatId: row.chat_id,
+        text: "Отзыв не найден в ленте. Обновите inbox на сайте.",
+      });
+      return;
+    }
+
+    const result = await regenerateTelegramReviewDraft(supabase, {
+      userId: row.user_id,
+      shopId: row.shop_id,
+      marketplaceId: row.marketplace_id as AutoRepliesMarketplaceId,
+      reviewId: row.review_id,
+      messageRowId: row.id,
+      chatId: row.chat_id,
+      telegramMessageId: row.telegram_message_id,
+      extraMessageIds: row.extra_message_ids ?? [],
+      hasPhoto: Boolean(row.has_photo),
+      revisionHint: null,
+      item,
     });
-    await telegramAnswerCallbackQuery({ callbackQueryId: cb.id });
-    await telegramSendMessage({
-      chatId: cb.message?.chat.id ?? row.chat_id,
-      text: "🔄 Напишите <b>уточнение для ИИ</b> (или «-» без подсказки), чтобы перегенерировать ответ.",
-    });
+
+    if (!result.ok) {
+      await telegramSendMessage({
+        chatId: row.chat_id,
+        text: result.error ?? "Не удалось перегенерировать ответ",
+      });
+    }
     return;
   }
 

@@ -25,6 +25,7 @@ export type TelegramReviewMessageRow = {
   notified_at: string;
   resolved_at: string | null;
   has_photo?: boolean;
+  extra_message_ids?: number[];
 };
 
 export type TelegramSessionState =
@@ -532,6 +533,7 @@ export async function upsertTelegramReviewMessage(
         reply_draft: row.reply_draft,
         status: row.status ?? "pending",
         has_photo: row.has_photo ?? false,
+        extra_message_ids: row.extra_message_ids ?? [],
         notified_at: now,
       },
       { onConflict: "user_id,shop_id,marketplace_id,review_id" }
@@ -570,6 +572,48 @@ export async function markTelegramReviewMessageSent(
     .maybeSingle();
 
   return (data as TelegramReviewMessageRow | null) ?? null;
+}
+
+export async function revertTelegramReviewMessageSent(
+  supabase: SupabaseClient,
+  input: {
+    userId: string;
+    shopId: string;
+    marketplaceId: string;
+    reviewId: string;
+  }
+): Promise<void> {
+  await supabase
+    .from("auto_reply_telegram_review_messages")
+    .update({
+      status: "pending",
+      resolved_at: null,
+    })
+    .eq("user_id", input.userId)
+    .eq("shop_id", input.shopId)
+    .eq("marketplace_id", input.marketplaceId)
+    .eq("review_id", input.reviewId)
+    .eq("status", "sent");
+}
+
+export async function updateTelegramReviewMessageIds(
+  supabase: SupabaseClient,
+  input: {
+    messageRowId: string;
+    telegramMessageId: number;
+    hasPhoto: boolean;
+    extraMessageIds?: number[];
+  }
+): Promise<void> {
+  await supabase
+    .from("auto_reply_telegram_review_messages")
+    .update({
+      telegram_message_id: input.telegramMessageId,
+      has_photo: input.hasPhoto,
+      extra_message_ids: input.extraMessageIds ?? [],
+    })
+    .eq("id", input.messageRowId)
+    .eq("status", "pending");
 }
 
 export async function updateTelegramReviewDraft(

@@ -1055,6 +1055,8 @@ export function WorkspaceInbox({
         throw new Error(data.error || "Не удалось отправить ответ");
       }
 
+      void onReplyBalanceChange?.();
+
       const sentItem = data.item;
       const scope = mpSettingsRef.current.reviewScope;
       if (scope.mode === "limited") {
@@ -1113,6 +1115,7 @@ export function WorkspaceInbox({
       _shopId,
       onPatchReviewScope,
       usage,
+      onReplyBalanceChange,
     ]
   );
 

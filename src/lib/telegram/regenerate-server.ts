@@ -6,8 +6,8 @@ import { consumeAutoReplyCredits } from "@/lib/auto-replies-balance";
 import { listMarketplaceSecretsForUser } from "@/lib/auto-replies/server-secrets";
 import type { AutoRepliesSettingsRoot } from "@/lib/auto-replies/settings-types";
 import { patchInboxReplyDraft } from "./semi-confirm-server";
-import { updateTelegramReviewDraft } from "./telegram-db";
-import { editTelegramReviewCard } from "./send-review-card";
+import { replaceTelegramReviewCard } from "./send-review-card";
+import { updateTelegramReviewDraft, updateTelegramReviewMessageIds } from "./telegram-db";
 
 function mpKey(shopId: string, marketplaceId: AutoRepliesMarketplaceId): string {
   return `${shopId}:${marketplaceId}`;
@@ -23,6 +23,7 @@ export async function regenerateTelegramReviewDraft(
     messageRowId: string;
     chatId: number;
     telegramMessageId: number;
+    extraMessageIds?: number[];
     hasPhoto?: boolean;
     revisionHint?: string | null;
     item: InboxReviewItem;
@@ -91,14 +92,22 @@ export async function regenerateTelegramReviewDraft(
       replyDraft: reply,
     });
 
-    await editTelegramReviewCard({
+    const cardItem = { ...(updatedItem ?? input.item), replyDraft: reply };
+    const msg = await replaceTelegramReviewCard({
       chatId: input.chatId,
-      messageId: input.telegramMessageId,
-      item: { ...(updatedItem ?? input.item), replyDraft: reply },
+      oldMessageId: input.telegramMessageId,
+      oldExtraMessageIds: input.extraMessageIds,
+      item: cardItem,
       messageRowId: input.messageRowId,
-      hasPhoto: Boolean(input.hasPhoto),
       status: "pending",
       footer: "🔄 Черновик перегенерирован ИИ",
+    });
+
+    await updateTelegramReviewMessageIds(supabase, {
+      messageRowId: input.messageRowId,
+      telegramMessageId: msg.message_id,
+      hasPhoto: msg.has_photo,
+      extraMessageIds: msg.extra_message_ids,
     });
 
     return { ok: true, reply };

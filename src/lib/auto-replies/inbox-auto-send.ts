@@ -9,15 +9,11 @@ import { generateAutoReply } from "./generate-auto-reply";
 import { prepareReplyForMarketplaceSend } from "./reply-postprocess";
 
 import {
-
   hydrateInboxReplyDrafts,
-
   isReviewWithoutText,
-
   resolveEmptyReviewBody,
-
+  shouldChargeAutoReplyCreditForSend,
   shouldUseEmptyReviewTemplate,
-
 } from "./empty-review-settings";
 
 import { formatInboxReviewDates } from "./inbox-review-dates";
@@ -164,12 +160,8 @@ export async function processAutoRepliesInbox(params: {
     const existingDraft = item.replyDraft?.trim();
 
     const emptyTemplate =
-
       isReviewWithoutText(item.reviewText) && shouldUseEmptyReviewTemplate(params.shopSettings.style);
-
-    const usesTemplateOnly = emptyTemplate;
-
-
+    const shouldCharge = shouldChargeAutoReplyCreditForSend(item.reviewText, params.shopSettings);
 
     let replyText: string;
 
@@ -253,7 +245,7 @@ export async function processAutoRepliesInbox(params: {
 
 
 
-    if (params.userId && params.supabase && !usesTemplateOnly) {
+    if (params.userId && params.supabase && shouldCharge) {
 
       const charge = await consumeAutoReplyCredits(params.supabase, params.userId, 1);
 

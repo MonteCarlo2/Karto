@@ -1,15 +1,47 @@
 import type { InboxReviewItem } from "@/lib/auto-replies/inbox-demo-data";
 import {
+  telegramDeleteMessage,
   telegramEditMessage,
+  telegramSendMediaGroup,
   telegramSendMessage,
   telegramSendPhoto,
 } from "./bot-api";
 import {
   formatTelegramReviewCard,
+  getReviewCardPhotos,
   getReviewPhotoUrl,
   reviewActionKeyboard,
   reviewSentKeyboard,
 } from "./review-message";
+
+export type TelegramReviewCardSendResult = {
+  message_id: number;
+  has_photo: boolean;
+  extra_message_ids: number[];
+};
+
+async function deleteTelegramReviewCardMessages(input: {
+  chatId: number;
+  messageId: number;
+  extraMessageIds?: number[];
+}): Promise<void> {
+  const ids = [...(input.extraMessageIds ?? []), input.messageId];
+  for (const messageId of ids) {
+    try {
+      await telegramDeleteMessage({ chatId: input.chatId, messageId });
+    } catch (e) {
+      console.warn("[telegram] delete review card message failed", messageId, e);
+    }
+  }
+}
+
+export async function deleteTelegramReviewCard(input: {
+  chatId: number;
+  messageId: number;
+  extraMessageIds?: number[];
+}): Promise<void> {
+  await deleteTelegramReviewCardMessages(input);
+}
 
 export async function sendTelegramReviewCard(input: {
   chatId: number;
@@ -17,17 +49,41 @@ export async function sendTelegramReviewCard(input: {
   messageRowId: string;
   status?: "pending" | "sent";
   footer?: string;
-}): Promise<{ message_id: number; has_photo: boolean }> {
-  const photoUrl = getReviewPhotoUrl(input.item);
+}): Promise<TelegramReviewCardSendResult> {
+  const { productPhotoUrl, reviewPhotoUrl } = getReviewCardPhotos(input.item);
+  const hasDualPhotos = Boolean(
+    productPhotoUrl && reviewPhotoUrl && productPhotoUrl !== reviewPhotoUrl
+  );
   const caption = formatTelegramReviewCard({
     item: input.item,
     status: input.status ?? "pending",
     footer: input.footer,
-    compact: Boolean(photoUrl),
+    compact: hasDualPhotos || Boolean(getReviewPhotoUrl(input.item)),
   });
   const keyboard =
     input.status === "sent" ? reviewSentKeyboard() : reviewActionKeyboard(input.messageRowId);
 
+  if (hasDualPhotos) {
+    const mediaMessages = await telegramSendMediaGroup({
+      chatId: input.chatId,
+      media: [
+        { type: "photo", media: productPhotoUrl!, caption: "📦 <b>Товар</b>" },
+        { type: "photo", media: reviewPhotoUrl!, caption: "📷 <b>Фото из отзыва</b>" },
+      ],
+    });
+    const msg = await telegramSendMessage({
+      chatId: input.chatId,
+      text: caption,
+      replyMarkup: keyboard,
+    });
+    return {
+      message_id: msg.message_id,
+      has_photo: true,
+      extra_message_ids: mediaMessages.map((m) => m.message_id),
+    };
+  }
+
+  const photoUrl = getReviewPhotoUrl(input.item);
   if (photoUrl) {
     const msg = await telegramSendPhoto({
       chatId: input.chatId,
@@ -35,7 +91,7 @@ export async function sendTelegramReviewCard(input: {
       caption,
       replyMarkup: keyboard,
     });
-    return { message_id: msg.message_id, has_photo: true };
+    return { message_id: msg.message_id, has_photo: true, extra_message_ids: [] };
   }
 
   const msg = await telegramSendMessage({
@@ -43,7 +99,30 @@ export async function sendTelegramReviewCard(input: {
     text: caption,
     replyMarkup: keyboard,
   });
-  return { message_id: msg.message_id, has_photo: false };
+  return { message_id: msg.message_id, has_photo: false, extra_message_ids: [] };
+}
+
+export async function replaceTelegramReviewCard(input: {
+  chatId: number;
+  oldMessageId: number;
+  oldExtraMessageIds?: number[];
+  item: InboxReviewItem;
+  messageRowId: string;
+  status?: "pending" | "sent";
+  footer?: string;
+}): Promise<TelegramReviewCardSendResult> {
+  await deleteTelegramReviewCardMessages({
+    chatId: input.chatId,
+    messageId: input.oldMessageId,
+    extraMessageIds: input.oldExtraMessageIds,
+  });
+  return sendTelegramReviewCard({
+    chatId: input.chatId,
+    item: input.item,
+    messageRowId: input.messageRowId,
+    status: input.status,
+    footer: input.footer,
+  });
 }
 
 export async function editTelegramReviewCard(input: {
@@ -52,6 +131,7 @@ export async function editTelegramReviewCard(input: {
   item: InboxReviewItem;
   messageRowId: string;
   hasPhoto: boolean;
+  extraMessageIds?: number[];
   status?: "pending" | "sent";
   footer?: string;
 }): Promise<void> {
@@ -63,6 +143,16 @@ export async function editTelegramReviewCard(input: {
   });
   const keyboard =
     input.status === "sent" ? reviewSentKeyboard() : reviewActionKeyboard(input.messageRowId);
+
+  if (input.hasPhoto && (input.extraMessageIds?.length ?? 0) > 0) {
+    await telegramEditMessage({
+      chatId: input.chatId,
+      messageId: input.messageId,
+      text,
+      replyMarkup: keyboard,
+    });
+    return;
+  }
 
   if (input.hasPhoto) {
     await telegramEditMessage({

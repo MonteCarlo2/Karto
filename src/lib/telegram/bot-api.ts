@@ -142,22 +142,14 @@ async function telegramRequest<T>(
 export type InlineKeyboardButton = {
   text: string;
   callback_data?: string;
+  copy_text?: { text: string };
 };
 
-export async function telegramSendMessage(input: {
-  chatId: number | string;
-  text: string;
-  replyMarkup?: { inline_keyboard: InlineKeyboardButton[][] };
-  parseMode?: "HTML" | "Markdown";
-}): Promise<{ message_id: number }> {
-  return telegramRequest("sendMessage", {
-    chat_id: input.chatId,
-    text: input.text,
-    parse_mode: input.parseMode ?? "HTML",
-    reply_markup: input.replyMarkup,
-    disable_web_page_preview: true,
-  });
-}
+export type ForceReplyMarkup = {
+  force_reply: true;
+  selective?: boolean;
+  input_field_placeholder?: string;
+};
 
 export async function telegramSendPhoto(input: {
   chatId: number | string;
@@ -172,6 +164,56 @@ export async function telegramSendPhoto(input: {
     caption: input.caption,
     parse_mode: input.parseMode ?? "HTML",
     reply_markup: input.replyMarkup,
+  });
+}
+
+export async function telegramSendMediaGroup(input: {
+  chatId: number | string;
+  media: Array<{
+    type: "photo";
+    media: string;
+    caption?: string;
+    parse_mode?: "HTML" | "Markdown";
+  }>;
+}): Promise<Array<{ message_id: number }>> {
+  return telegramRequest("sendMediaGroup", {
+    chat_id: input.chatId,
+    media: input.media.map((item) => ({
+      type: item.type,
+      media: item.media,
+      ...(item.caption ? { caption: item.caption, parse_mode: item.parse_mode ?? "HTML" } : {}),
+    })),
+  });
+}
+
+export async function telegramDeleteMessage(input: {
+  chatId: number | string;
+  messageId: number;
+}): Promise<void> {
+  await telegramRequest("deleteMessage", {
+    chat_id: input.chatId,
+    message_id: input.messageId,
+  });
+}
+
+export async function telegramSendMessage(input: {
+  chatId: number | string;
+  text: string;
+  replyMarkup?:
+    | { inline_keyboard: InlineKeyboardButton[][] }
+    | ForceReplyMarkup;
+  parseMode?: "HTML" | "Markdown" | null;
+  replyToMessageId?: number;
+}): Promise<{ message_id: number }> {
+  return telegramRequest("sendMessage", {
+    chat_id: input.chatId,
+    text: input.text,
+    ...(input.parseMode === null ? {} : { parse_mode: input.parseMode ?? "HTML" }),
+    reply_markup: input.replyMarkup,
+    ...(input.replyToMessageId
+      ? { reply_parameters: { message_id: input.replyToMessageId } }
+      : {}),
+    disable_web_page_preview: true,
   });
 }
 

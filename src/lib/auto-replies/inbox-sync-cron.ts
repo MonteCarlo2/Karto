@@ -315,6 +315,7 @@ async function processAutoReplyInboxCronInner(
                   item,
                   messageRowId: tgRow.id,
                   hasPhoto: Boolean(tgRow.has_photo),
+                  extraMessageIds: tgRow.extra_message_ids ?? [],
                   status: "sent",
                   footer: "✅ Отправлено автоматически · синхронизировано с karto.pro",
                 });

@@ -17,6 +17,11 @@ import {
   prepareReplyForMarketplaceSend,
   prepareReplyTextForMarketplace,
 } from "@/lib/auto-replies/reply-postprocess";
+import { shouldChargeAutoReplyCreditForSend } from "@/lib/auto-replies/empty-review-settings";
+import {
+  AUTO_REPLY_INSUFFICIENT_BALANCE_MSG,
+  consumeAutoReplyCredits,
+} from "@/lib/auto-replies-balance";
 import { reviewScopeRemainingQuota } from "@/lib/auto-replies/inbox-review-scope";
 import { usageModeLabel } from "@/lib/auto-replies/reply-history-store";
 import { consumeReviewScopeLimit } from "@/lib/auto-replies/inbox-review-scope";
@@ -31,6 +36,7 @@ import {
   fetchTelegramLinkByUserId,
   isTelegramMarketplaceEnabled,
   markTelegramReviewMessageSent,
+  revertTelegramReviewMessageSent,
   updateTelegramReviewDraft,
 } from "./telegram-db";
 
@@ -210,7 +216,18 @@ export async function syncTelegramMessageAfterSent(
     footer?: string;
   }
 ): Promise<void> {
-  const tgRow = await markTelegramReviewMessageSent(supabase, input);
+  let tgRow = await markTelegramReviewMessageSent(supabase, input);
+  if (!tgRow) {
+    const { data } = await supabase
+      .from("auto_reply_telegram_review_messages")
+      .select("*")
+      .eq("user_id", input.userId)
+      .eq("shop_id", input.shopId)
+      .eq("marketplace_id", input.marketplaceId)
+      .eq("review_id", input.reviewId)
+      .maybeSingle();
+    tgRow = (data as typeof tgRow) ?? null;
+  }
   if (!tgRow || !input.item) return;
 
   try {
@@ -220,6 +237,7 @@ export async function syncTelegramMessageAfterSent(
       item: input.item,
       messageRowId: tgRow.id,
       hasPhoto: Boolean(tgRow.has_photo),
+      extraMessageIds: tgRow.extra_message_ids ?? [],
       status: "sent",
       footer: input.footer ?? "Подтверждено в KARTO",
     });
@@ -253,7 +271,19 @@ export async function confirmSemiReviewReply(
   const items = (snap?.items_json as InboxReviewItem[] | null) ?? [];
   const item = items.find((i) => i.id === input.reviewId);
   if (!item) return { ok: false, error: "Отзыв не найден в ленте" };
-  if (item.status === "sent") return { ok: false, error: "Ответ уже отправлен" };
+  if (item.status === "sent") {
+    if (input.source === "telegram") {
+      await syncTelegramMessageAfterSent(supabase, {
+        userId: input.userId,
+        shopId: input.shopId,
+        marketplaceId: input.marketplaceId,
+        reviewId: input.reviewId,
+        item: markItemSent(item, item.replyDraft?.trim() || input.replyText.trim()),
+        footer: "✅ Подтверждено и отправлено · синхронизировано с karto.pro",
+      });
+    }
+    return { ok: false, error: "Ответ уже отправлен" };
+  }
   if (item.feed !== "semi" || item.status !== "pending") {
     return { ok: false, error: "Отзыв не ожидает подтверждения" };
   }
@@ -282,6 +312,47 @@ export async function confirmSemiReviewReply(
   }
   if (text.length < 2) return { ok: false, error: "Текст ответа слишком короткий" };
 
+  if (shouldChargeAutoReplyCreditForSend(item.reviewText, ctx.shop)) {
+    const charge = await consumeAutoReplyCredits(supabase, input.userId, 1);
+    if (!charge.ok) {
+      return { ok: false, error: charge.error ?? AUTO_REPLY_INSUFFICIENT_BALANCE_MSG };
+    }
+  }
+
+  let telegramClaimed = false;
+  if (input.source === "telegram") {
+    const claimed = await markTelegramReviewMessageSent(supabase, {
+      userId: input.userId,
+      shopId: input.shopId,
+      marketplaceId: input.marketplaceId,
+      reviewId: input.reviewId,
+    });
+    if (!claimed) {
+      const { data: freshSnap } = await supabase
+        .from("auto_reply_inbox_snapshots")
+        .select("items_json")
+        .eq("user_id", input.userId)
+        .eq("shop_id", input.shopId)
+        .eq("marketplace_id", input.marketplaceId)
+        .maybeSingle();
+      const freshItem = ((freshSnap?.items_json as InboxReviewItem[] | null) ?? []).find(
+        (i) => i.id === input.reviewId
+      );
+      if (freshItem?.status === "sent") {
+        await syncTelegramMessageAfterSent(supabase, {
+          userId: input.userId,
+          shopId: input.shopId,
+          marketplaceId: input.marketplaceId,
+          reviewId: input.reviewId,
+          item: freshItem,
+          footer: "✅ Подтверждено и отправлено · синхронизировано с karto.pro",
+        });
+      }
+      return { ok: false, error: "Ответ уже отправлен" };
+    }
+    telegramClaimed = true;
+  }
+
   try {
     await sendToMarketplace({
       marketplaceId: input.marketplaceId,
@@ -290,6 +361,14 @@ export async function confirmSemiReviewReply(
       text,
     });
   } catch (e) {
+    if (telegramClaimed) {
+      await revertTelegramReviewMessageSent(supabase, {
+        userId: input.userId,
+        shopId: input.shopId,
+        marketplaceId: input.marketplaceId,
+        reviewId: input.reviewId,
+      });
+    }
     return { ok: false, error: e instanceof Error ? e.message : "Не удалось отправить ответ" };
   }
 
@@ -400,6 +479,7 @@ export async function syncTelegramPendingReviewCard(
       item: updatedItem,
       messageRowId: tgRow.id as string,
       hasPhoto: Boolean(tgRow.has_photo),
+      extraMessageIds: (tgRow.extra_message_ids as number[] | null) ?? [],
       status: "pending",
       footer,
     });

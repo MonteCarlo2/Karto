@@ -84,6 +84,7 @@ export async function notifyTelegramSemiPendingReviews(
         chat_id: link.chat_id,
         reply_draft: item.replyDraft,
         has_photo: msg.has_photo,
+        extra_message_ids: msg.extra_message_ids,
       });
 
       if (!saved) {

@@ -22,6 +22,12 @@ export function isYandexFeedbackAnswered(feedback: YandexGoodsFeedback): boolean
   return Boolean(feedback.sellerReplyText?.trim());
 }
 
+export function extractYandexReviewPhotos(feedback: YandexGoodsFeedback): string[] {
+  return (feedback.media?.photos ?? [])
+    .map((url) => url?.trim())
+    .filter((url): url is string => Boolean(url?.startsWith("http")));
+}
+
 export function buildYandexReviewText(feedback: YandexGoodsFeedback): string {
   const chunks: string[] = [];
   const comment = feedback.description?.comment?.trim();
@@ -77,6 +83,8 @@ export function mapYandexFeedbacksToInbox({
     const status = isAnswered ? "sent" : "pending";
     const buyer = feedback.author?.trim();
     const autoSent = existingItem?.autoSent;
+    const reviewPhotoUrls = extractYandexReviewPhotos(feedback);
+    const hasReviewPhotos = reviewPhotoUrls.length > 0;
 
     const replyDraft =
       feedback.sellerReplyText?.trim() ||
@@ -90,6 +98,7 @@ export function mapYandexFeedbacksToInbox({
             brandName: brandName ?? null,
             buyerName: buyer,
             productName,
+            hasReviewPhotos,
             revisionHint: null,
             previousReply: null,
           }));
@@ -130,6 +139,7 @@ export function mapYandexFeedbacksToInbox({
       nmId,
       supplierOfferId: offerId,
       productImageUrl: offerPreview?.pictureUrl,
+      reviewPhotoUrls: reviewPhotoUrls.length > 0 ? reviewPhotoUrls : undefined,
       reviewPublishedAt: feedback.createdAt,
       orderStatusLabel: "Доставлен",
       autoSent,

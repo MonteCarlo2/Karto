@@ -86,6 +86,10 @@ export function mergeInboxReviewItem(prev: InboxReviewItem, next: InboxReviewIte
     productName,
     productArticle,
     productImageUrl: next.productImageUrl || prev.productImageUrl,
+    reviewPhotoUrls:
+      (next.reviewPhotoUrls?.length ?? 0) > 0
+        ? next.reviewPhotoUrls
+        : prev.reviewPhotoUrls,
     nmId: next.nmId ?? prev.nmId,
     supplierOfferId: next.supplierOfferId || prev.supplierOfferId,
     autoSent: ghostReopen ? next.autoSent : autoJournalSent ? true : next.autoSent ?? prev.autoSent,

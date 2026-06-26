@@ -28,6 +28,10 @@ export type YandexGoodsFeedback = {
     disadvantages?: string;
     comment?: string;
   };
+  media?: {
+    photos?: string[] | null;
+    videos?: string[] | null;
+  };
   statistics?: {
     rating?: number;
     commentsCount?: number;

@@ -33,14 +33,22 @@ export function reviewStarLine(starRating: number | string): string {
   return `${"⭐".repeat(r)}${"☆".repeat(5 - r)}  <b>${r}/5</b>`;
 }
 
+export function getReviewCardPhotos(
+  item: Pick<InboxReviewItem, "productImageUrl" | "reviewPhotoUrls">
+): { productPhotoUrl: string | null; reviewPhotoUrl: string | null } {
+  const reviewPhoto =
+    item.reviewPhotoUrls?.find((u) => u?.trim().startsWith("http"))?.trim() ?? null;
+  const product = item.productImageUrl?.trim();
+  const productPhotoUrl = product?.startsWith("http") ? product : null;
+  return { productPhotoUrl, reviewPhotoUrl: reviewPhoto };
+}
+
+/** Одно фото для простой карточки (приоритет — фото из отзыва). */
 export function getReviewPhotoUrl(
   item: Pick<InboxReviewItem, "productImageUrl" | "reviewPhotoUrls">
 ): string | null {
-  const reviewPhoto = item.reviewPhotoUrls?.find((u) => u?.trim().startsWith("http"));
-  if (reviewPhoto?.trim()) return reviewPhoto.trim();
-  const product = item.productImageUrl?.trim();
-  if (product?.startsWith("http")) return product;
-  return null;
+  const { productPhotoUrl, reviewPhotoUrl } = getReviewCardPhotos(item);
+  return reviewPhotoUrl ?? productPhotoUrl;
 }
 
 /** Лимит подписи к фото в Telegram Bot API. */
