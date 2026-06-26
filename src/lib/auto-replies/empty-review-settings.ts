@@ -12,7 +12,18 @@ const EMPTY_REVIEW_MARKERS = [
   "без текста",
 ];
 
-/** WB: только «Плюсы»/«Минусы» без основного текста — для шаблона «без комментария». */
+const PROS_CONS_LINE_RE = /^(\s*плюсы|\s*минусы)\s*:\s*(.*)$/i;
+
+function parseProsConsLine(line: string): { isProsCons: boolean; body: string } {
+  const m = line.match(PROS_CONS_LINE_RE);
+  if (!m) return { isProsCons: false, body: line.trim() };
+  return { isProsCons: true, body: (m[2] ?? "").trim() };
+}
+
+/**
+ * WB: шаблон «без комментария» — только если нет основного текста и после «Плюсы:/Минусы:»
+ * ничего нет (пустые метки). Если после двоеточия есть текст — это обычный отзыв.
+ */
 export function isProsConsOnlyReviewText(reviewText: string): boolean {
   const lines = reviewText
     .trim()
@@ -20,7 +31,19 @@ export function isProsConsOnlyReviewText(reviewText: string): boolean {
     .map((line) => line.trim())
     .filter(Boolean);
   if (lines.length === 0) return true;
-  return lines.every((line) => /^плюсы:/i.test(line) || /^минусы:/i.test(line));
+
+  let sawProsConsLine = false;
+  for (const line of lines) {
+    const { isProsCons, body } = parseProsConsLine(line);
+    if (!isProsCons) {
+      if (body.length >= 1) return false;
+      continue;
+    }
+    sawProsConsLine = true;
+    if (body.length >= 1) return false;
+  }
+
+  return sawProsConsLine;
 }
 
 export function hasMeaningfulReviewText(text: string): boolean {
