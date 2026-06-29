@@ -14,6 +14,7 @@ import {
   Upload,
 } from "lucide-react";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { brandLogoDisplayUrl } from "@/lib/client/brand-logo-display-url";
 import { triggerDownloadFromRemoteUrl } from "@/lib/client/media-download";
 import { useToast } from "@/components/ui/toast";
 import { IosToggleRow } from "@/components/ui/ios-toggle-row";
@@ -49,14 +50,8 @@ type LogoReferenceSlot = {
   fromLogoUrl?: string;
 };
 
-function resolveImgSrc(url: string): string {
-  if (!url) return "";
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  if (typeof window !== "undefined") {
-    const path = url.startsWith("/") ? url : `/${url}`;
-    return `${window.location.origin}${path}`;
-  }
-  return url;
+function resolveImgSrc(url: string, previewMaxWidth?: number): string {
+  return brandLogoDisplayUrl(url, previewMaxWidth ? { maxDisplayWidth: previewMaxWidth } : undefined);
 }
 
 type SlotPhase = "idle" | "pair";
@@ -216,11 +211,9 @@ export function BrandLogoStep({
   const immersive = logoMode === "upload" || logoMode === "generate";
   const uploadDisplaySrc =
     uploadPreviewUrl ||
-    (logoApprovedUrl.startsWith("http://") || logoApprovedUrl.startsWith("https://")
-      ? logoApprovedUrl
-      : logoApprovedUrl.startsWith("data:")
-        ? logoApprovedUrl
-        : "");
+    (logoApprovedUrl.trim()
+      ? resolveImgSrc(logoApprovedUrl, 720)
+      : "");
 
   const [dockPortalReady, setDockPortalReady] = useState(false);
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
@@ -768,7 +761,7 @@ export function BrandLogoStep({
                 {logoGeneratedUrls.map((url, idx) => {
                   const picked = logoChosenUrl === url;
                   const v = imgBust[url] ?? 0;
-                  const src = `${resolveImgSrc(url)}${v ? `?v=${v}` : ""}`;
+                  const src = `${resolveImgSrc(url, 640)}${v ? `&v=${v}` : ""}`;
                   return (
                     <div key={`${url}-${idx}`} className="flex flex-col gap-2.5">
                       <div

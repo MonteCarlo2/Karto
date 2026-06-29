@@ -648,7 +648,7 @@ function LoginContent() {
             <h1 
               className="text-7xl lg:text-8xl xl:text-9xl font-normal text-gray-900 leading-none tracking-tight"
               style={{ 
-                fontFamily: '"Great Vibes", "Dancing Script", cursive',
+                fontFamily: 'var(--font-great-vibes), var(--font-dancing-script), cursive',
                 fontWeight: 400
               }}
             >
@@ -656,7 +656,7 @@ function LoginContent() {
               <br />
               пожаловать
               <br />
-              в <span className="text-[#1F4E3D] font-bold ml-8 lg:ml-12 xl:ml-16" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>KARTO</span>
+              в <span className="text-[#1F4E3D] font-bold ml-8 lg:ml-12 xl:ml-16" style={{ fontFamily: 'var(--font-geist-sans), system-ui, sans-serif' }}>KARTO</span>
             </h1>
             
             {/* Подзаголовок - более серый, serif шрифт в две строчки */}

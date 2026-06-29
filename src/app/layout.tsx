@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
+import { Dancing_Script, Geist, Geist_Mono, Great_Vibes, Playfair_Display } from "next/font/google";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { ToastProvider } from "@/components/ui/toast";
@@ -27,6 +27,19 @@ const playfairDisplay = Playfair_Display({
   subsets: ["latin", "cyrillic"],
   weight: ["400", "500", "600", "700"],
   style: ["normal", "italic"],
+  display: "swap",
+});
+
+const greatVibes = Great_Vibes({
+  variable: "--font-great-vibes",
+  weight: "400",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const dancingScript = Dancing_Script({
+  variable: "--font-dancing-script",
+  subsets: ["latin"],
   display: "swap",
 });
 
@@ -101,7 +114,7 @@ export default function RootLayout({
   return (
     <html lang="ru" className="scroll-smooth">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${playfairDisplay.variable} antialiased min-h-screen flex flex-col bg-background text-foreground`}
+        className={`${geistSans.variable} ${geistMono.variable} ${playfairDisplay.variable} ${greatVibes.variable} ${dancingScript.variable} antialiased min-h-screen flex flex-col bg-background text-foreground`}
         suppressHydrationWarning
       >
         <script

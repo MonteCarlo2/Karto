@@ -35,6 +35,7 @@ import {
   Loader2,
 } from "lucide-react";
 import Image from "next/image";
+import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
 import { useNotification } from "@/components/ui/notification";
 import type { SubscriptionState } from "@/lib/subscription";
 import {
@@ -728,7 +729,7 @@ function ProfileContent() {
           <h1
             className="text-5xl md:text-6xl font-bold text-gray-900 mb-2"
             style={{ 
-              fontFamily: "'Great Vibes', cursive", 
+              fontFamily: "var(--font-great-vibes), cursive", 
               textShadow: "0 2px 8px rgba(0,0,0,0.15), 0 0 2px rgba(0,0,0,0.1)" 
             }}
             suppressHydrationWarning
@@ -738,7 +739,7 @@ function ProfileContent() {
           <p 
             className="text-6xl md:text-7xl font-semibold text-gray-900"
             style={{ 
-              fontFamily: "'Great Vibes', cursive",
+              fontFamily: "var(--font-great-vibes), cursive",
               textShadow: "0 2px 8px rgba(0,0,0,0.15), 0 0 2px rgba(0,0,0,0.1)"
             }}
             suppressHydrationWarning
@@ -870,12 +871,11 @@ function ProfileContent() {
                           {/* Компактная квадратная миниатюра */}
                           {project.photoUrl ? (
                             <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 shadow-sm relative flex-shrink-0">
-                              <Image
-                                src={project.photoUrl}
+                              <GalleryProxiedImg
+                                remoteUrl={project.photoUrl}
                                 alt={project.productName}
-                                width={64}
-                                height={64}
-                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                previewMaxWidth={128}
                               />
                               {/* Индикатор завершенности - маленький */}
                               {project.isCompleted && (
@@ -1287,13 +1287,11 @@ function ProfileContent() {
                       {brandLogoSrc ? (
                         <>
                           <div className="absolute inset-[5%]">
-                            <Image
-                              src={brandLogoSrc}
+                            <GalleryProxiedImg
+                              remoteUrl={brandLogoSrc}
                               alt="Логотип бренда"
-                              fill
-                              className="object-contain"
-                              sizes="184px"
-                              unoptimized={brandLogoSrc.startsWith("data:") || brandLogoSrc.startsWith("blob:")}
+                              className="h-full w-full object-contain"
+                              previewMaxWidth={384}
                             />
                           </div>
                           <button
