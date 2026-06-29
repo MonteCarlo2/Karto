@@ -50,7 +50,7 @@ export function prepareReplyTextForMarketplace(text: string): string {
 
 /** Убирает утечки внутренних ключей addressForm (vy/ty) из текста модели. */
 export function sanitizeAddressFormLeaks(text: string): string {
-  return text
+  const cleaned = text
     .split("\n")
     .map((line) =>
       line
@@ -65,6 +65,46 @@ export function sanitizeAddressFormLeaks(text: string): string {
     )
     .join("\n")
     .trim();
+
+  return cleaned
+    .replace(/^[\s,]+(?=[а-яА-ЯёЁa-zA-Z])/u, "")
+    .replace(/^,\s*/u, "");
+}
+
+/** Имя для обращения: «Татьяна С.» → «Татьяна». */
+export function extractBuyerGreetingName(buyerName?: string | null): string | null {
+  const raw = buyerName?.trim();
+  if (!raw || raw.length < 2) return null;
+  const first = raw.split(/\s+/)[0]?.replace(/[.,]+$/g, "").trim();
+  if (first && first.length >= 2) return first;
+  return raw;
+}
+
+function repairBrokenGreeting(
+  text: string,
+  shop: AutoRepliesShopSettings,
+  buyerName?: string | null
+): string {
+  let out = text.trim();
+  out = out.replace(/^,\s*/u, "");
+
+  if (!shop.style.useBuyerName) return out;
+
+  const name = extractBuyerGreetingName(buyerName);
+  if (!name) return out;
+
+  const opener = out.split(/\n\n/)[0] ?? out;
+  if (new RegExp(`\\b${escapeRegExp(name)}\\b`, "iu").test(opener.slice(0, 100))) {
+    return out;
+  }
+
+  if (/^(?:спасибо|благодар)/iu.test(out)) {
+    const vy = shop.style.addressForm === "vy";
+    const greeting = vy ? `Здравствуйте, ${name}!` : `Привет, ${name}!`;
+    return `${greeting} ${out.charAt(0).toLowerCase()}${out.slice(1)}`;
+  }
+
+  return out;
 }
 
 /** Разбивает длинный сплошной текст на абзацы — только когда это улучшает читаемость. */
@@ -96,9 +136,18 @@ export function containsForeignScript(text: string): boolean {
   return FOREIGN_SCRIPT_RE.test(text);
 }
 
-export function finalizeReplyText(text: string, shop: AutoRepliesShopSettings): string {
+export type FinalizeReplyContext = {
+  buyerName?: string | null;
+};
+
+export function finalizeReplyText(
+  text: string,
+  shop: AutoRepliesShopSettings,
+  context?: FinalizeReplyContext
+): string {
   let out = text.trim();
   out = sanitizeAddressFormLeaks(out);
+  out = repairBrokenGreeting(out, shop, context?.buyerName);
   if (!shop.style.emojis) out = stripEmojis(out);
   out = applyMinusWords(out, shop);
   out = applySignaturePolicy(out, shop);

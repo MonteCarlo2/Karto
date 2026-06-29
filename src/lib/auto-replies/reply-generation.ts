@@ -38,8 +38,25 @@ const LENGTH_RU: Record<string, string> = {
   short: "короткий (1–2 предложения)",
   normal: "средний (2–4 предложения)",
   long: "развёрнутый (4–6 предложений)",
-  auto: "подходящий по ситуации",
+  auto: "авто — под длину отзыва",
 };
+
+function lengthGuidance(
+  length: AutoRepliesShopSettings["style"]["length"],
+  reviewText: string
+): string {
+  const base = LENGTH_RU[length] ?? LENGTH_RU.normal;
+  if (length !== "auto") return base;
+
+  const chars = reviewText.trim().length;
+  if (chars < 80) {
+    return "авто: отзыв короткий — ответ 1–2 предложения, без воды и повторов";
+  }
+  if (chars < 220) {
+    return "авто: отзыв средней длины — ответ 2–3 предложения по сути";
+  }
+  return "авто: отзыв подробный — ответ 3–5 предложений, без лишнего расширения";
+}
 
 function toneForStar(star: StarKey, style: AutoRepliesShopSettings["style"]): string {
   const n = Number(star);
@@ -207,7 +224,7 @@ export function buildAutoReplyPrompt(input: GenerateReplyRequest): {
     style.emojis ? "Можно 1–2 уместных эмодзи." : "Без эмодзи.",
     `Контекст доставки: ${snapshot.style.deliveryContextRu}.`,
     `Тон ответа (${starRating}★, по смыслу отзыва): ${toneForSentiment(resolveReviewSentiment(review, starRating), style)}.`,
-    `Длина ответа: ${LENGTH_RU[style.length] ?? LENGTH_RU.normal}.`,
+    `Длина ответа: ${lengthGuidance(style.length, review)}.`,
     `Пресет стиля: ${snapshot.style.presetTitle}.`,
     `Тоны по типу отзыва — позитивный: ${TONE_RU[style.tonePositive]}, нейтральный: ${TONE_RU[style.toneNeutral]}, негативный: ${TONE_RU[style.toneNegative]}.`,
     minusWords ? `Никогда не используй слова: ${minusWords}.` : "",
@@ -313,14 +330,18 @@ export function buildAutoReplyReviewPrompt(
     "Проверь черновик на соответствие ВСЕМ настройкам: тон, длина, обращение, подпись, минус-слова, контекст доставки, упоминание товара/имени, эмодзи.",
     "Если черновик уже корректен — верни его БЕЗ ИЗМЕНЕНИЙ.",
     "Если есть нарушения — исправь ТОЛЬКО проблемные места. Сохраняй формулировки, структуру и тон черновика.",
+    shop.style.length === "short" || shop.style.length === "auto"
+      ? "Не удлиняй ответ: если черновик уже укладывается в лимит длины — не добавляй новые предложения."
+      : "",
     "Запрещено: переписывать ответ целиком; добавлять обещания компенсации/замены без оснований в материалах; markdown; пояснения.",
     "Верни ТОЛЬКО финальный текст ответа — одним сообщением, без кавычек и преамбулы.",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 
   const userParts = [
     `Оценка: ${starRating} из 5.`,
     buyerName?.trim() ? `Имя покупателя: ${buyerName.trim()}.` : "",
     productName?.trim() ? `Товар: ${productName.trim()}.` : "",
+    `Длина ответа: ${lengthGuidance(shop.style.length, review)}.`,
     `\nТекст отзыва:\n${review || "Покупатель не оставил текста — только оценка."}`,
     `\nЧерновик ответа (от первой модели):\n${draft}`,
     `\n--- ПОЛНЫЙ JSON НАСТРОЕК ---\n${JSON.stringify(snapshot, null, 2)}`,

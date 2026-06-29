@@ -54,11 +54,12 @@ export async function sendTelegramReviewCard(input: {
   const hasDualPhotos = Boolean(
     productPhotoUrl && reviewPhotoUrl && productPhotoUrl !== reviewPhotoUrl
   );
+  const singlePhotoCaption = Boolean(getReviewPhotoUrl(input.item)) && !hasDualPhotos;
   const caption = formatTelegramReviewCard({
     item: input.item,
     status: input.status ?? "pending",
     footer: input.footer,
-    compact: hasDualPhotos || Boolean(getReviewPhotoUrl(input.item)),
+    format: singlePhotoCaption ? "photo-caption" : "text-message",
   });
   const keyboard =
     input.status === "sent" ? reviewSentKeyboard() : reviewActionKeyboard(input.messageRowId);
@@ -135,11 +136,13 @@ export async function editTelegramReviewCard(input: {
   status?: "pending" | "sent";
   footer?: string;
 }): Promise<void> {
+  const isDualPhotoText =
+    input.hasPhoto && (input.extraMessageIds?.length ?? 0) > 0;
   const text = formatTelegramReviewCard({
     item: input.item,
     status: input.status ?? "pending",
     footer: input.footer,
-    compact: input.hasPhoto,
+    format: isDualPhotoText || !input.hasPhoto ? "text-message" : "photo-caption",
   });
   const keyboard =
     input.status === "sent" ? reviewSentKeyboard() : reviewActionKeyboard(input.messageRowId);

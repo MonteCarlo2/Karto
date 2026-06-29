@@ -54,6 +54,131 @@ export function getReviewPhotoUrl(
 /** Лимит подписи к фото в Telegram Bot API. */
 export const TG_PHOTO_CAPTION_MAX = 1024;
 
+/** Лимит обычного текстового сообщения в Telegram Bot API. */
+export const TG_MESSAGE_MAX = 4096;
+
+export type TelegramReviewCardFormat = "photo-caption" | "text-message";
+
+function buildReviewCardLines(input: {
+  header: string;
+  mpEmoji: string;
+  mp: string;
+  shop: string;
+  product: string;
+  article: string;
+  when: string;
+  buyer: string;
+  starRating: number | string;
+  review: string;
+  draft: string;
+  footer?: string;
+  includeMeta: boolean;
+}): string[] {
+  const lines = [input.header, "", `${input.mpEmoji} <b>${input.mp}</b>  ·  ${input.shop}`, ""];
+
+  if (input.includeMeta) {
+    lines.push(`📦 <b>${input.product}</b>`);
+    if (input.article) lines.push(`<code>${input.article}</code>`);
+    if (input.when) lines.push(`🕐 ${input.when}`);
+  } else {
+    lines.push(`📦 <b>${input.product}</b>`, "");
+  }
+
+  lines.push(
+    `👤 <b>${input.buyer}</b>`,
+    reviewStarLine(input.starRating),
+    "",
+    "━━━━━━━━━━━━━━",
+    "💬 <b>Отзыв</b>",
+    "",
+    input.review,
+    "",
+    "━━━━━━━━━━━━━━",
+    "✍️ <b>Черновик ответа</b>",
+    "",
+    input.draft
+  );
+
+  if (input.footer) {
+    lines.push("", "━━━━━━━━━━━━━━", input.footer);
+  }
+
+  return lines;
+}
+
+function fitReviewCardToLimit(input: {
+  header: string;
+  mpEmoji: string;
+  mp: string;
+  shop: string;
+  product: string;
+  article: string;
+  when: string;
+  buyer: string;
+  starRating: number | string;
+  reviewText: string;
+  draftText: string;
+  footer?: string;
+  includeMeta: boolean;
+  maxLen: number;
+}): string {
+  const footer = input.footer ? escapeHtml(input.footer) : undefined;
+  const reviewRaw = input.reviewText.trim() || "—";
+  const draftRaw = input.draftText.trim() || "—";
+
+  let reviewLimit = reviewRaw.length;
+  let draftLimit = draftRaw.length;
+
+  for (let pass = 0; pass < 24; pass += 1) {
+    const review = escapeHtml(trimBlock(reviewRaw, reviewLimit));
+    const draft = escapeHtml(trimBlock(draftRaw, draftLimit));
+    const text = buildReviewCardLines({
+      header: input.header,
+      mpEmoji: input.mpEmoji,
+      mp: input.mp,
+      shop: input.shop,
+      product: input.product,
+      article: input.article,
+      when: input.when,
+      buyer: input.buyer,
+      starRating: input.starRating,
+      review,
+      draft,
+      footer,
+      includeMeta: input.includeMeta,
+    }).join("\n");
+
+    if (text.length <= input.maxLen) return text;
+
+    if (draftLimit > 120) {
+      draftLimit = Math.max(120, Math.floor(draftLimit * 0.85));
+      continue;
+    }
+    if (reviewLimit > 80) {
+      reviewLimit = Math.max(80, Math.floor(reviewLimit * 0.85));
+      continue;
+    }
+
+    return `${text.slice(0, input.maxLen - 1)}…`;
+  }
+
+  return buildReviewCardLines({
+    header: input.header,
+    mpEmoji: input.mpEmoji,
+    mp: input.mp,
+    shop: input.shop,
+    product: input.product,
+    article: input.article,
+    when: input.when,
+    buyer: input.buyer,
+    starRating: input.starRating,
+    review: escapeHtml(trimBlock(reviewRaw, 80)),
+    draft: escapeHtml(trimBlock(draftRaw, 120)),
+    footer,
+    includeMeta: input.includeMeta,
+  }).join("\n");
+}
+
 export function formatTelegramReviewCard(input: {
   item: Pick<
     InboxReviewItem,
@@ -72,93 +197,49 @@ export function formatTelegramReviewCard(input: {
   shopLabel?: string;
   status?: "pending" | "sent";
   footer?: string;
-  /** Короткая версия для sendPhoto (caption ≤ 1024). */
+  /** @deprecated Используйте format. */
   compact?: boolean;
+  /** photo-caption — подпись к фото (≤1024); text-message — отдельное сообщение (≤4096). */
+  format?: TelegramReviewCardFormat;
 }): string {
+  const cardFormat: TelegramReviewCardFormat =
+    input.format ?? (input.compact ? "photo-caption" : "text-message");
+  const isCaption = cardFormat === "photo-caption";
+  const maxLen = isCaption ? TG_PHOTO_CAPTION_MAX : TG_MESSAGE_MAX;
+
   const mp = MP_LABEL[input.item.marketplaceId] ?? input.item.marketplaceId;
   const mpEmoji = MP_EMOJI[input.item.marketplaceId] ?? "🛒";
   const shop = escapeHtml(input.shopLabel || input.item.shopName || "Магазин");
-  const product = escapeHtml(trimBlock(input.item.productName, input.compact ? 90 : 140));
+  const product = escapeHtml(trimBlock(input.item.productName, isCaption ? 90 : 200));
   const article = input.item.productArticle?.trim()
-    ? escapeHtml(trimBlock(input.item.productArticle, input.compact ? 28 : 40))
+    ? escapeHtml(trimBlock(input.item.productArticle, isCaption ? 28 : 48))
     : "";
   const buyer = escapeHtml(
-    trimBlock(input.item.buyerName || input.item.buyerLabel || "Покупатель", input.compact ? 50 : 80)
+    trimBlock(input.item.buyerName || input.item.buyerLabel || "Покупатель", isCaption ? 50 : 120)
   );
-  const review = escapeHtml(trimBlock(input.item.reviewText, input.compact ? 220 : 700));
-  const draft = escapeHtml(trimBlock(input.item.replyDraft?.trim() || "—", input.compact ? 340 : 950));
-  const when = [input.item.dateLabel, input.item.timeLabel].filter(Boolean).join(" · ");
+  const when = escapeHtml([input.item.dateLabel, input.item.timeLabel].filter(Boolean).join(" · "));
 
   const header =
     input.status === "sent"
       ? "✅ <b>Ответ отправлен</b>"
       : "📩 <b>Отзыв на подтверждение</b>";
 
-  const lines = [
+  return fitReviewCardToLimit({
     header,
-    "",
-    `${mpEmoji} <b>${mp}</b>  ·  ${shop}`,
-    "",
-    `📦 <b>${product}</b>`,
-  ];
-
-  if (article) lines.push(`<code>${article}</code>`);
-  if (when) lines.push(`🕐 ${escapeHtml(when)}`);
-
-  lines.push(
-    "",
-    `👤 <b>${buyer}</b>`,
-    reviewStarLine(input.item.starRating),
-    "",
-    "━━━━━━━━━━━━━━",
-    "💬 <b>Отзыв</b>",
-    "",
-    review,
-    "",
-    "━━━━━━━━━━━━━━",
-    "✍️ <b>Черновик ответа</b>",
-    "",
-    draft
-  );
-
-  if (input.footer) {
-    lines.push("", "━━━━━━━━━━━━━━", escapeHtml(input.footer));
-  }
-
-  let text = lines.join("\n");
-  if (input.compact && text.length > TG_PHOTO_CAPTION_MAX) {
-    const tighterReview = escapeHtml(trimBlock(input.item.reviewText, 120));
-    const tighterDraft = escapeHtml(trimBlock(input.item.replyDraft?.trim() || "—", 240));
-    const tightLines = [
-      header,
-      "",
-      `${mpEmoji} <b>${mp}</b>  ·  ${shop}`,
-      "",
-      `📦 <b>${product}</b>`,
-      "",
-      `👤 <b>${buyer}</b>`,
-      reviewStarLine(input.item.starRating),
-      "",
-      "━━━━━━━━━━━━━━",
-      "💬 <b>Отзыв</b>",
-      "",
-      tighterReview,
-      "",
-      "━━━━━━━━━━━━━━",
-      "✍️ <b>Черновик ответа</b>",
-      "",
-      tighterDraft,
-    ];
-    if (input.footer) {
-      tightLines.push("", "━━━━━━━━━━━━━━", escapeHtml(input.footer));
-    }
-    text = tightLines.join("\n");
-    if (text.length > TG_PHOTO_CAPTION_MAX) {
-      text = `${text.slice(0, TG_PHOTO_CAPTION_MAX - 1)}…`;
-    }
-  }
-
-  return text;
+    mpEmoji,
+    mp,
+    shop,
+    product,
+    article,
+    when,
+    buyer,
+    starRating: input.item.starRating,
+    reviewText: input.item.reviewText,
+    draftText: input.item.replyDraft?.trim() || "—",
+    footer: input.footer,
+    includeMeta: !isCaption || Boolean(article || when),
+    maxLen,
+  });
 }
 
 /** Три кнопки: подтвердить (отдельной строкой), изменить + перегенерировать. */

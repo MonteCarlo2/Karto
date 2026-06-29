@@ -99,12 +99,25 @@ function toneOpener(
   return `${greetingLine} ${tail}`.replace(/\s+/g, " ").trim();
 }
 
-function lengthBody(base: string, length: AutoRepliesShopSettings["style"]["length"]): string {
+function lengthBody(
+  base: string,
+  length: AutoRepliesShopSettings["style"]["length"],
+  reviewText: string
+): string {
   if (length === "short") {
     const first = base.split(/(?<=[.!?])\s+/)[0]?.trim();
     return first ? (first.endsWith(".") || first.endsWith("!") || first.endsWith("?") ? first : `${first}.`) : base;
   }
   if (length === "long") {
+    return `${base} Мы на связи и поможем решить вопрос по заказу.`;
+  }
+  if (length === "auto") {
+    const chars = reviewText.trim().length;
+    if (chars < 80) {
+      const first = base.split(/(?<=[.!?])\s+/)[0]?.trim();
+      return first ? (first.endsWith(".") || first.endsWith("!") || first.endsWith("?") ? first : `${first}.`) : base;
+    }
+    if (chars < 220) return base;
     return `${base} Мы на связи и поможем решить вопрос по заказу.`;
   }
   return base;
@@ -175,7 +188,7 @@ export function buildMockAutoReply(input: MockReplyInput): string {
         ? "Спасибо за высокую оценку!"
         : "Спасибо за вашу оценку!";
     const parts = appendSignature([body], shop, starRating, brandName);
-    return finalizeReplyText(parts.join("\n\n"), shop);
+    return finalizeReplyText(parts.join("\n\n"), shop, { buyerName });
   }
 
   const sentiment = reviewSentiment(review, starRating);
@@ -197,10 +210,10 @@ export function buildMockAutoReply(input: MockReplyInput): string {
     body = `${body} Спасибо, что приложили фото — это помогает другим покупателям.`;
   }
 
-  body = lengthBody(body, style.length);
+  body = lengthBody(body, style.length, review);
 
   const parts = appendSignature([opener, body], shop, starRating, brandName);
-  return finalizeReplyText(parts.join("\n\n"), shop);
+  return finalizeReplyText(parts.join("\n\n"), shop, { buyerName });
 }
 
 export function settingsCompletionScore(
