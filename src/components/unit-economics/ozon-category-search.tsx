@@ -99,7 +99,12 @@ function isNoisyWbBreadcrumb(value?: string): boolean {
 }
 
 function displayCategoryName(item: CategoryItem, marketplace: "ozon" | "wildberries"): string {
-  return marketplace === "wildberries" ? formatWbCategoryDisplayName(item.name) : item.name;
+  if (marketplace !== "wildberries") return item.name;
+  const rawName =
+    /^товар$/i.test(item.name.trim()) && !isNoisyWbBreadcrumb(item.categoryName)
+      ? item.categoryName || item.name
+      : item.name;
+  return formatWbCategoryDisplayName(rawName);
 }
 
 function displayCategoryBreadcrumb(

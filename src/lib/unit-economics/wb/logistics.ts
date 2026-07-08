@@ -1,9 +1,6 @@
 import { roundRub } from "../formulas";
 import {
-  WB_DEFAULT_IRP_HIGH_COEF_PERCENT,
-  WB_DEFAULT_IRP_PERCENT,
   WB_DEFAULT_MONOPALLET_ACCEPTANCE_PER_LITER,
-  WB_HIGH_LOGISTICS_COEF_PERCENT,
   WB_MONOPALLET_ACCEPTANCE_UNIT_LITERS,
   WB_MONOPALLET_STORAGE_CAPACITY_LITERS,
   WB_REVERSE_ADDITIONAL_LITER_RUB,
@@ -25,6 +22,7 @@ import type { WbFbwSupplyType, WbLogisticsResult, WbWarehouse } from "./types";
 const WB_STORAGE_COEF_DIVISOR = 146.5;
 const WB_BASE_STORAGE_FIRST_LITER_DAY_RUB = 0.13;
 const WB_FBS_MARKETPLACE_LOGISTICS_FACTOR = 0.6097;
+const WB_STORAGE_BOX_DAY_DIVISOR = 10.6;
 
 function billableExtraLiters(billableLiters: number): number {
   return Math.max(0, Math.max(1, billableLiters) - 1);
@@ -37,13 +35,6 @@ function resolveFbwCoefPercent(warehouse: WbWarehouse | undefined): number {
     warehouse?.fbsCoefPercent ??
     100
   );
-}
-
-function defaultIrpPercent(warehouse: WbWarehouse | undefined): number {
-  const fbwCoef = resolveFbwCoefPercent(warehouse);
-  return fbwCoef >= WB_HIGH_LOGISTICS_COEF_PERCENT
-    ? WB_DEFAULT_IRP_HIGH_COEF_PERCENT
-    : WB_DEFAULT_IRP_PERCENT;
 }
 
 function modelRates(
@@ -96,7 +87,7 @@ function modelRates(
   };
 }
 
-/** FBW короб: при разных коэф. FBW/FBS логистика до клиента ниже, чем у монопаллеты. */
+/** FBW короб: логистика до клиента в калькуляторе WB идёт по коэффициенту маркетплейс-доставки. */
 export function calculateWbFbwBoxLogisticsToClientRub(params: {
   warehouseId: string;
   forwardRub: number;
@@ -104,54 +95,17 @@ export function calculateWbFbwBoxLogisticsToClientRub(params: {
   buyoutPercent: number;
   localizationSharePercent?: number | null;
 }): number {
-  const warehouse = getWbWarehouse(params.warehouseId);
-  const fbwCoef = warehouse?.fbwCoefPercent ?? warehouse?.fbsCoefPercent ?? 100;
-  const fbsCoef = warehouse?.fbsCoefPercent ?? fbwCoef;
-  const buyoutFactor = Math.max(0.01, Math.min(1, params.buyoutPercent / 100));
-  const coefSpread = Math.max(0, fbsCoef - fbwCoef);
-
-  if (warehouse?.logisticsBoxScaled != null) {
-    return roundRub(params.forwardRub / buyoutFactor);
-  }
-
-  if (coefSpread > 0) {
-    const adjustedForward =
-      params.forwardRub * (fbwCoef / (fbwCoef + 1.5 * coefSpread));
-    return roundRub(adjustedForward);
-  }
-
-  const irpPercent =
-    params.localizationSharePercent == null
-      ? defaultIrpPercent(warehouse)
-      : lookupWbLocalizationBracket(params.localizationSharePercent)?.salesDistributionPercent ??
-        defaultIrpPercent(warehouse);
-  const forwardWithIrp =
-    params.forwardRub + Math.max(0, params.priceRub) * (irpPercent / 100);
-  return roundRub(forwardWithIrp / buyoutFactor);
+  return roundRub(params.forwardRub * WB_FBS_MARKETPLACE_LOGISTICS_FACTOR);
 }
 
-/** FBW монопаллета: max(короб, моно) forward; при коэф. FBW ≥ 200% — × coef / 230 / buyout, иначе / buyout. */
+/** FBW монопаллета: та же база маркетплейс-доставки, но с тарифом монопаллеты. */
 export function calculateWbFbwMonopalletLogisticsToClientRub(params: {
   warehouseId: string;
   forwardRub: number;
   boxForwardRub: number;
   buyoutPercent: number;
 }): number {
-  const warehouse = getWbWarehouse(params.warehouseId);
-  const fbwCoef = resolveFbwCoefPercent(warehouse);
-  const monopalletCoef = warehouse?.monopalletFbwCoefPercent ?? fbwCoef;
-  const buyoutFactor = Math.max(0.01, Math.min(1, params.buyoutPercent / 100));
-  const useBoxForwardForMono =
-    Boolean(warehouse?.logisticsBoxScaled) && !warehouse?.hasKorobaStorageTariff;
-  const forwardRub = useBoxForwardForMono
-    ? Math.max(params.forwardRub, params.boxForwardRub)
-    : params.forwardRub;
-
-  if (fbwCoef >= WB_HIGH_LOGISTICS_COEF_PERCENT && monopalletCoef > fbwCoef) {
-    return roundRub((forwardRub * fbwCoef) / WB_REVERSE_LOGISTICS_CAP_RUB / buyoutFactor);
-  }
-
-  return roundRub(forwardRub / buyoutFactor);
+  return roundRub(params.forwardRub * WB_FBS_MARKETPLACE_LOGISTICS_FACTOR);
 }
 
 export function calculateWbForwardLogisticsRub(params: {
@@ -212,7 +166,10 @@ function calculateWbBoxStorageRub(params: {
   const storageCoef = warehouse.storageCoefPercent ?? 100;
 
   if (warehouse.storageBoxDayMultiplier) {
-    return roundRub(warehouse.storageBoxDayMultiplier * days * localizationStorageMultiplier);
+    return roundRub(
+      (warehouse.storageBoxDayMultiplier * days * localizationStorageMultiplier) /
+        WB_STORAGE_BOX_DAY_DIVISOR
+    );
   }
 
   if (warehouse.hasKorobaStorageTariff) {
@@ -362,7 +319,7 @@ export function calculateWbLogistics(params: {
     billableLiters: params.billableLiters,
   });
   const expectedReverseRub =
-    params.model === "fbs"
+    params.model === "fbs" || params.model === "fbw"
       ? 0
       : roundRub((1 - buyoutFactor) * reversePerReturnRub);
 

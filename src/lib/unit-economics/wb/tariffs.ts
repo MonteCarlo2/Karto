@@ -78,7 +78,21 @@ function tokenizeSearchQuery(query: string): string[] {
 }
 
 function categorySearchHaystack(item: WbCategoryItem): string {
-  return `${item.parentName} ${item.categoryName} ${item.name} ${item.label}`.toLowerCase();
+  const noisyBreadcrumb =
+    item.parentName.length > 90 ||
+    item.categoryName.length > 90 ||
+    /Маркетплейс|Витрина|DBS|DBW|EDBS|C&C/i.test(`${item.parentName} ${item.categoryName}`);
+  const displayName = categorySearchName(item);
+  const breadcrumb = noisyBreadcrumb ? "" : `${item.parentName} ${item.categoryName}`;
+  return `${displayName} ${item.name} ${breadcrumb}`.toLowerCase();
+}
+
+function categorySearchName(item: WbCategoryItem): string {
+  const fallbackToCategory =
+    /^товар$/i.test(item.name.trim()) &&
+    item.categoryName.length <= 90 &&
+    !/Маркетплейс|Витрина|DBS|DBW|EDBS|C&C/i.test(item.categoryName);
+  return formatWbCategoryDisplayName(fallbackToCategory ? item.categoryName : item.name).toLowerCase();
 }
 
 function scoreWbCategory(item: WbCategoryItem, tokens: string[]): number {
@@ -89,10 +103,14 @@ function scoreWbCategory(item: WbCategoryItem, tokens: string[]): number {
     if (!haystack.includes(token)) return -1;
   }
 
-  const name = item.name.toLowerCase();
+  const name = categorySearchName(item);
   const category = item.categoryName.toLowerCase();
   const parent = item.parentName.toLowerCase();
   const joined = tokens.join(" ");
+
+  if (tokens.length >= 2 && !tokens.every((token) => name.includes(token))) {
+    return -1;
+  }
 
   let score = 0;
   if (name === joined) score += 10_000;
