@@ -340,7 +340,10 @@ export function UnitEconomicsComparisonTable({
 
   const gridCols = gridTemplateColumns(results.length);
   const minTableWidth = results.length > 4 ? 200 + results.length * 152 : undefined;
-  const bestProfit = Math.max(...results.map((result) => result.profitRub));
+  const profitValues = results
+    .map((result) => result.profitRub)
+    .filter((v): v is number => v !== null);
+  const bestProfit = profitValues.length ? Math.max(...profitValues) : null;
 
   return (
     <div className="w-full overflow-x-auto">
@@ -357,7 +360,9 @@ export function UnitEconomicsComparisonTable({
               title={result.modelLabel}
             >
               <span>{result.modelLabel}</span>
-              {result.profitRub === bestProfit && results.length > 1 ? (
+              {bestProfit != null &&
+              result.profitRub === bestProfit &&
+              results.length > 1 ? (
                 <span className="rounded-full bg-[#00B050]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#00A14A]">
                   Лучший
                 </span>
