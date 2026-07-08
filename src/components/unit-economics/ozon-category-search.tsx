@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import { UE } from "@/components/unit-economics/unit-economics-ui";
+import { formatWbCategoryDisplayName } from "@/lib/unit-economics/wb/category-display";
 import { cn } from "@/lib/utils";
 
 type CategoryItem = {
@@ -92,6 +93,29 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
   return <>{parts}</>;
 }
 
+function isNoisyWbBreadcrumb(value?: string): boolean {
+  if (!value) return false;
+  return value.length > 90 || /Маркетплейс|Витрина|DBS|DBW|EDBS|C&C/i.test(value);
+}
+
+function displayCategoryName(item: CategoryItem, marketplace: "ozon" | "wildberries"): string {
+  return marketplace === "wildberries" ? formatWbCategoryDisplayName(item.name) : item.name;
+}
+
+function displayCategoryBreadcrumb(
+  item: CategoryItem,
+  marketplace: "ozon" | "wildberries"
+): string {
+  if (marketplace !== "wildberries") {
+    return [item.parentName, item.categoryName].filter(Boolean).join(" · ");
+  }
+  if (isNoisyWbBreadcrumb(item.parentName) || isNoisyWbBreadcrumb(item.categoryName)) return "";
+  const parts = [item.parentName, item.categoryName].filter(
+    (part, index, arr) => part && arr.indexOf(part) === index
+  );
+  return parts.join(" · ");
+}
+
 export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" }: Props) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<CategoryItem | null>(null);
@@ -131,7 +155,7 @@ export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" 
       .then((data) => {
         if (cancelled || !data.success || !data.item) return;
         setSelected(data.item);
-        if (!isEditing) setQuery(data.item.name);
+        if (!isEditing) setQuery(displayCategoryName(data.item, marketplace));
       })
       .catch(() => undefined);
     return () => {
@@ -270,7 +294,7 @@ export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" 
   const pickItem = (item: CategoryItem) => {
     onChange(item.id);
     setSelected(item);
-    setQuery(item.name);
+    setQuery(displayCategoryName(item, marketplace));
     setIsEditing(false);
     setOpen(false);
     setActiveIndex(-1);
@@ -582,10 +606,8 @@ export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" 
                 ? searchItems.map((item, index) => {
                     const isSelected = item.id === categoryId;
                     const isActive = index === activeIndex;
-                    const breadcrumb =
-                      marketplace === "wildberries"
-                        ? item.categoryName || item.parentName || ""
-                        : [item.parentName, item.categoryName].filter(Boolean).join(" · ");
+                    const displayName = displayCategoryName(item, marketplace);
+                    const breadcrumb = displayCategoryBreadcrumb(item, marketplace);
 
                     return (
                       <li key={item.id} role="option" aria-selected={isSelected}>
@@ -605,7 +627,7 @@ export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" 
                               className="text-[15px] font-semibold leading-snug"
                               style={{ color: UE.text }}
                             >
-                              <HighlightMatch text={item.name} query={query} />
+                              <HighlightMatch text={displayName} query={query} />
                             </div>
                             {breadcrumb ? (
                               <div
@@ -706,7 +728,7 @@ export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" 
                               className="text-[15px] font-semibold leading-snug"
                               style={{ color: UE.text }}
                             >
-                              {item.name}
+                              {displayCategoryName(item, marketplace)}
                             </div>
                             {showCommission ? (
                               <div
@@ -739,9 +761,11 @@ export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" 
 
       {selected && !isEditing ? (
         <p className="mt-2 text-xs leading-snug" style={{ color: UE.textMuted }}>
-          {selected.parentName && selected.categoryName
-            ? `${selected.parentName} · ${selected.categoryName}`
-            : selected.label}
+          {marketplace === "wildberries"
+            ? `FBW ${selected.commissionFbw ?? "—"}% · FBS ${selected.commissionFbs ?? "—"}%`
+            : selected.parentName && selected.categoryName
+              ? `${selected.parentName} · ${selected.categoryName}`
+              : selected.label}
         </p>
       ) : null}
     </div>

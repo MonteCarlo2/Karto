@@ -65,11 +65,21 @@ export function WbWarehouseMultiSelect({
 
   useEffect(() => {
     if (!open) return;
+    const channel = "karto:unit-economics:warehouse-select-open";
+    window.dispatchEvent(new CustomEvent(channel, { detail: rootRef.current }));
+    const onOtherOpen = (e: Event) => {
+      const detail = (e as CustomEvent<HTMLElement | null>).detail;
+      if (detail !== rootRef.current) setOpen(false);
+    };
     const onDoc = (e: MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
     };
+    window.addEventListener(channel, onOtherOpen);
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    return () => {
+      window.removeEventListener(channel, onOtherOpen);
+      document.removeEventListener("mousedown", onDoc);
+    };
   }, [open]);
 
   const toggle = (id: string) => {
@@ -81,7 +91,10 @@ export function WbWarehouseMultiSelect({
   };
 
   return (
-    <div ref={rootRef} className={cn(disabled && "pointer-events-none opacity-50")}>
+    <div
+      ref={rootRef}
+      className={cn("relative", open ? "z-[80]" : "z-0", disabled && "pointer-events-none opacity-50")}
+    >
       <FieldLabel>{label}</FieldLabel>
 
       {selected.length > 0 ? (
@@ -154,7 +167,7 @@ export function WbWarehouseMultiSelect({
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             exit={{ opacity: 0, y: -4, filter: "blur(4px)" }}
             transition={{ type: "spring", duration: 0.22, bounce: 0 }}
-            className="absolute z-40 mt-2 w-full overflow-hidden rounded-[14px] border border-black/[0.08] bg-white shadow-[0_16px_48px_-12px_rgba(0,0,0,0.22)]"
+            className="absolute z-[90] mt-2 w-full overflow-hidden rounded-[14px] border border-black/[0.08] bg-white shadow-[0_16px_48px_-12px_rgba(0,0,0,0.22),0_0_0_1px_rgba(255,255,255,0.9)]"
           >
             <ul className="max-h-[min(320px,45vh)] overflow-auto py-1.5" role="listbox" aria-multiselectable>
               {filtered.length === 0 ? (

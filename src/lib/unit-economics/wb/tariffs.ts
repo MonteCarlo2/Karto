@@ -1,7 +1,10 @@
 import categoriesJson from "../data/wb/categories.json";
 import logisticsJson from "../data/wb/logistics.json";
 import metaJson from "../data/wb/meta.json";
+import { formatWbCategoryDisplayName } from "./category-display";
 import type { WbCategoryItem, WbLocalizationBracket, WbTariffMeta, WbWarehouse } from "./types";
+
+export { formatWbCategoryDisplayName };
 type CategoriesFile = {
   effectiveFrom: string;
   sourceFile: string;
@@ -196,7 +199,8 @@ export function listWbCategoryTypes(parentName: string, categoryName: string): W
 }
 
 export function getWbCategoryLabel(id: string): string {
-  return getWbCategoryById(id)?.label ?? getWbCategoryById(id)?.name ?? "Категория";
+  const item = getWbCategoryById(id);
+  return item ? formatWbCategoryDisplayName(item.name) : "Категория";
 }
 
 export function getWbCommissionPercent(

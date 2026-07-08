@@ -24,6 +24,7 @@ import type { WbFbwSupplyType, WbLogisticsResult, WbWarehouse } from "./types";
 
 const WB_STORAGE_COEF_DIVISOR = 146.5;
 const WB_BASE_STORAGE_FIRST_LITER_DAY_RUB = 0.13;
+const WB_FBS_MARKETPLACE_LOGISTICS_FACTOR = 0.6097;
 
 function billableExtraLiters(billableLiters: number): number {
   return Math.max(0, Math.max(1, billableLiters) - 1);
@@ -299,13 +300,11 @@ export function calculateWbAcceptanceRub(params: {
   return roundRub((boxRate * liters) / WB_MONOPALLET_ACCEPTANCE_UNIT_LITERS);
 }
 
-/** FBS: средняя логистика до клиента с учётом доли выкупа. */
+/** FBS: логистика маркетплейс-доставки, калибрована по официальному калькулятору WB. */
 export function calculateWbFbsLogisticsToClientRub(
-  forwardRub: number,
-  buyoutPercent: number
+  forwardRub: number
 ): number {
-  const buyoutFactor = Math.max(0.01, Math.min(1, buyoutPercent / 100));
-  return roundRub(forwardRub / buyoutFactor);
+  return roundRub(forwardRub * WB_FBS_MARKETPLACE_LOGISTICS_FACTOR);
 }
 
 export function calculateWbLogistics(params: {
@@ -356,7 +355,7 @@ export function calculateWbLogistics(params: {
             boxForwardRub,
             buyoutPercent: params.buyoutPercent,
           })
-        : calculateWbFbsLogisticsToClientRub(forwardRub, params.buyoutPercent);
+        : calculateWbFbsLogisticsToClientRub(forwardRub);
 
   const reversePerReturnRub = calculateWbCustomerReturnRub({
     warehouseId: params.warehouseId,

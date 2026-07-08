@@ -12,6 +12,7 @@ import {
   type WbResolvedScenario,
 } from "./wb/resolve-input";
 import {
+  formatWbCategoryDisplayName,
   getWbCategoryById,
   getWbCategoryLabel,
   getWbCommissionPercent,
@@ -267,7 +268,7 @@ export function calculateWbUnitEconomics(rawInput: UnitEconCalculatorInput): Uni
 
   return {
     marketplace: "wildberries",
-    categoryName: category?.name ?? getWbCategoryLabel(input.categoryId),
+    categoryName: category ? formatWbCategoryDisplayName(category.name) : getWbCategoryLabel(input.categoryId),
     priceRub,
     volumeLiters,
     billableLiters,
