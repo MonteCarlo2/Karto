@@ -8,7 +8,7 @@ import type { YandexOfferPreview } from "@/lib/services/yandex/client";
 import { extractYandexOfferId } from "@/lib/services/yandex/client";
 import type { InboxProductPreview } from "./ozon-inbox";
 import { formatInboxReviewDates } from "./inbox-review-dates";
-import { resolveInboxItemFeed, resolveSentAtLabel } from "./inbox-auto-send";
+import { resolveInboxItemFeed, resolveSentAtLabel } from "./inbox-feed-utils";
 
 function clampStar(value: number | undefined): StarKey {
   const n = Math.round(Number(value ?? 5));

@@ -33,6 +33,7 @@ type WorkspaceModePanelProps = {
   ) => void;
   onSetUsage: (usage: AutoRepliesUsageId) => void;
   onGoIntegration?: () => void;
+  onGoInbox?: () => void;
 };
 
 function SourceHeader({
@@ -78,6 +79,7 @@ export function WorkspaceModePanel({
   onPatchMp,
   onSetUsage,
   onGoIntegration,
+  onGoInbox,
 }: WorkspaceModePanelProps) {
   const byStar = mpSettings.starRules.byStar;
   const source: SourceMode = usage === "manual" ? "manual" : "cabinet";
@@ -97,6 +99,7 @@ export function WorkspaceModePanel({
   const setSource = (next: SourceMode) => {
     if (next === "manual") {
       onSetUsage("manual");
+      onGoInbox?.();
       return;
     }
     onSetUsage("semi");
@@ -182,6 +185,21 @@ export function WorkspaceModePanel({
                 Вы вставляете текст отзыва вручную — KARTO генерирует ответ. Настройка по звёздам не
                 нужна.
               </p>
+              {onGoInbox ? (
+                <button
+                  type="button"
+                  onClick={onGoInbox}
+                  className="mt-5 inline-flex items-center rounded-xl border px-4 py-2.5 text-[14px] font-semibold transition hover:brightness-[1.02]"
+                  style={{
+                    ...wsSans,
+                    borderColor: "rgba(46,90,67,0.22)",
+                    backgroundColor: "rgba(185,255,75,0.28)",
+                    color: panel.text,
+                  }}
+                >
+                  Открыть генератор ответов
+                </button>
+              ) : null}
             </WsOutlinePanel>
           )}
         </div>

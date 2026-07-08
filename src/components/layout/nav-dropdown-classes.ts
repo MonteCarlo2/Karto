@@ -11,6 +11,15 @@ export const NAV_MENU_ROW_STUDIO =
 export const NAV_MENU_ICON_WRAP =
   "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#f6fce9] via-[#ecf7db] to-[#dff3c4] text-[#16452f] shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] ring-1 ring-[#2E5A43]/13";
 
+export const NAV_MENU_ICON_STUDIO =
+  "flex shrink-0 items-center justify-center pt-0.5 text-[#2E5A43]";
+
+export const NAV_MENU_ICON_PROFILE =
+  "flex shrink-0 items-center justify-center pt-0.5 text-[#2E5A43]";
+
+export const NAV_MENU_ICON_LOGOUT =
+  "flex shrink-0 items-center justify-center pt-0.5 text-[#b91c1c]";
+
 /** Иконка «Выйти»: постоянное красное обрамление (без hover). */
 export const NAV_MENU_ICON_WRAP_LOGOUT =
   "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#fffafa] text-[#b91c1c] shadow-[inset_0_1px_0_rgba(255,255,255,0.88)] ring-2 ring-red-500/60 ring-offset-0 border border-red-600/40";

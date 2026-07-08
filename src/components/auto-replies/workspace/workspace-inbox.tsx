@@ -39,7 +39,7 @@ import {
   isMarketplaceLiveReady,
   syncMarketplaceInbox,
 } from "@/lib/auto-replies/marketplace-live";
-import { reassignInboxItemFeeds } from "@/lib/auto-replies/inbox-auto-send";
+import { reassignInboxItemFeeds } from "@/lib/auto-replies/inbox-feed-utils";
 import { normalizeInboxItemsAutoJournal } from "@/lib/auto-replies/inbox-auto-journal";
 import { getShopDisplayName } from "@/lib/auto-replies/settings-store";
 import { shouldAutoSendInboxItem } from "@/lib/auto-replies/inbox-star-rules";

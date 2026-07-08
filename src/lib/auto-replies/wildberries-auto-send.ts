@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { InboxReviewItem } from "./inbox-demo-data";
 import type { AutoRepliesMarketplaceSettings, AutoRepliesShopSettings } from "./settings-types";
 import type { AutoRepliesUsageId } from "./types";
-import { reassignInboxItemFeeds } from "./inbox-auto-send";
+import { reassignInboxItemFeeds } from "./inbox-feed-utils";
 import { postProcessInboxAutoSend } from "./inbox-sync-finish";
 import { answerWildberriesFeedback } from "@/lib/services/wildberries/client";
 

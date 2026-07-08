@@ -1,0 +1,20 @@
+{
+  "commissionsEffectiveFrom": "2026-07-07",
+  "commissionSource": "KVV_Wildberries_ru_20260630.pdf",
+  "categoryCount": 7464,
+  "logisticsEffectiveFrom": "2026-07-07",
+  "logisticsSource": "return-tariffs-2026-07-07.xlsx, warehouse-coefficients-2026-07-07.xlsx, warehouse-tariff-snapshots.tsv",
+  "defaultCategoryId": "хозяйственные-товары|хозяйственные-товары|ведра-хозяйственные",
+  "defaultWarehouseId": "volgograd",
+  "acquiringIncludedInCommission": true,
+  "models": {
+    "fbw": {
+      "label": "FBO (FBW)",
+      "description": "Склад Wildberries"
+    },
+    "fbs": {
+      "label": "FBS (Маркетплейс)",
+      "description": "Со склада продавца"
+    }
+  }
+}

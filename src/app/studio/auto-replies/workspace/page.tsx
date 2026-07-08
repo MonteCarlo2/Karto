@@ -765,6 +765,7 @@ export default function AutoRepliesWorkspacePage() {
                 onPatchMp={handlePatchMp}
                 onSetUsage={setUsageLocal}
                 onGoIntegration={() => selectWorkspaceArea("integration")}
+                onGoInbox={() => selectWorkspaceArea("inbox")}
                 onRemoveIntegration={handleRemoveMarketplaceIntegration}
                 removingIntegration={removingIntegration}
               />
@@ -784,6 +785,7 @@ export default function AutoRepliesWorkspacePage() {
                 onPatchMp={handlePatchMp}
                 onSetUsage={setUsageLocal}
                 onGoIntegration={() => selectWorkspaceArea("integration")}
+                onGoInbox={() => selectWorkspaceArea("inbox")}
                 onRemoveIntegration={
                   navKey === "integration" ? handleRemoveMarketplaceIntegration : undefined
                 }

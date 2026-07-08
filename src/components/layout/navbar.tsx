@@ -7,12 +7,11 @@ import { Logo } from "@/components/ui/logo"
 import { Button } from "@/components/ui/button"
 import { Menu, X, User, LogOut } from "lucide-react"
 import { UserNotificationBell } from "@/components/layout/user-notification-bell"
-import { CommunityVoteModal, CommunityVoteNavButton } from "@/components/layout/community-vote-modal"
 import {
   NAV_DROPDOWN_PANEL,
-  NAV_MENU_DIVIDER,
-  NAV_MENU_ICON_WRAP,
-  NAV_MENU_ICON_WRAP_LOGOUT,
+  NAV_MENU_ICON_LOGOUT,
+  NAV_MENU_ICON_PROFILE,
+  NAV_MENU_ICON_STUDIO,
   NAV_LOGOUT_LABEL,
   NAV_MENU_ROW_LOGOUT,
   NAV_MENU_ROW_PROFILE,
@@ -30,6 +29,71 @@ import {
   ProfileMenuUpdateCue,
 } from "@/components/layout/profile-update-cue"
 
+function StudioMenuGrid({ onNavigate }: { onNavigate?: () => void }) {
+  const handleClick = () => {
+    onNavigate?.()
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-1">
+      <Link href="/studio?intro=true" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
+        <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
+          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className={NAV_MENU_TITLE}>Поток</div>
+          <div className={NAV_MENU_SUBTITLE}>От идеи до готовой карточки</div>
+        </div>
+      </Link>
+      <Link href="/studio/auto-replies" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
+        <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
+          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"
+            />
+          </svg>
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className={NAV_MENU_TITLE}>Автоответы</div>
+          <div className={NAV_MENU_SUBTITLE}>Ответы на отзывы с ИИ</div>
+        </div>
+      </Link>
+      <Link href="/studio/free" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
+        <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
+          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className={NAV_MENU_TITLE}>Свободное творчество</div>
+          <div className={NAV_MENU_SUBTITLE}>Карточки без полного потока</div>
+        </div>
+      </Link>
+      <Link href="/studio/unit-economics" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
+        <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
+          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+            />
+          </svg>
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className={NAV_MENU_TITLE}>Юнит-экономика</div>
+          <div className={NAV_MENU_SUBTITLE}>Маржа, комиссии и прибыль</div>
+        </div>
+      </Link>
+    </div>
+  )
+}
+
 export function Navbar() {
   const [isOpen, setIsOpen] = React.useState(false)
   const [user, setUser] = React.useState<any>(null)
@@ -37,12 +101,13 @@ export function Navbar() {
   const [showStudioMenu, setShowStudioMenu] = React.useState(false)
   const [mounted, setMounted] = React.useState(false)
   const [subscriptionLabels, setSubscriptionLabels] = React.useState<string[]>([])
-  const [communityVoteOpen, setCommunityVoteOpen] = React.useState(false)
   const pathname = usePathname()
   const router = useRouter()
   const isHome = pathname === "/"
   const hideImmersiveStudio =
-    pathname === "/studio/free" || pathname.startsWith("/studio/auto-replies");
+    pathname === "/studio/free" ||
+    pathname.startsWith("/studio/auto-replies") ||
+    pathname.startsWith("/studio/unit-economics");
   const { showBadge: profileUpdateBadge, dismissProfileUpdateBadge } = useProfileUpdateBadge()
 
   // Предотвращаем гидратацию до монтирования на клиенте
@@ -217,7 +282,6 @@ export function Navbar() {
 
           {/* CTA Buttons */}
           <div className="hidden md:flex items-center gap-3" suppressHydrationWarning>
-            <CommunityVoteNavButton onClick={() => setCommunityVoteOpen(true)} />
             <div className="relative studio-menu-container" suppressHydrationWarning>
               <Button 
                 variant="ghost" 
@@ -234,60 +298,9 @@ export function Navbar() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ duration: 0.15, ease: "easeOut" }}
-                    className={`absolute right-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),296px)] ${NAV_DROPDOWN_PANEL}`}
+                    className={`absolute left-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),592px)] ${NAV_DROPDOWN_PANEL}`}
                   >
-                    <Link
-                      href="/studio?intro=true"
-                      className={NAV_MENU_ROW_STUDIO}
-                      onClick={() => setShowStudioMenu(false)}
-                    >
-                      <span className={NAV_MENU_ICON_WRAP} aria-hidden>
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className={NAV_MENU_TITLE}>Поток</div>
-                        <div className={NAV_MENU_SUBTITLE}>От идеи до готовой карточки</div>
-                      </div>
-                    </Link>
-                    <div className={NAV_MENU_DIVIDER} />
-                    <Link
-                      href="/studio/free"
-                      className={NAV_MENU_ROW_STUDIO}
-                      onClick={() => setShowStudioMenu(false)}
-                    >
-                      <span className={NAV_MENU_ICON_WRAP} aria-hidden>
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className={NAV_MENU_TITLE}>Свободное творчество</div>
-                        <div className={NAV_MENU_SUBTITLE}>Карточки без полного потока</div>
-                      </div>
-                    </Link>
-                    <div className={NAV_MENU_DIVIDER} />
-                    <Link
-                      href="/studio/auto-replies"
-                      className={NAV_MENU_ROW_STUDIO}
-                      onClick={() => setShowStudioMenu(false)}
-                    >
-                      <span className={NAV_MENU_ICON_WRAP} aria-hidden>
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"
-                          />
-                        </svg>
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className={NAV_MENU_TITLE}>Автоответы</div>
-                        <div className={NAV_MENU_SUBTITLE}>Ответы на отзывы с ИИ</div>
-                      </div>
-                    </Link>
+                    <StudioMenuGrid onNavigate={() => setShowStudioMenu(false)} />
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -328,8 +341,8 @@ export function Navbar() {
                               setShowProfileMenu(false)
                             }}
                           >
-                            <span className={NAV_MENU_ICON_WRAP} aria-hidden>
-                              <User className="h-4 w-4" strokeWidth={2} />
+                            <span className={NAV_MENU_ICON_PROFILE} aria-hidden>
+                              <User className="h-6 w-6" strokeWidth={2} />
                             </span>
                             <div className="flex min-w-0 flex-1 flex-col items-start gap-0">
                               <span className={NAV_PROFILE_LABEL}>Личный кабинет</span>
@@ -337,8 +350,8 @@ export function Navbar() {
                             </div>
                           </Link>
                           <button type="button" onClick={handleLogout} className={NAV_MENU_ROW_LOGOUT}>
-                            <span className={NAV_MENU_ICON_WRAP_LOGOUT} aria-hidden>
-                              <LogOut className="h-4 w-4" strokeWidth={2} />
+                            <span className={NAV_MENU_ICON_LOGOUT} aria-hidden>
+                              <LogOut className="h-6 w-6" strokeWidth={2} />
                             </span>
                             <span className={NAV_LOGOUT_LABEL}>Выйти</span>
                           </button>
@@ -347,14 +360,16 @@ export function Navbar() {
                     </AnimatePresence>
                   </div>
                   {subscriptionLabels.length > 0 && (
-                    <div className="hidden sm:flex items-center gap-1.5">
+                    <div className="hidden sm:flex items-center gap-2 rounded-xl border border-[#2E5A43]/25 bg-[#f6fce9]/75 px-3 py-1.5 ring-1 ring-[#2E5A43]/10">
                       {subscriptionLabels.map((label, i) => (
-                        <span
-                          key={i}
-                          className="text-xs font-medium text-[#2E5A43] bg-[#2E5A43]/10 px-2.5 py-1 rounded-full border border-[#2E5A43]/30"
-                        >
-                          {label}
-                        </span>
+                        <React.Fragment key={i}>
+                          {i > 0 ? (
+                            <span className="h-3 w-px shrink-0 bg-[#2E5A43]/20" aria-hidden />
+                          ) : null}
+                          <span className="text-xs font-semibold tabular-nums tracking-tight text-[#2E5A43]">
+                            {label}
+                          </span>
+                        </React.Fragment>
                       ))}
                     </div>
                   )}
@@ -375,9 +390,8 @@ export function Navbar() {
             )}
           </div>
 
-          {/* Mobile: голосование + колокольчик — слева от кнопки меню */}
+          {/* Mobile: колокольчик — слева от кнопки меню */}
           <div className="flex items-center gap-1.5 md:hidden">
-            <CommunityVoteNavButton compact onClick={() => setCommunityVoteOpen(true)} />
             {mounted && user ? <UserNotificationBell /> : null}
             <button
               className="p-2"
@@ -413,16 +427,6 @@ export function Navbar() {
                   {link.name}
                 </Link>
               ))}
-              <button
-                type="button"
-                className="text-left text-base font-semibold text-[#1F4E3D] py-2 px-4 rounded-lg hover:bg-[#1F4E3D]/10"
-                onClick={() => {
-                  setCommunityVoteOpen(true)
-                  setIsOpen(false)
-                }}
-              >
-                Что внедрим следующим?
-              </button>
               <div className="w-full mt-2">
                 <Button 
                   variant="ghost" 
@@ -435,67 +439,12 @@ export function Navbar() {
                 </Button>
                 {showStudioMenu && (
                   <div className={`ml-4 mt-2 ${NAV_DROPDOWN_PANEL}`}>
-                    <Link
-                      href="/studio?intro=true"
-                      className={NAV_MENU_ROW_STUDIO}
-                      onClick={() => {
-                        setIsOpen(false);
-                        setShowStudioMenu(false);
+                    <StudioMenuGrid
+                      onNavigate={() => {
+                        setIsOpen(false)
+                        setShowStudioMenu(false)
                       }}
-                    >
-                      <span className={NAV_MENU_ICON_WRAP} aria-hidden>
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className={NAV_MENU_TITLE}>Поток</div>
-                        <div className={NAV_MENU_SUBTITLE}>От идеи до готовой карточки</div>
-                      </div>
-                    </Link>
-                    <div className={NAV_MENU_DIVIDER} />
-                    <Link
-                      href="/studio/free"
-                      className={NAV_MENU_ROW_STUDIO}
-                      onClick={() => {
-                        setIsOpen(false);
-                        setShowStudioMenu(false);
-                      }}
-                    >
-                      <span className={NAV_MENU_ICON_WRAP} aria-hidden>
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className={NAV_MENU_TITLE}>Свободное творчество</div>
-                        <div className={NAV_MENU_SUBTITLE}>Карточки без полного потока</div>
-                      </div>
-                    </Link>
-                    <div className={NAV_MENU_DIVIDER} />
-                    <Link
-                      href="/studio/auto-replies"
-                      className={NAV_MENU_ROW_STUDIO}
-                      onClick={() => {
-                        setIsOpen(false);
-                        setShowStudioMenu(false);
-                      }}
-                    >
-                      <span className={NAV_MENU_ICON_WRAP} aria-hidden>
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"
-                          />
-                        </svg>
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className={NAV_MENU_TITLE}>Автоответы</div>
-                        <div className={NAV_MENU_SUBTITLE}>Ответы на отзывы с ИИ</div>
-                      </div>
-                    </Link>
+                    />
                   </div>
                 )}
               </div>
@@ -513,8 +462,8 @@ export function Navbar() {
                       profileUpdateBadge && "items-start"
                     )}
                   >
-                    <span className={NAV_MENU_ICON_WRAP} aria-hidden>
-                      <User className="h-4 w-4" strokeWidth={2} />
+                    <span className={NAV_MENU_ICON_PROFILE} aria-hidden>
+                      <User className="h-6 w-6" strokeWidth={2} />
                     </span>
                     <div className="flex min-w-0 flex-1 flex-col items-start gap-0">
                       <span className={NAV_PROFILE_LABEL}>Личный кабинет</span>
@@ -530,8 +479,8 @@ export function Navbar() {
                     className={`mt-1 w-full ${NAV_MENU_ROW_LOGOUT}`}
                     suppressHydrationWarning
                   >
-                    <span className={NAV_MENU_ICON_WRAP_LOGOUT} aria-hidden>
-                      <LogOut className="h-4 w-4" strokeWidth={2} />
+                    <span className={NAV_MENU_ICON_LOGOUT} aria-hidden>
+                      <LogOut className="h-6 w-6" strokeWidth={2} />
                     </span>
                     <span className={NAV_LOGOUT_LABEL}>Выйти</span>
                   </button>
@@ -552,8 +501,6 @@ export function Navbar() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      <CommunityVoteModal open={communityVoteOpen} onOpenChange={setCommunityVoteOpen} />
     </header>
   )
 }

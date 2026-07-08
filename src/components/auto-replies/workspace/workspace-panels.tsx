@@ -35,6 +35,7 @@ export type WorkspacePanelsProps = {
   onPatchMp: (patch: Parameters<typeof import("@/lib/auto-replies/settings-store").patchMarketplaceSettings>[2]) => void;
   onSetUsage: (usage: AutoRepliesUsageId) => void;
   onGoIntegration?: () => void;
+  onGoInbox?: () => void;
   onRemoveIntegration?: () => void | Promise<void>;
   removingIntegration?: boolean;
 };
@@ -51,6 +52,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
     onPatchMp,
     onSetUsage,
     onGoIntegration,
+    onGoInbox,
     brandDescription,
     brandName,
   } = props;
@@ -70,6 +72,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         onPatchMp={onPatchMp}
         onSetUsage={onSetUsage}
         onGoIntegration={onGoIntegration}
+        onGoInbox={onGoInbox}
       />
     );
   }

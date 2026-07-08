@@ -11,6 +11,14 @@ export const CARD_SLOT_CHECKPOINT_MS =
 export const CARD_BATCH_MAX_WAIT_MS =
   Number(process.env.WAVESPEED_BATCH_MAX_WAIT_MS) || 420_000;
 
+/** Пауза между стартом слотов (снижает «2 из 4 брак» при burst на WaveSpeed). */
+export const CARD_BATCH_STAGGER_MS = (() => {
+  const v = process.env.WAVESPEED_BATCH_STAGGER_MS;
+  if (v === undefined || v === "") return 2_500;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, n) : 2_500;
+})();
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -26,6 +34,7 @@ export type BatchRaceOptions = {
   concepts: DesignConcept[];
   checkpointMs: number;
   maxWaitMs: number;
+  staggerMs?: number;
   generateOne: (conceptIndex: number, attemptLabel: string) => Promise<CardGenAttemptResult>;
   onSlotFilled?: (slots: (string | null)[], filledCount: number) => void | Promise<void>;
 };
@@ -93,7 +102,11 @@ export async function runVisualBatchRace(
   const startedAt = Date.now();
   console.log(`🏁 [BATCH/RACE] Старт ${slotCount} параллельных запросов`);
 
+  const staggerMs = Math.max(0, options.staggerMs ?? CARD_BATCH_STAGGER_MS);
   for (let i = 0; i < slotCount; i++) {
+    if (i > 0 && staggerMs > 0) {
+      await sleep(staggerMs);
+    }
     launch(i, `initial-${i + 1}`);
   }
 

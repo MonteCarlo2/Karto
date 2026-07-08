@@ -1,6 +1,6 @@
 import type { InboxReviewItem } from "./inbox-demo-data";
 import type { AutoRepliesMarketplaceId } from "./types";
-import { resolveSentAtLabel } from "./inbox-auto-send";
+import { resolveSentAtLabel } from "./inbox-feed-utils";
 
 export function isPlaceholderProductName(
   name: string,

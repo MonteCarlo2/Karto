@@ -6,7 +6,7 @@ import { buildLocalAutoReply } from "./reply-generation";
 import type { OzonProductInfo, OzonReview } from "@/lib/services/ozon/types";
 import { pickOzonProductImageUrl } from "@/lib/services/ozon/client";
 import { formatInboxReviewDates } from "./inbox-review-dates";
-import { resolveInboxItemFeed, resolveSentAtLabel } from "./inbox-auto-send";
+import { resolveInboxItemFeed, resolveSentAtLabel } from "./inbox-feed-utils";
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   DELIVERED: "Доставлен",

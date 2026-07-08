@@ -43,6 +43,36 @@ export async function deleteTelegramReviewCard(input: {
   await deleteTelegramReviewCardMessages(input);
 }
 
+function isTelegramBadPhotoUrlError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /wrong type of the web page content|failed to get http url content|wrong remote file identifier|content-type/i.test(
+    msg
+  );
+}
+
+async function sendTelegramReviewCardTextOnly(input: {
+  chatId: number;
+  item: InboxReviewItem;
+  messageRowId: string;
+  status?: "pending" | "sent";
+  footer?: string;
+}): Promise<TelegramReviewCardSendResult> {
+  const caption = formatTelegramReviewCard({
+    item: input.item,
+    status: input.status ?? "pending",
+    footer: input.footer,
+    format: "text-message",
+  });
+  const keyboard =
+    input.status === "sent" ? reviewSentKeyboard() : reviewActionKeyboard(input.messageRowId);
+  const msg = await telegramSendMessage({
+    chatId: input.chatId,
+    text: caption,
+    replyMarkup: keyboard,
+  });
+  return { message_id: msg.message_id, has_photo: false, extra_message_ids: [] };
+}
+
 export async function sendTelegramReviewCard(input: {
   chatId: number;
   item: InboxReviewItem;
@@ -65,34 +95,46 @@ export async function sendTelegramReviewCard(input: {
     input.status === "sent" ? reviewSentKeyboard() : reviewActionKeyboard(input.messageRowId);
 
   if (hasDualPhotos) {
-    const mediaMessages = await telegramSendMediaGroup({
-      chatId: input.chatId,
-      media: [
-        { type: "photo", media: productPhotoUrl!, caption: "📦 <b>Товар</b>" },
-        { type: "photo", media: reviewPhotoUrl!, caption: "📷 <b>Фото из отзыва</b>" },
-      ],
-    });
-    const msg = await telegramSendMessage({
-      chatId: input.chatId,
-      text: caption,
-      replyMarkup: keyboard,
-    });
-    return {
-      message_id: msg.message_id,
-      has_photo: true,
-      extra_message_ids: mediaMessages.map((m) => m.message_id),
-    };
+    try {
+      const mediaMessages = await telegramSendMediaGroup({
+        chatId: input.chatId,
+        media: [
+          { type: "photo", media: productPhotoUrl!, caption: "📦 <b>Товар</b>" },
+          { type: "photo", media: reviewPhotoUrl!, caption: "📷 <b>Фото из отзыва</b>" },
+        ],
+      });
+      const msg = await telegramSendMessage({
+        chatId: input.chatId,
+        text: caption,
+        replyMarkup: keyboard,
+      });
+      return {
+        message_id: msg.message_id,
+        has_photo: true,
+        extra_message_ids: mediaMessages.map((m) => m.message_id),
+      };
+    } catch (e) {
+      if (!isTelegramBadPhotoUrlError(e)) throw e;
+      console.warn("[telegram] dual photo card rejected, fallback to text", input.item.id, e);
+      return sendTelegramReviewCardTextOnly(input);
+    }
   }
 
   const photoUrl = getReviewPhotoUrl(input.item);
   if (photoUrl) {
-    const msg = await telegramSendPhoto({
-      chatId: input.chatId,
-      photoUrl,
-      caption,
-      replyMarkup: keyboard,
-    });
-    return { message_id: msg.message_id, has_photo: true, extra_message_ids: [] };
+    try {
+      const msg = await telegramSendPhoto({
+        chatId: input.chatId,
+        photoUrl,
+        caption,
+        replyMarkup: keyboard,
+      });
+      return { message_id: msg.message_id, has_photo: true, extra_message_ids: [] };
+    } catch (e) {
+      if (!isTelegramBadPhotoUrlError(e)) throw e;
+      console.warn("[telegram] photo card rejected, fallback to text", input.item.id, photoUrl.slice(0, 96), e);
+      return sendTelegramReviewCardTextOnly(input);
+    }
   }
 
   const msg = await telegramSendMessage({

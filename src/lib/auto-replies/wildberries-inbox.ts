@@ -14,7 +14,7 @@ import {
 } from "./marketplace-product-image";
 import type { WbFeedback } from "@/lib/services/wildberries/types";
 import { formatInboxReviewDates } from "./inbox-review-dates";
-import { resolveInboxItemFeed, resolveSentAtLabel } from "./inbox-auto-send";
+import { resolveInboxItemFeed, resolveSentAtLabel } from "./inbox-feed-utils";
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   buyout: "Выкуп",

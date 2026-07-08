@@ -135,9 +135,14 @@ export function WorkspaceInboxDetail({
 
   const regenerationsLeft = remainingRegenerations(regenerateCount);
   const regenerateBlocked = !canRegenerateReply(regenerateCount);
+  const hasDraft = draft.trim().length >= 2 || item.replyDraft.trim().length >= 2;
 
   const runRegenerate = useCallback(async () => {
-    if (!canRegenerateReply(regenerateCount)) {
+    const hint = revisionHint.trim();
+    const previous = draft.trim() || item.replyDraft.trim();
+    const isFirstGenerate = previous.length < 2;
+
+    if (!isFirstGenerate && !canRegenerateReply(regenerateCount)) {
       setRegenerateError(`Лимит перегенераций (${REPLY_REGENERATE_LIMIT}) исчерпан для этого отзыва.`);
       return;
     }
@@ -146,19 +151,11 @@ export function WorkspaceInboxDetail({
     setEditMode(false);
     setRegenerateError(null);
 
-    const usedNext = regenerateCount + 1;
-    setRegenerateCount(usedNext);
-    writeRegenerateCountForItem(item.id, usedNext);
-
-    const hint = revisionHint.trim();
-    const previous = draft.trim() || item.replyDraft.trim();
-
-    if (!previous) {
-      setRegenerateError("Сначала нужен текст ответа, затем можно перегенерировать");
-      setRegenerateCount(regenerateCount);
-      writeRegenerateCountForItem(item.id, regenerateCount);
-      setRegenerating(false);
-      return;
+    const usedBefore = regenerateCount;
+    const usedNext = isFirstGenerate ? usedBefore : usedBefore + 1;
+    if (!isFirstGenerate) {
+      setRegenerateCount(usedNext);
+      writeRegenerateCountForItem(item.id, usedNext);
     }
 
     const payload = {
@@ -170,8 +167,8 @@ export function WorkspaceInboxDetail({
       buyerName: item.buyerName ?? buyerName,
       productName: item.productName,
       hasReviewPhotos: (item.reviewPhotoUrls?.length ?? 0) > 0,
-      revisionHint: hint || null,
-      previousReply: previous,
+      revisionHint: isFirstGenerate ? null : hint || null,
+      previousReply: isFirstGenerate ? null : previous,
     };
 
     try {
@@ -181,26 +178,37 @@ export function WorkspaceInboxDetail({
       });
       const data = (await res.json()) as { reply?: string; error?: string; code?: string };
       if (res.status === 402 || data.code === "insufficient_balance") {
-        setRegenerateCount(regenerateCount);
-        writeRegenerateCountForItem(item.id, regenerateCount);
+        if (!isFirstGenerate) {
+          setRegenerateCount(usedBefore);
+          writeRegenerateCountForItem(item.id, usedBefore);
+        }
         setRegenerateError(data.error || AUTO_REPLY_INSUFFICIENT_BALANCE_MSG);
         return;
       }
       if (!res.ok || !data.reply) {
-        throw new Error(data.error || "Не удалось перегенерировать ответ");
+        throw new Error(data.error || (isFirstGenerate ? "Не удалось сгенерировать ответ" : "Не удалось перегенерировать ответ"));
       }
       syncDraft(data.reply);
       void syncDraftToTelegram(data.reply, "web_regen");
+      void onReplyBalanceChange?.();
       if (hint) setRevisionHint("");
     } catch (e) {
-      setRegenerateCount(regenerateCount);
-      writeRegenerateCountForItem(item.id, regenerateCount);
+      if (!isFirstGenerate) {
+        setRegenerateCount(usedBefore);
+        writeRegenerateCountForItem(item.id, usedBefore);
+      }
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("балансе закончились") || msg.includes("Недостаточно ответов") || msg.includes("тариф")) {
         setRegenerateError(msg || AUTO_REPLY_INSUFFICIENT_BALANCE_MSG);
         return;
       }
-      setRegenerateError(e instanceof Error ? e.message : "Не удалось перегенерировать ответ");
+      setRegenerateError(
+        e instanceof Error
+          ? e.message
+          : isFirstGenerate
+            ? "Не удалось сгенерировать ответ"
+            : "Не удалось перегенерировать ответ"
+      );
     } finally {
       setRegenerating(false);
     }
@@ -401,31 +409,35 @@ export function WorkspaceInboxDetail({
                 <div className="mt-3 flex flex-wrap gap-2">
                   <InboxActionChip
                     onClick={() => void runRegenerate()}
-                    disabled={regenerating || regenerateBlocked}
+                    disabled={regenerating || (hasDraft && regenerateBlocked)}
                   >
                     <RefreshCw className="h-3.5 w-3.5" />
-                    {regenerateBlocked
-                      ? "Лимит перегенераций"
-                      : `Перегенерировать · осталось ${regenerationsLeft}`}
+                    {!hasDraft
+                      ? "Сгенерировать ответ"
+                      : regenerateBlocked
+                        ? "Лимит перегенераций"
+                        : `Перегенерировать · осталось ${regenerationsLeft}`}
                   </InboxActionChip>
                 </div>
-                <input
-                  type="text"
-                  value={revisionHint}
-                  onChange={(e) => {
-                    setRevisionHint(e.target.value);
-                    if (regenerateError) setRegenerateError(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      if (!regenerateBlocked) void runRegenerate();
-                    }
-                  }}
-                  placeholder="Уточнение для перегенерации — Enter для запуска"
-                  className="mt-2 w-full rounded-lg border border-white/80 bg-white/90 px-3 py-2 text-[12px] outline-none focus:ring-2 focus:ring-[rgba(46,90,67,0.14)]"
-                  style={{ ...wsSans, color: panel.text }}
-                />
+                {hasDraft ? (
+                  <input
+                    type="text"
+                    value={revisionHint}
+                    onChange={(e) => {
+                      setRevisionHint(e.target.value);
+                      if (regenerateError) setRegenerateError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (!regenerateBlocked) void runRegenerate();
+                      }
+                    }}
+                    placeholder="Уточнение для перегенерации — Enter для запуска"
+                    className="mt-2 w-full rounded-lg border border-white/80 bg-white/90 px-3 py-2 text-[12px] outline-none focus:ring-2 focus:ring-[rgba(46,90,67,0.14)]"
+                    style={{ ...wsSans, color: panel.text }}
+                  />
+                ) : null}
                 {regenerateError ? (
                   <p className="mt-2 text-[12px] font-medium text-[#9b2c2c]">{regenerateError}</p>
                 ) : null}

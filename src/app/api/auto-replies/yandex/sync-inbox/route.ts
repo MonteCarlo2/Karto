@@ -6,7 +6,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import type { InboxFeedTab, InboxReviewItem } from "@/lib/auto-replies/inbox-demo-data";
 import { extractYandexProducts } from "@/lib/auto-replies/yandex-inbox";
 import { inboxItemsMissingYandexProductInfo } from "@/lib/auto-replies/inbox-item-merge";
-import { reassignInboxItemFeeds } from "@/lib/auto-replies/inbox-auto-send";
+import { reassignInboxItemFeeds } from "@/lib/auto-replies/inbox-feed-utils";
 import { postProcessInboxAutoSend } from "@/lib/auto-replies/inbox-sync-finish";
 import { consumeReviewScopeLimit } from "@/lib/auto-replies/inbox-review-scope";
 import { runYandexInboxSync } from "@/lib/auto-replies/inbox-sync-yandex-core";

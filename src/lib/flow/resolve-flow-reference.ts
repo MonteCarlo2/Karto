@@ -76,13 +76,17 @@ export async function readFlowImageBuffer(imageUrl: string): Promise<Buffer> {
     const comma = trimmed.indexOf(",");
     if (comma === -1) throw new Error("Некорректный data URL");
     const raw = Buffer.from(trimmed.slice(comma + 1), "base64");
-    return raw.length > 400_000
-      ? sharp(raw)
-          .rotate()
-          .resize({ width: 1200, withoutEnlargement: true })
-          .jpeg({ quality: 80 })
-          .toBuffer()
-      : sharp(raw).rotate().jpeg({ quality: 85 }).toBuffer();
+    if (raw.length > 2_500_000) {
+      return sharp(raw)
+        .rotate()
+        .resize({ width: 1600, withoutEnlargement: true })
+        .png({ compressionLevel: 6 })
+        .toBuffer();
+    }
+    if (raw.length > 900_000) {
+      return sharp(raw).rotate().jpeg({ quality: 92 }).toBuffer();
+    }
+    return sharp(raw).rotate().toBuffer();
   }
 
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {

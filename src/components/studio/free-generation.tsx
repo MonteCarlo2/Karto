@@ -49,8 +49,8 @@ import {
 import {
   NAV_DROPDOWN_PANEL,
   NAV_LOGOUT_LABEL,
-  NAV_MENU_ICON_WRAP,
-  NAV_MENU_ICON_WRAP_LOGOUT,
+  NAV_MENU_ICON_LOGOUT,
+  NAV_MENU_ICON_PROFILE,
   NAV_MENU_ROW_LOGOUT,
   NAV_MENU_ROW_PROFILE,
   NAV_PROFILE_LABEL,
@@ -4656,8 +4656,8 @@ export default function FreeGeneration() {
                   setShowProfileMenu(false);
                 }}
               >
-                <span className={NAV_MENU_ICON_WRAP} aria-hidden>
-                  <User className="h-4 w-4" strokeWidth={2} />
+                <span className={NAV_MENU_ICON_PROFILE} aria-hidden>
+                  <User className="h-6 w-6" strokeWidth={2} />
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col items-start gap-0">
                   <span className={NAV_PROFILE_LABEL}>Личный кабинет</span>
@@ -4665,8 +4665,8 @@ export default function FreeGeneration() {
                 </div>
               </Link>
               <button type="button" onClick={handleLogout} className={NAV_MENU_ROW_LOGOUT}>
-                <span className={NAV_MENU_ICON_WRAP_LOGOUT} aria-hidden>
-                  <LogOut className="h-4 w-4" strokeWidth={2} />
+                <span className={NAV_MENU_ICON_LOGOUT} aria-hidden>
+                  <LogOut className="h-6 w-6" strokeWidth={2} />
                 </span>
                 <span className={NAV_LOGOUT_LABEL}>Выйти</span>
               </button>

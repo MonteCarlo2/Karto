@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAutoRepliesUser } from "@/lib/auto-replies/api-auth";
 import { createServerClient } from "@/lib/supabase/server";
 import type { AutoRepliesMarketplaceId } from "@/lib/auto-replies/types";
-import { syncTelegramPendingReviewCard } from "@/lib/telegram/semi-confirm-server";
+import { syncTelegramPendingReviewCard, patchInboxReplyDraft } from "@/lib/telegram/semi-confirm-server";
 
 export const runtime = "nodejs";
 
@@ -41,6 +41,18 @@ export async function POST(request: NextRequest) {
     sourceRaw === "web_regen" ? "web_regen" : sourceRaw === "web_edit" ? "web_edit" : undefined;
 
   const supabase = createServerClient();
+
+  const patched = await patchInboxReplyDraft(supabase, {
+    userId: auth.user.id,
+    shopId,
+    marketplaceId,
+    reviewId,
+    replyDraft,
+  });
+  if (!patched) {
+    return NextResponse.json({ error: "Отзыв не найден в ленте" }, { status: 404 });
+  }
+
   const result = await syncTelegramPendingReviewCard(supabase, {
     userId: auth.user.id,
     shopId,
@@ -49,6 +61,20 @@ export async function POST(request: NextRequest) {
     replyDraft,
     source,
   });
+
+  if (!result.synced) {
+    try {
+      const { notifyTelegramSemiPendingReviews } = await import("@/lib/telegram/notify-semi-pending");
+      await notifyTelegramSemiPendingReviews(supabase, {
+        userId: auth.user.id,
+        shopId,
+        marketplaceId,
+        items: [patched],
+      });
+    } catch (e) {
+      console.warn("[telegram/sync-review] notify missing card failed", e);
+    }
+  }
 
   return NextResponse.json({ ok: true, synced: result.synced });
 }

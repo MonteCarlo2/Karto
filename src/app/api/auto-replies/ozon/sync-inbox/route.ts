@@ -5,7 +5,7 @@ import { parseApiKey, requireAutoRepliesUser } from "@/lib/auto-replies/api-auth
 import { createServerClient } from "@/lib/supabase/server";
 import type { InboxFeedTab, InboxReviewItem } from "@/lib/auto-replies/inbox-demo-data";
 import { extractOzonProducts } from "@/lib/auto-replies/ozon-inbox";
-import { reassignInboxItemFeeds } from "@/lib/auto-replies/inbox-auto-send";
+import { reassignInboxItemFeeds } from "@/lib/auto-replies/inbox-feed-utils";
 import { postProcessInboxAutoSend } from "@/lib/auto-replies/inbox-sync-finish";
 import { consumeReviewScopeLimit } from "@/lib/auto-replies/inbox-review-scope";
 import { runOzonInboxSync } from "@/lib/auto-replies/inbox-sync-ozon-core";

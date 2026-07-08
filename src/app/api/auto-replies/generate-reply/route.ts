@@ -19,6 +19,37 @@ function parseStar(raw: unknown): StarKey | null {
   return STAR_SET.has(s as StarKey) ? (s as StarKey) : null;
 }
 
+function mapGenerateReplyError(e: unknown): { error: string; status: number } {
+  const msg = e instanceof Error ? e.message : String(e);
+
+  if (/security policy|Access denied by security policy/i.test(msg)) {
+    return {
+      error:
+        "OpenRouter отклонил запрос: на API-ключе включена Security Policy (ограничение по домену или IP). Откройте openrouter.ai → Keys → ваш ключ и отключите политику или добавьте karto.pro и localhost.",
+      status: 503,
+    };
+  }
+
+  if (/OPENROUTER_API_KEY/i.test(msg)) {
+    return {
+      error: "OPENROUTER_API_KEY не настроен на сервере.",
+      status: 503,
+    };
+  }
+
+  if (/OpenRouter \d+:/i.test(msg)) {
+    return {
+      error: `Ошибка OpenRouter: ${msg.replace(/^Error:\s*/i, "").slice(0, 280)}`,
+      status: 503,
+    };
+  }
+
+  return {
+    error: "Не удалось сгенерировать ответ. Попробуйте ещё раз.",
+    status: 503,
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const auth = await requireAutoRepliesUser(request);
@@ -115,9 +146,7 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[auto-replies/generate-reply]", msg);
-    return NextResponse.json(
-      { error: "Не удалось сгенерировать ответ. Попробуйте ещё раз." },
-      { status: 503 }
-    );
+    const mapped = mapGenerateReplyError(e);
+    return NextResponse.json({ error: mapped.error }, { status: mapped.status });
   }
 }

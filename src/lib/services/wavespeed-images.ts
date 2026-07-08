@@ -345,17 +345,44 @@ async function pollUntilImageUrl(
 }
 
 /** Загрузка референса на CDN WaveSpeed (обход Supabase Storage). */
+function detectUploadMime(buffer: Buffer): { mime: string; filename: string } {
+  if (
+    buffer.length >= 4 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return { mime: "image/png", filename: "ref.png" };
+  }
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return { mime: "image/jpeg", filename: "ref.jpg" };
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46
+  ) {
+    return { mime: "image/webp", filename: "ref.webp" };
+  }
+  return { mime: "image/jpeg", filename: "ref.jpg" };
+}
+
 export async function uploadBufferToWaveSpeedMedia(
   buffer: Buffer,
-  filename = "ref.jpg"
+  filename?: string
 ): Promise<string> {
   const apiKey = getWsApiKey();
   const uploadUrl = `${wsOrigin()}/api/v3/media/upload/binary`;
+  const detected = detectUploadMime(buffer);
+  const uploadName = filename?.trim() || detected.filename;
   const form = new FormData();
   form.append(
     "file",
-    new Blob([new Uint8Array(buffer)], { type: "image/jpeg" }),
-    filename
+    new Blob([new Uint8Array(buffer)], { type: detected.mime }),
+    uploadName
   );
 
   const response = await fetchWithTimeout(

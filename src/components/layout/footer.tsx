@@ -13,7 +13,9 @@ export function Footer() {
   const [user, setUser] = useState<{ id: string; email?: string; user_metadata?: { name?: string; full_name?: string } } | null>(null)
   const pathname = usePathname()
   const hideOnImmersiveStudio =
-    pathname === "/studio/free" || pathname.startsWith("/studio/auto-replies");
+    pathname === "/studio/free" ||
+    pathname.startsWith("/studio/auto-replies") ||
+    pathname.startsWith("/studio/unit-economics");
 
   useEffect(() => {
     let mounted = true

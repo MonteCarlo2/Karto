@@ -4,7 +4,8 @@ import type { AutoRepliesMarketplaceSettings, AutoRepliesShopSettings } from "./
 import type { AutoRepliesUsageId } from "./types";
 import { enrichPendingInboxDrafts } from "./generate-auto-reply";
 import { hydrateInboxReplyDrafts } from "./empty-review-settings";
-import { processAutoRepliesInbox, reassignInboxItemFeeds } from "./inbox-auto-send";
+import { processAutoRepliesInbox } from "./inbox-auto-send";
+import { reassignInboxItemFeeds } from "./inbox-feed-utils";
 import { shouldAutoSendInboxItem } from "./inbox-star-rules";
 import {
   applyReviewScopeEligibility,
@@ -110,16 +111,27 @@ export async function postProcessInboxAutoSend(input: {
     input.mp
   );
 
-  const pendingAutoCount = scopedItems.filter((item) =>
+  const withDrafts = await enrichPendingInboxDrafts({
+    items: scopedItems,
+    shopSettings: input.shop,
+    mpSettings: input.mp,
+    brandName: input.brandName ?? null,
+    userId: input.userId,
+    supabase: input.supabase,
+    skipAutoStarItems: true,
+    semiFeedOnly: true,
+  });
+
+  const pendingAutoCount = withDrafts.filter((item) =>
     shouldAutoSendInboxItem(item, input.mp, input.shop)
   ).length;
 
   if (pendingAutoCount === 0 || !input.sendReply) {
-    return { items: scopedItems, autoSentCount: 0 };
+    return { items: withDrafts, autoSentCount: 0 };
   }
 
   const autoResult = await processAutoRepliesInbox({
-    items: scopedItems,
+    items: withDrafts,
     shopSettings: input.shop,
     mpSettings: input.mp,
     brandName: input.brandName ?? null,
@@ -131,8 +143,19 @@ export async function postProcessInboxAutoSend(input: {
 
   consumeReviewScopeLimit(input.mp.reviewScope, autoResult.autoSentCount);
 
-  return {
+  const withFallbackDrafts = await enrichPendingInboxDrafts({
     items: autoResult.items,
+    shopSettings: input.shop,
+    mpSettings: input.mp,
+    brandName: input.brandName ?? null,
+    userId: input.userId,
+    supabase: input.supabase,
+    skipAutoStarItems: true,
+    semiFeedOnly: true,
+  });
+
+  return {
+    items: withFallbackDrafts,
     autoSentCount: autoResult.autoSentCount,
     autoSendWarning: autoResult.errors[0],
   };

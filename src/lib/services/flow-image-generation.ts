@@ -1,14 +1,16 @@
 /**
  * Генерация изображений для Потока (карточки, слайды, правки).
- * WaveSpeed Nano Banana 2; при 401 на WaveSpeed — fallback на EvoLink (тот же ключ может быть в EVOLINK_API_KEY).
+ * Провайдер: FLOW_IMAGE_PROVIDER / FLOW_IMAGE_PREFER_KIE (см. image-provider-keys).
  */
 import { KieAiContentFilteredError, isKieContentPolicyError } from "@/lib/services/kie-ai-errors";
+import { generateWithKieAi } from "@/lib/services/kie-ai";
 import { generateWithEvolinkGemini } from "@/lib/services/evolink-images";
 import { generateWithWaveSpeedNanoBanana2 } from "@/lib/services/wavespeed-images";
 import {
-  hasWaveSpeedApiKey,
+  getFlowImageProvider,
   isImageGenerationConfigured,
   shouldFallbackWaveSpeedToEvolink,
+  type FlowImageProvider,
 } from "@/lib/image-provider-keys";
 
 export type FlowImageGenerationResult = { imageUrl: string; referenceUsed: boolean };
@@ -33,8 +35,17 @@ async function generateWithEvolinkFlow(
   imageArray: string[] | undefined,
   aspectRatio: string
 ): Promise<FlowImageGenerationResult> {
-  console.log("🍌 [Flow/EvoLink] Генерация (fallback или основной провайдер)");
+  console.log("🍌 [Flow/EvoLink] Генерация");
   return generateWithEvolinkGemini(prompt, imageArray, aspectRatio);
+}
+
+async function generateWithKieFlow(
+  prompt: string,
+  imageArray: string[] | undefined,
+  aspectRatio: string
+): Promise<FlowImageGenerationResult> {
+  console.log("🍌 [Flow/KIE] Генерация nano-banana-2");
+  return generateWithKieAi(prompt, imageArray, aspectRatio, "png", "4K");
 }
 
 async function generateWithWaveSpeedFlow(
@@ -45,8 +56,31 @@ async function generateWithWaveSpeedFlow(
   return generateWithWaveSpeedNanoBanana2(prompt, imageArray, aspectRatio);
 }
 
+async function runProvider(
+  provider: FlowImageProvider,
+  prompt: string,
+  imageArray: string[] | undefined,
+  aspectRatio: string
+): Promise<FlowImageGenerationResult> {
+  if (provider === "kie") {
+    return generateWithKieFlow(prompt, imageArray, aspectRatio);
+  }
+  if (provider === "wavespeed") {
+    try {
+      return await generateWithWaveSpeedFlow(prompt, imageArray, aspectRatio);
+    } catch (error: unknown) {
+      if (shouldFallbackWaveSpeedToEvolink(error)) {
+        console.warn("⚠️ [Flow/WaveSpeed] 401 → EvoLink");
+        return generateWithEvolinkFlow(prompt, imageArray, aspectRatio);
+      }
+      throw error;
+    }
+  }
+  return generateWithEvolinkFlow(prompt, imageArray, aspectRatio);
+}
+
 /**
- * Генерация изображения для Потока (промпты и логика — как раньше с KIE).
+ * Генерация изображения для Потока.
  */
 export async function generateFlowImage(
   prompt: string,
@@ -55,11 +89,12 @@ export async function generateFlowImage(
 ): Promise<FlowImageGenerationResult> {
   if (!isFlowImageProviderConfigured()) {
     throw new Error(
-      "Не настроен ключ генерации изображений: задайте WAVESPEED_API_KEY или EVOLINK_API_KEY в .env.local"
+      "Не настроен ключ генерации изображений: задайте KIE_AI_API_KEY, WAVESPEED_API_KEY или EVOLINK_API_KEY"
     );
   }
 
   const imageArray = normalizeImageInput(imageInput);
+  const provider = getFlowImageProvider();
   const maxAttempts = parseInt(
     process.env.FLOW_GENERATION_ATTEMPTS ??
       process.env.KIE_GENERATION_ATTEMPTS ??
@@ -73,36 +108,18 @@ export async function generateFlowImage(
     10
   );
 
-  const runOnce = async (): Promise<FlowImageGenerationResult> => {
-    if (hasWaveSpeedApiKey()) {
-      try {
-        console.log(`🌊 [Flow/WaveSpeed] Генерация, aspect=${aspectRatio}`);
-        const result = await generateWithWaveSpeedFlow(prompt, imageArray, aspectRatio);
-        console.log("✅ [Flow/WaveSpeed] Готово");
-        return result;
-      } catch (error: unknown) {
-        if (shouldFallbackWaveSpeedToEvolink(error)) {
-          console.warn(
-            "⚠️ [Flow/WaveSpeed] Ключ отклонён (401), переключаемся на EvoLink API"
-          );
-          return generateWithEvolinkFlow(prompt, imageArray, aspectRatio);
-        }
-        throw error;
-      }
-    }
-    return generateWithEvolinkFlow(prompt, imageArray, aspectRatio);
-  };
+  console.log(`🎨 [Flow/Image] provider=${provider}, aspect=${aspectRatio}`);
 
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      return await runOnce();
+      return await runProvider(provider, prompt, imageArray, aspectRatio);
     } catch (error: unknown) {
       lastError = error;
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(
-        `❌ [Flow/Image] Ошибка (попытка ${attempt + 1}/${maxAttempts}):`,
+        `❌ [Flow/Image] Ошибка (попытка ${attempt + 1}/${maxAttempts}, ${provider}):`,
         errorMessage
       );
 

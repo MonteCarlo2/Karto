@@ -5,7 +5,7 @@ import { parseApiKey, requireAutoRepliesUser } from "@/lib/auto-replies/api-auth
 import { createServerClient } from "@/lib/supabase/server";
 import type { InboxFeedTab, InboxReviewItem } from "@/lib/auto-replies/inbox-demo-data";
 import { postProcessInboxAutoSend } from "@/lib/auto-replies/inbox-sync-finish";
-import { reassignInboxItemFeeds } from "@/lib/auto-replies/inbox-auto-send";
+import { reassignInboxItemFeeds } from "@/lib/auto-replies/inbox-feed-utils";
 import {
   extractWildberriesProducts,
 } from "@/lib/auto-replies/wildberries-inbox";

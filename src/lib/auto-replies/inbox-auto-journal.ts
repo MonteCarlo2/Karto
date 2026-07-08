@@ -1,7 +1,7 @@
 import type { InboxReviewItem } from "./inbox-demo-data";
 import type { AutoRepliesMarketplaceId } from "./types";
 import type { AutoRepliesMarketplaceSettings, AutoRepliesShopSettings } from "./settings-types";
-import { resolveSentAtLabel } from "./inbox-auto-send";
+import { resolveSentAtLabel } from "./inbox-feed-utils";
 import { resolveStarDeliveryMode } from "./inbox-star-rules";
 
 /** Ручная отправка из UI — не переносим в авто-журнал. */
