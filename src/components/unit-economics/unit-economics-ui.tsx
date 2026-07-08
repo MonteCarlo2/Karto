@@ -454,11 +454,11 @@ export function OptionalToggle({
         {checked && children ? (
           <motion.div
             key="optional-content"
-            initial={{ height: 0, opacity: 0, y: -4, filter: "blur(4px)" }}
-            animate={{ height: "auto", opacity: 1, y: 0, filter: "blur(0px)" }}
-            exit={{ height: 0, opacity: 0, y: -4, filter: "blur(4px)" }}
+            initial={{ opacity: 0, y: -4, filter: "blur(4px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            exit={{ opacity: 0, y: -4, filter: "blur(4px)" }}
             transition={{ type: "spring", duration: 0.24, bounce: 0 }}
-            className="overflow-hidden"
+            className="overflow-visible"
           >
             <div className="mt-4 pl-7">{children}</div>
           </motion.div>

@@ -111,6 +111,7 @@ export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" 
 
   const trimmedQuery = query.trim();
   const isSearchMode = trimmedQuery.length >= 1;
+  const browseDisabled = marketplace === "wildberries";
   const browseLevel = browseGroup ? "types" : browseParent ? "groups" : "parents";
   const listLength = isSearchMode
     ? searchItems.length
@@ -233,9 +234,17 @@ export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" 
       };
     }
 
+    if (browseDisabled) {
+      setBrowseEntries([]);
+      setBrowseTypes([]);
+      setLoading(false);
+      setFetchError(null);
+      return () => controller.abort();
+    }
+
     void loadBrowse(browseParent, browseGroup, controller.signal);
     return () => controller.abort();
-  }, [query, open, isEditing, isSearchMode, browseParent, browseGroup, search, loadBrowse]);
+  }, [query, open, isEditing, isSearchMode, browseParent, browseGroup, search, loadBrowse, browseDisabled]);
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -272,8 +281,8 @@ export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" 
 
   const openBrowse = (parent: string | null = null, group: string | null = null) => {
     setFetchError(null);
-    setBrowseParent(parent);
-    setBrowseGroup(group);
+    setBrowseParent(browseDisabled ? null : parent);
+    setBrowseGroup(browseDisabled ? null : group);
     setIsEditing(true);
     setOpen(true);
     setActiveIndex(-1);
@@ -292,6 +301,8 @@ export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" 
     setSelected(null);
     setQuery("");
     setSearchItems([]);
+    setBrowseEntries([]);
+    setBrowseTypes([]);
     openBrowse(null, null);
     requestAnimationFrame(() => inputRef.current?.focus());
   };
@@ -506,7 +517,7 @@ export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" 
                 style={{ color: UE.textMuted }}
               >
                 {marketplace === "wildberries"
-                  ? "Начните вводить название товара — так проще, чем по разделам. Комиссии FBW/FBS показываем в результатах поиска."
+                  ? "Начните вводить название товара — для Wildberries выбираем тип товара через поиск. Комиссии FBW/FBS показываем прямо в результатах."
                   : "Проще всего — начните вводить название товара. Или выберите раздел ниже."}
               </div>
             ) : null}
@@ -555,9 +566,15 @@ export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" 
                 </li>
               ) : null}
 
-              {!fetchError && !loading && !isSearchMode && browseLevel !== "types" && browseEntries.length === 0 ? (
+              {!fetchError &&
+              !loading &&
+              !isSearchMode &&
+              browseLevel !== "types" &&
+              browseEntries.length === 0 ? (
                 <li className="px-4 py-3 text-sm" style={{ color: UE.textMuted }}>
-                  Разделы не найдены
+                  {browseDisabled
+                    ? "Введите название товара, например «ведро», «лопата» или «автоаксессуары»."
+                    : "Разделы не найдены"}
                 </li>
               ) : null}
 
@@ -565,7 +582,10 @@ export function OzonCategorySearch({ categoryId, onChange, marketplace = "ozon" 
                 ? searchItems.map((item, index) => {
                     const isSelected = item.id === categoryId;
                     const isActive = index === activeIndex;
-                    const breadcrumb = [item.parentName, item.categoryName].filter(Boolean).join(" · ");
+                    const breadcrumb =
+                      marketplace === "wildberries"
+                        ? item.categoryName || item.parentName || ""
+                        : [item.parentName, item.categoryName].filter(Boolean).join(" · ");
 
                     return (
                       <li key={item.id} role="option" aria-selected={isSelected}>

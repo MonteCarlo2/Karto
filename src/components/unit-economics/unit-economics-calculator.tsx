@@ -45,6 +45,7 @@ import {
   type UnitEconMarketplace,
   type UnitEconResultLine,
 } from "@/lib/unit-economics";
+import { resolveCategoryId } from "@/lib/unit-economics/resolve-category";
 
 const UNIT_ECON_SESSION_KEY = "karto:unit-economics:session";
 
@@ -185,6 +186,7 @@ export function UnitEconomicsCalculator() {
   const [calcLoading, setCalcLoading] = useState(true);
   const [calcError, setCalcError] = useState<string | null>(null);
   const [stateRestored, setStateRestored] = useState(false);
+  const categoryByMarketplaceRef = useRef<Partial<Record<UnitEconMarketplace, string>>>({});
 
   const shipClusters =
     input.marketplace === "ozon"
@@ -208,7 +210,9 @@ export function UnitEconomicsCalculator() {
       : wbBillableLiters(volumeLiters, input.weightKg);
 
   useEffect(() => {
-    setInput(readInitialInput());
+    const initialInput = readInitialInput();
+    categoryByMarketplaceRef.current[initialInput.marketplace] = initialInput.categoryId;
+    setInput(initialInput);
     setDimensionMode(readInitialDimensionMode());
     setStateRestored(true);
   }, []);
@@ -271,41 +275,53 @@ export function UnitEconomicsCalculator() {
   };
 
   const patch = (partial: Partial<UnitEconCalculatorInput>) => {
-    setInput((prev) => ({ ...prev, ...partial }));
+    setInput((prev) => {
+      if (partial.categoryId !== undefined) {
+        categoryByMarketplaceRef.current[prev.marketplace] = partial.categoryId;
+      }
+      return { ...prev, ...partial };
+    });
   };
 
   const switchMarketplace = (marketplace: UnitEconMarketplace) => {
     const clusters = defaultClusterIds(marketplace);
-    setInput((prev) => ({
-      ...DEFAULT_UNIT_ECON_INPUT,
-      marketplace,
-      categoryId: defaultCategoryId(marketplace),
-      ...clusters,
-      priceRub: prev.priceRub,
-      lengthCm: prev.lengthCm,
-      widthCm: prev.widthCm,
-      heightCm: prev.heightCm,
-      weightKg: prev.weightKg,
-      costPriceRub: prev.costPriceRub,
-      otherCostsRub: prev.otherCostsRub,
-      promoSharePercent: prev.promoSharePercent,
-      ...(marketplace === "wildberries"
-        ? {
-            buyoutPercent: 87,
-            taxMode: "usn6" as const,
-            useAdvancedProfitCalc: false,
-            wbSalesModel: "fbs" as const,
-            wbEnabledFbw: false,
-            wbEnabledFbs: true,
-            wbFbwSupplyTypes: ["box"] as const,
-            wbFbwSupplyType: "box" as const,
-            wbFbwWarehouseIds: [],
-            wbFbsWarehouseIds: [WB_DEFAULT_WAREHOUSE_ID],
-            shipClusterId: WB_DEFAULT_WAREHOUSE_ID,
-            deliveryClusterId: WB_DEFAULT_WAREHOUSE_ID,
-          }
-        : { buyoutPercent: 90, taxMode: "none" as const }),
-    }));
+    setInput((prev) => {
+      categoryByMarketplaceRef.current[prev.marketplace] = prev.categoryId;
+      const categoryId = categoryByMarketplaceRef.current[marketplace]
+        ? resolveCategoryId(marketplace, categoryByMarketplaceRef.current[marketplace]!)
+        : defaultCategoryId(marketplace);
+
+      return {
+        ...DEFAULT_UNIT_ECON_INPUT,
+        marketplace,
+        categoryId,
+        ...clusters,
+        priceRub: prev.priceRub,
+        lengthCm: prev.lengthCm,
+        widthCm: prev.widthCm,
+        heightCm: prev.heightCm,
+        weightKg: prev.weightKg,
+        costPriceRub: prev.costPriceRub,
+        otherCostsRub: prev.otherCostsRub,
+        promoSharePercent: prev.promoSharePercent,
+        ...(marketplace === "wildberries"
+          ? {
+              buyoutPercent: 87,
+              taxMode: "usn6" as const,
+              useAdvancedProfitCalc: false,
+              wbSalesModel: "fbs" as const,
+              wbEnabledFbw: false,
+              wbEnabledFbs: true,
+              wbFbwSupplyTypes: ["box"] as const,
+              wbFbwSupplyType: "box" as const,
+              wbFbwWarehouseIds: [],
+              wbFbsWarehouseIds: [WB_DEFAULT_WAREHOUSE_ID],
+              shipClusterId: WB_DEFAULT_WAREHOUSE_ID,
+              deliveryClusterId: WB_DEFAULT_WAREHOUSE_ID,
+            }
+          : { buyoutPercent: 90, taxMode: "none" as const }),
+      };
+    });
   };
 
   const reset = () => {
