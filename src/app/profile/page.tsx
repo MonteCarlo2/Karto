@@ -33,6 +33,7 @@ import {
   RotateCcw,
   Download,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import Image from "next/image";
 import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
@@ -43,7 +44,9 @@ import {
 } from "@/lib/subscription";
 import { KartoServicesExplainer } from "@/components/ui/karto-services-explainer";
 import { ProfileAutoReplyBillingPanel } from "@/components/profile/profile-auto-reply-billing";
+import { DeleteAccountConfirmDialog } from "@/components/profile/delete-account-confirm-dialog";
 import { YookassaTestModeStrip } from "@/components/profile/yookassa-test-mode-strip";
+import { clearUserLocalAppData } from "@/lib/clear-user-local-data";
 import {
   fetchUserBrandOnboarding,
   hasBrandOnboardingDraftProgress,
@@ -189,6 +192,9 @@ function ProfileContent() {
   const [subscription, setSubscription] = useState<SubscriptionState | null>(null);
   const [subscriptionReady, setSubscriptionReady] = useState(false);
   const [paymentSuccessPolling, setPaymentSuccessPolling] = useState(false);
+  const [showDeleteAccountConfirm, setShowDeleteAccountConfirm] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
 
   const fetchSubscription = async (): Promise<SubscriptionState | null> => {
     const supabase = createBrowserClient();
@@ -704,6 +710,46 @@ function ProfileContent() {
     } catch (error) {
       console.error("Ошибка при выходе:", error);
       showNotification("Ошибка при выходе", "error");
+    }
+  };
+
+  const handleDeleteAccount = async (confirmPhrase: string) => {
+    setDeletingAccount(true);
+    setDeleteAccountError(null);
+    try {
+      const supabase = createBrowserClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setDeleteAccountError("Сессия истекла. Войдите снова и повторите попытку.");
+        return;
+      }
+
+      const res = await fetch("/api/profile/delete-account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        credentials: "include",
+        body: JSON.stringify({ confirmPhrase }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setDeleteAccountError(data?.error || "Не удалось удалить профиль");
+        return;
+      }
+
+      clearUserLocalAppData(user?.id);
+      await supabase.auth.signOut();
+      setShowDeleteAccountConfirm(false);
+      router.push("/");
+    } catch (error) {
+      console.error("Ошибка удаления профиля:", error);
+      setDeleteAccountError("Не удалось удалить профиль. Попробуйте позже.");
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -1234,8 +1280,8 @@ function ProfileContent() {
                 </div>
 
                 {/* Выход из аккаунта */}
-                <div className="pt-4 border-t border-gray-200 mt-4">
-                  <div className="flex items-center justify-between mb-1">
+                <div className="pt-4 border-t border-gray-200 mt-4 space-y-4">
+                  <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-semibold text-gray-900">Выход из аккаунта</h3>
                       <p className="text-xs text-gray-500 mt-0.5">Завершить текущую сессию.</p>
@@ -1246,6 +1292,26 @@ function ProfileContent() {
                     >
                       <ArrowRight className="w-4 h-4" />
                       Выйти
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl border border-red-100 bg-red-50/60 px-4 py-3">
+                    <div className="pr-3">
+                      <h3 className="text-sm font-semibold text-red-900">Удалить профиль</h3>
+                      <p className="text-xs text-red-700/80 mt-0.5">
+                        Безвозвратно удалит аккаунт и все данные. Потом можно зарегистрироваться снова.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteAccountError(null);
+                        setShowDeleteAccountConfirm(true);
+                      }}
+                      className="px-3 py-2 bg-white hover:bg-red-100 text-red-700 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5 border border-red-200 hover:border-red-300 shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Удалить
                     </button>
                   </div>
                 </div>
@@ -1670,6 +1736,19 @@ function ProfileContent() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <DeleteAccountConfirmDialog
+        open={showDeleteAccountConfirm}
+        email={userEmail}
+        deleting={deletingAccount}
+        error={deleteAccountError}
+        onClose={() => {
+          if (deletingAccount) return;
+          setShowDeleteAccountConfirm(false);
+          setDeleteAccountError(null);
+        }}
+        onConfirm={handleDeleteAccount}
+      />
 
       <AnimatePresence>
         {showBrandResetConfirm ? (
