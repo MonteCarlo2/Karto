@@ -43,7 +43,14 @@ export async function POST(request: NextRequest) {
       user_preferences = "",
       selected_blocks = [],
       wants_stickers = false,
+      text_length = "medium",
+      mark_highlights = false,
     } = body;
+
+    const textLength =
+      text_length === "shorter" || text_length === "longer" || text_length === "medium"
+        ? text_length
+        : "medium";
 
     // Валидация
     if (!product_name) {
@@ -69,7 +76,11 @@ export async function POST(request: NextRequest) {
           photo_url,
           style as 1 | 2 | 3 | 4,
           wants_stickers,
-          undefined
+          undefined,
+          {
+            textLength,
+            markHighlights: Boolean(mark_highlights),
+          }
         );
         const duration = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`✅ [${style}/4] Вариант "${styleName}" успешно сгенерирован за ${duration}с (${result.length} символов)`);
@@ -223,7 +234,14 @@ export async function PUT(request: NextRequest) {
       edit_instructions,
       wants_stickers = false,
       selected_style = 4, // Стиль выбранного варианта
+      text_length = "medium",
+      mark_highlights = false,
     } = body;
+
+    const textLength =
+      text_length === "shorter" || text_length === "longer" || text_length === "medium"
+        ? text_length
+        : "medium";
 
     if (!product_name || !current_description || !edit_instructions) {
       return NextResponse.json(
@@ -235,7 +253,13 @@ export async function PUT(request: NextRequest) {
     console.log("🔄 Перегенерируем описание с учетом правок");
 
     // Объединяем текущие пожелания с новыми правками и даём модели исходный текст
-    const editsBlock = `Конкретные правки: ${edit_instructions}. Если нужно сократить, сделай текст заметно короче.`;
+    const lengthHint =
+      textLength === "shorter"
+        ? "Обязательно сделай текст заметно короче (режим «Короче»)."
+        : textLength === "longer"
+          ? "Обязательно сделай текст заметно длиннее и подробнее (режим «Длиннее»)."
+          : "Сохрани стандартный объём текста (режим «Авто»).";
+    const editsBlock = `Конкретные правки пользователя: ${edit_instructions}. ${lengthHint}`;
     const combinedPreferences = user_preferences
       ? `${user_preferences}. ${editsBlock}`
       : editsBlock;
@@ -248,7 +272,11 @@ export async function PUT(request: NextRequest) {
       photo_url,
       selected_style as 1 | 2 | 3 | 4, // Используем стиль выбранного варианта
       wants_stickers,
-      current_description
+      current_description,
+      {
+        textLength,
+        markHighlights: Boolean(mark_highlights),
+      }
     ).catch((e) => {
       console.error("Ошибка перегенерации:", e);
       return current_description; // Возвращаем исходное при ошибке

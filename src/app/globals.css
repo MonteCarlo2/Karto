@@ -722,3 +722,36 @@ video {
     animation: none;
   }
 }
+
+/* SEO-описания: подсветка продающих триггеров */
+.ai-highlight {
+  background: rgba(200, 255, 0, 0.2);
+  border-radius: 4px;
+  padding: 0 4px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.seo-desc-bold,
+.seo-desc-editor strong,
+.seo-desc-editor b {
+  font-weight: 700 !important;
+  font-style: normal;
+}
+
+.seo-desc-editor {
+  font-weight: 400;
+}
+
+.seo-desc-editor p {
+  margin: 0 0 1.15em;
+  line-height: 1.7;
+}
+
+.seo-desc-editor p:last-child {
+  margin-bottom: 0;
+}
+
+.seo-desc-editor:focus {
+  outline: none;
+}

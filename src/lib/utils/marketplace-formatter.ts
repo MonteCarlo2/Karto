@@ -189,7 +189,10 @@ export function checkStopWords(text: string): Array<{ word: string; category: st
  * Сохраняет абзацы и преобразует markdown-заголовки/списки в читабельный вид
  */
 export function formatForCopy(text: string): string {
-  const lines = normalizeDescriptionLayout(text).split('\n');
+  const withoutMarkup = text
+    .replace(/⟦([^⟧]*)⟧/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1");
+  const lines = normalizeDescriptionLayout(withoutMarkup).split('\n');
   const result: string[] = [];
 
   lines.forEach((line) => {
@@ -200,15 +203,15 @@ export function formatForCopy(text: string): string {
     if (headingMatch && headingMatch[1]) {
       const clean = headingMatch[1].trim();
       if (clean) {
-        result.push(clean.toUpperCase());
+        result.push(clean);
         result.push(''); // пустая строка после заголовка
       }
       return;
     }
 
-    // Списки - используем простые символы для Ozon
-    if (/^[-•→*\d]/.test(trimmed)) {
-      const item = trimmed.replace(/^[-•→*\d.\s]+/, '').trim();
+    // Списки - простые маркеры, которые стабильно вставляются в Ozon/WB
+    if (/^[-•→—–*\d]/.test(trimmed)) {
+      const item = trimmed.replace(/^[-•→—–*\d.\s]+/, '').trim();
       if (item) result.push(`• ${item}`);
       return;
     }
@@ -229,7 +232,8 @@ export function formatForCopy(text: string): string {
     result.pop();
   }
 
-  return result.join('\n');
+  // Нормализуем переносы под буфер обмена (без лишних пробелов по краям)
+  return result.join('\n').replace(/\u00a0/g, ' ').trimEnd();
 }
 
 /**
