@@ -766,12 +766,12 @@ export default function SeoDescriptionsPage() {
             <Image
               src="/logo-flow.png"
               alt="KARTO"
-              width={64}
-              height={64}
+              width={80}
+              height={80}
               className="object-contain"
               priority
               unoptimized
-              style={{ width: "auto", height: "3.25rem", maxHeight: "52px" }}
+              style={{ width: "auto", height: "4.0625rem", maxHeight: "65px" }}
             />
           </button>
           <div className="min-w-0 flex-1 pt-0.5">
