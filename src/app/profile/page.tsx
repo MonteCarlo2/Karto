@@ -108,7 +108,7 @@ type Project = {
 
 function subscriptionServiceRemaining(
   sub: SubscriptionState,
-  kind: "creative" | "video" | "flow" | "auto_replies"
+  kind: "creative" | "video" | "flow" | "demo_flow" | "auto_replies"
 ): number {
   if (kind === "auto_replies") {
     return Math.max(0, sub.autoReplyBalance ?? 0);
@@ -120,6 +120,10 @@ function subscriptionServiceRemaining(
   if (kind === "video") {
     if (sub.servicesPeriodExpired) return 0;
     return Math.max(0, sub.videoTokenBalance ?? 0);
+  }
+  if (kind === "demo_flow") {
+    if (sub.demoFlowPackExpired || sub.demoFlowsLimit <= 0) return 0;
+    return Math.max(0, sub.demoFlowsLimit - sub.demoFlowsUsed);
   }
   if (sub.flowPackExpired || sub.servicesPeriodExpired || sub.flowsLimit <= 0) return 0;
   return Math.max(0, sub.flowsLimit - sub.flowsUsed);
@@ -1088,6 +1092,14 @@ function ProfileContent() {
                           periodStart={subscription.videoPeriodStart}
                           periodEnd={subscription.videoPeriodEnd}
                           unit="ток."
+                        />
+                        <ProfileServiceRow
+                          label="Демо-поток"
+                          remaining={subscriptionServiceRemaining(subscription, "demo_flow")}
+                          periodStart={subscription.demoFlowPeriodStart}
+                          periodEnd={subscription.demoFlowPeriodEnd}
+                          unit="демо-поток."
+                          detail="2 стиля описания и 5 фото в 2K. Только для новых аккаунтов."
                         />
                         <ProfileServiceRow
                           label="Поток"

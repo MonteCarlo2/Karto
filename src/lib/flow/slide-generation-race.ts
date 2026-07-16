@@ -1,4 +1,4 @@
-/** 3 мин — если успеха ещё нет, параллельный доп. запрос (первый не отменяем). */
+/** Макс. ожидание до доп. запроса (не обязательная пауза — выходим сразу при успехе). */
 export const SLIDE_GENERATION_CHECKPOINT_MS =
   Number(process.env.WAVESPEED_SLIDE_CHECKPOINT_MS) ||
   Number(process.env.WAVESPEED_BATCH_CARD_TIMEOUT_MS) ||
@@ -22,8 +22,8 @@ export type SlideGenAttemptResult = {
 };
 
 /**
- * Один слайд «гонкой»: через checkpointMs без URL — второй запрос параллельно;
- * побеждает тот, кто раньше вернул успешный результат.
+ * Один слайд «гонкой»: при успехе — сразу return.
+ * checkpointMs — только порог «когда слать retry», не sleep на всю длительность.
  */
 export async function runSlideGenerationRace(
   generateOne: (attemptLabel: string) => Promise<SlideGenAttemptResult>
@@ -65,14 +65,45 @@ export async function runSlideGenerationRace(
   console.log("🏁 [SLIDE/RACE] Старт генерации слайда");
   launch("initial");
 
-  await sleep(SLIDE_GENERATION_CHECKPOINT_MS);
+  const checkpointUntil = startedAt + SLIDE_GENERATION_CHECKPOINT_MS;
+  while (!done && Date.now() < checkpointUntil) {
+    await sleep(250);
+  }
   await acceptChain;
 
-  if (!done && !url) {
+  if (done && url) {
+    const sec = ((Date.now() - startedAt) / 1000).toFixed(1);
+    console.log(`✅ [SLIDE/RACE] Готово за ${sec}s — ответ сразу (без ожидания чекпоинта)`);
+    return { url, errors };
+  }
+
+  // Не шлём второй WaveSpeed, пока первый ещё in-flight
+  if (!done && !url && inFlight > 0) {
     console.log(
-      `🔄 [SLIDE/RACE] Через ${SLIDE_GENERATION_CHECKPOINT_MS / 1000}s без успеха (in-flight ${inFlight}) — доп. запрос`
+      `⏳ [SLIDE/RACE] Чекпоинт ${SLIDE_GENERATION_CHECKPOINT_MS / 1000}s: in-flight ${inFlight} — ждём, без доп. запроса`
+    );
+    const graceUntil = Date.now() + 120_000;
+    while (!done && !url && inFlight > 0 && Date.now() < graceUntil) {
+      await sleep(500);
+    }
+    await acceptChain;
+  }
+
+  if (done && url) {
+    const sec = ((Date.now() - startedAt) / 1000).toFixed(1);
+    console.log(`✅ [SLIDE/RACE] Готово за ${sec}s после ожидания in-flight`);
+    return { url, errors };
+  }
+
+  if (!done && !url && inFlight === 0) {
+    console.log(
+      `🔄 [SLIDE/RACE] Через ${SLIDE_GENERATION_CHECKPOINT_MS / 1000}s без успеха — доп. запрос`
     );
     launch("retry-1");
+  } else if (!done && !url) {
+    console.log(
+      `⏳ [SLIDE/RACE] Пропуск retry (in-flight ${inFlight}) — ждём первый ответ`
+    );
   }
 
   while (!done && !url && Date.now() - startedAt < SLIDE_GENERATION_MAX_WAIT_MS) {

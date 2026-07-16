@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateFlowImage, isFlowImageProviderConfigured } from "@/lib/services/flow-image-generation";
 import { KieAiContentFilteredError, kieErrorToClient } from "@/lib/services/kie-ai-errors";
-import { downloadImage, getPublicUrl } from "@/lib/services/image-processing";
 import { createServerClient } from "@/lib/supabase/server";
 import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
+import { getSessionImageResolution } from "@/lib/demo-flow-server";
 
 /**
  * API endpoint для редактирования карточки товара
@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
     console.log("🔄 [EDIT] Товар:", productName);
     console.log("🔄 [EDIT] Исходный imageUrl:", imageUrl);
 
+    let imageResolution: string | undefined;
     if (sessionId) {
       const supabase = createServerClient();
       const quota = await getVisualQuota(supabase as any, sessionId);
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            error: "Лимит генераций в Потоке исчерпан (0 из 12).",
+            error: `Лимит генераций в Потоке исчерпан (0 из ${quota.limit}).`,
             code: "VISUAL_LIMIT_REACHED",
             generationUsed: quota.used,
             generationRemaining: quota.remaining,
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
+      imageResolution = await getSessionImageResolution(supabase as any, sessionId);
     }
 
     // Строим промпт для редактирования с строгими правилами
@@ -180,7 +182,9 @@ ${editRequest}
     let editedImageUrl: string;
     
     try {
-      const result = await generateFlowImage(editPrompt, imageForApi, finalAspectRatio);
+      const result = await generateFlowImage(editPrompt, imageForApi, finalAspectRatio, {
+        resolution: imageResolution,
+      });
       editedImageUrl = result.imageUrl;
       console.log("✅ [EDIT] Редактирование успешно");
     } catch (error: unknown) {
@@ -196,11 +200,7 @@ ${editRequest}
       );
     }
 
-    // Скачиваем результат
-    const editedPath = await downloadImage(editedImageUrl);
-    const editedLocalUrl = getPublicUrl(editedPath);
-
-    console.log(`✅ [EDIT] Карточка отредактирована: ${editedLocalUrl}`);
+    console.log(`✅ [EDIT] Карточка отредактирована (CDN): ${editedImageUrl}`);
 
     let quotaPayload: { generationUsed?: number; generationRemaining?: number; generationLimit?: number } = {};
     if (sessionId) {
@@ -215,7 +215,7 @@ ${editRequest}
 
     return NextResponse.json({
       success: true,
-      imageUrl: editedLocalUrl,
+      imageUrl: editedImageUrl,
       message: "Карточка успешно отредактирована!",
       ...quotaPayload,
     });

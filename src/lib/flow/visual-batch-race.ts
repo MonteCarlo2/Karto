@@ -1,7 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import type { DesignConcept } from "@/lib/services/style-concept-generator";
 
-/** 3 мин — чекпоинт: сколько карточек ещё нет, столько доп. запросов (без отмены старых). */
+/** Макс. ожидание до доп. запросов (не обязательная пауза — выходим раньше, если все слоты готовы). */
 export const CARD_SLOT_CHECKPOINT_MS =
   Number(process.env.WAVESPEED_BATCH_CARD_TIMEOUT_MS) ||
   Number(process.env.KIE_BATCH_CARD_TIMEOUT_MS) ||
@@ -44,9 +44,9 @@ function countFilled(slots: (string | null)[]): number {
 }
 
 /**
- * Собираем N карточек «гонкой»: старые запросы не отменяем, через checkpointMs
- * дозапускаем ровно столько, сколько слотов ещё пусто.
- * Если уже есть хотя бы 1 URL — не вычитаем in-flight (3 готово + 1 висит → 1 retry).
+ * Собираем N карточек «гонкой»: старые запросы не отменяем.
+ * Как только все слоты заполнены — сразу выходим (без ожидания checkpointMs).
+ * checkpointMs — только порог «когда можно слать retry», не обязательный sleep.
  */
 export async function runVisualBatchRace(
   options: BatchRaceOptions
@@ -61,6 +61,8 @@ export async function runVisualBatchRace(
   let inFlight = 0;
   let acceptChain = Promise.resolve();
   let raceDone = false;
+
+  const allFilled = () => raceDone || countFilled(slots) >= slotCount;
 
   const notifySlotFilled = (filled: number) => {
     void onSlotFilled?.([...slots], filled);
@@ -83,7 +85,7 @@ export async function runVisualBatchRace(
   };
 
   const launch = (conceptIndex: number, label: string) => {
-    if (raceDone || countFilled(slots) >= slotCount) return;
+    if (allFilled()) return;
     const idx = conceptIndex % concepts.length;
     inFlight++;
     void generateOne(idx, label)
@@ -104,34 +106,51 @@ export async function runVisualBatchRace(
 
   const staggerMs = Math.max(0, options.staggerMs ?? CARD_BATCH_STAGGER_MS);
   for (let i = 0; i < slotCount; i++) {
+    if (allFilled()) break;
     if (i > 0 && staggerMs > 0) {
       await sleep(staggerMs);
     }
     launch(i, `initial-${i + 1}`);
   }
 
-  await sleep(checkpointMs);
+  // Ждём все слоты ИЛИ истечение checkpoint (для retry) — без обязательного sleep(180s)
+  const checkpointUntil = startedAt + checkpointMs;
+  while (!allFilled() && Date.now() < checkpointUntil) {
+    await sleep(250);
+  }
   await acceptChain;
+
+  if (allFilled()) {
+    const sec = ((Date.now() - startedAt) / 1000).toFixed(1);
+    console.log(
+      `✅ [BATCH/RACE] Все ${slotCount} готовы за ${sec}s — ответ сразу (без ожидания чекпоинта)`
+    );
+    return { slots, errors };
+  }
 
   let filledAtCheckpoint = countFilled(slots);
 
-  // Запросы ещё в полёте — ждём, не шлём дубли (иначе 8 запросов в WaveSpeed)
+  // Запросы ещё в полёте — ждём, не шлём дубли
   if (filledAtCheckpoint < slotCount && inFlight > 0) {
     console.log(
       `⏳ [BATCH/RACE] Чекпоинт ${checkpointMs / 1000}s: готово ${filledAtCheckpoint}, in-flight ${inFlight} — ждём завершения`
     );
     const graceUntil = Date.now() + 120_000;
-    while (inFlight > 0 && countFilled(slots) < slotCount && Date.now() < graceUntil) {
+    while (inFlight > 0 && !allFilled() && Date.now() < graceUntil) {
       await sleep(500);
     }
     await acceptChain;
     filledAtCheckpoint = countFilled(slots);
   }
 
+  if (allFilled()) {
+    const sec = ((Date.now() - startedAt) / 1000).toFixed(1);
+    console.log(`✅ [BATCH/RACE] Все ${slotCount} готовы за ${sec}s после ожидания in-flight`);
+    return { slots, errors };
+  }
+
   let missingAtCheckpoint = 0;
-  if (filledAtCheckpoint >= slotCount || raceDone) {
-    missingAtCheckpoint = 0;
-  } else if (filledAtCheckpoint > 0) {
+  if (filledAtCheckpoint > 0) {
     missingAtCheckpoint = slotCount - filledAtCheckpoint;
   } else if (inFlight > 0) {
     missingAtCheckpoint = 0;
@@ -153,15 +172,19 @@ export async function runVisualBatchRace(
     );
   }
 
-  while (countFilled(slots) < slotCount && Date.now() - startedAt < maxWaitMs) {
+  while (!allFilled() && Date.now() - startedAt < maxWaitMs) {
     await sleep(500);
   }
+  await acceptChain;
 
   const finalFilled = countFilled(slots);
   if (finalFilled < slotCount) {
     console.warn(
       `⚠️ [BATCH/RACE] Таймаут батча: ${finalFilled}/${slotCount} за ${maxWaitMs / 1000}s`
     );
+  } else {
+    const sec = ((Date.now() - startedAt) / 1000).toFixed(1);
+    console.log(`✅ [BATCH/RACE] Батч завершён за ${sec}s (${finalFilled}/${slotCount})`);
   }
 
   return { slots, errors };

@@ -10,6 +10,8 @@ import { useRouter } from "next/navigation";
 import { useNotification } from "@/components/ui/notification";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { saveFlowSessionPhoto, resolveFlowPhoto } from "@/lib/flow/flow-photo-cache";
+import { DemoFlowBadge } from "@/components/studio/DemoFlowBadge";
+import { useDemoFlowSession } from "@/lib/hooks/use-demo-flow-session";
 
 // Статичный эффект рельефной бумаги
 function CanvasTexture({ patternAlpha = 12 }: { patternAlpha?: number }) {
@@ -100,6 +102,13 @@ export default function UnderstandingPage() {
   const [isSaving, setIsSaving] = useState(false);
   const suggestAbortRef = useRef<AbortController | null>(null);
   const [pageHydrated, setPageHydrated] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const demoSession = useDemoFlowSession(sessionId);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setSessionId(localStorage.getItem("karto_session_id"));
+  }, [pageHydrated]);
 
   // Сохранение состояния в localStorage (только после первичной загрузки)
   useEffect(() => {
@@ -328,6 +337,7 @@ export default function UnderstandingPage() {
     const file = e.target.files?.[0];
     if (file) {
       localStorage.removeItem("karto_session_id");
+      localStorage.removeItem("karto_session_is_demo");
       setPhotoFile(file);
       // Сохраняем фото как data URL для восстановления
       const reader = new FileReader();
@@ -378,6 +388,13 @@ export default function UnderstandingPage() {
       const data = await res.json().catch(() => ({} as { session_id?: string }));
       if (data.session_id) {
         localStorage.setItem("karto_session_id", data.session_id);
+        setSessionId(data.session_id);
+        if (typeof (data as { is_demo?: boolean }).is_demo === "boolean") {
+          localStorage.setItem(
+            "karto_session_is_demo",
+            (data as { is_demo?: boolean }).is_demo ? "1" : "0"
+          );
+        }
       }
     } catch {
       /* фоновая синхронизация — не блокируем UI */
@@ -435,6 +452,13 @@ export default function UnderstandingPage() {
 
       if (data.success && data.session_id) {
         localStorage.setItem("karto_session_id", data.session_id);
+        setSessionId(data.session_id);
+        if (typeof (data as { is_demo?: boolean }).is_demo === "boolean") {
+          localStorage.setItem(
+            "karto_session_is_demo",
+            (data as { is_demo?: boolean }).is_demo ? "1" : "0"
+          );
+        }
         if (photoDataUrl) saveFlowSessionPhoto(data.session_id, photoDataUrl);
         router.push("/studio/description");
         return;
@@ -595,7 +619,7 @@ export default function UnderstandingPage() {
       <CanvasTexture patternAlpha={8} />
       
       {/* Меню стадий */}
-      <StageMenu currentStage="understanding" />
+      <StageMenu currentStage="understanding" isDemo={demoSession.isDemo} />
 
       {/* Контент */}
       <div className="relative" style={{ zIndex: 1, minHeight: "100vh", padding: "24px" }}>
@@ -659,6 +683,11 @@ export default function UnderstandingPage() {
           transition={{ duration: 0.3 }}
           className="mb-8 text-center"
         >
+          {demoSession.isDemo ? (
+            <div className="mb-4 flex justify-center">
+              <DemoFlowBadge />
+            </div>
+          ) : null}
           <h2
             className="text-3xl md:text-4xl font-bold mb-3"
             style={{

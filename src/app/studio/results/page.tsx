@@ -15,6 +15,8 @@ import {
   GALLERY_GRID_PROXY_MAX_WIDTH,
 } from "@/lib/client/gallery-display-url";
 import { useToast } from "@/components/ui/toast";
+import { DemoFlowBadge } from "@/components/studio/DemoFlowBadge";
+import { useDemoFlowSession } from "@/lib/hooks/use-demo-flow-session";
 
 interface VisualSlide {
   id: number;
@@ -36,6 +38,8 @@ export default function ResultsPage() {
   const [visualSlides, setVisualSlides] = useState<VisualSlide[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [downloadBusyKey, setDownloadBusyKey] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const demoSession = useDemoFlowSession(sessionId);
 
   // Скрываем navbar и footer на этой странице
   useEffect(() => {
@@ -58,6 +62,7 @@ export default function ResultsPage() {
           router.push("/studio/understanding");
           return;
         }
+        setSessionId(savedSessionId);
 
         // 1. Загружаем данные понимания (название, фото)
         const understandingResponse = await fetch("/api/supabase/get-understanding", {
@@ -421,6 +426,12 @@ export default function ResultsPage() {
 
       {/* Контейнер страницы - на всю ширину */}
       <div className="w-full h-full px-6 py-4 flex flex-col">
+        {demoSession.isDemo ? (
+          <div className="mb-3 flex items-center gap-2 shrink-0">
+            <DemoFlowBadge />
+            <span className="text-xs text-neutral-500">Демо-результат · в полном Потоке — 12 фото 4K</span>
+          </div>
+        ) : null}
         {/* Хедер - Массивный заголовок */}
         <motion.h1
           initial={{ opacity: 0, y: -20 }}

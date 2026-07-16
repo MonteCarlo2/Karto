@@ -21,9 +21,16 @@ interface StageMenuProps {
     remaining: number;
     limit: number;
   } | null;
+  /** Компактная метка демо-сессии */
+  isDemo?: boolean;
 }
 
-export function StageMenu({ currentStage, position = "right", visualQuota = null }: StageMenuProps) {
+export function StageMenu({
+  currentStage,
+  position = "right",
+  visualQuota = null,
+  isDemo = false,
+}: StageMenuProps) {
   const stages = [
     { id: "understanding" as const, label: "Понимание" },
     { id: "description" as const, label: "Описание" },
@@ -46,6 +53,14 @@ export function StageMenu({ currentStage, position = "right", visualQuota = null
           border: "1px solid rgba(0, 0, 0, 0.1)",
           boxShadow: "0 4px 16px rgba(0, 0, 0, 0.1)",
         }}>
+          {isDemo ? (
+            <span
+              className="shrink-0 rounded-md border border-[#2E5A43]/25 bg-[#2E5A43]/08 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#2E5A43]"
+              title="Демо-поток"
+            >
+              Демо
+            </span>
+          ) : null}
           {stages.map((stage, index) => {
             const isActive = currentStage === stage.id;
             return (
@@ -93,6 +108,11 @@ export function StageMenu({ currentStage, position = "right", visualQuota = null
             );
           })}
         </div>
+        {isDemo && currentStage === "visual" ? (
+          <div className="absolute left-0 top-full mt-2 whitespace-nowrap rounded-full border border-[#2E5A43]/15 bg-white/90 px-4 py-2 text-xs font-medium text-gray-600 shadow-sm backdrop-blur-xl">
+            Демо: фото в 2K · Полный Поток: 4K и до 12 генераций
+          </div>
+        ) : null}
         {visualQuota && currentStage === "visual" && (
           <div
             className="fixed w-fit px-1 py-1"
@@ -106,7 +126,7 @@ export function StageMenu({ currentStage, position = "right", visualQuota = null
           >
             <div className="flex flex-col items-center gap-2">
               <span className="text-[10px] font-semibold tracking-wide uppercase" style={{ color: "rgba(0, 0, 0, 0.55)" }}>
-                Поток
+                {isDemo ? "Демо" : "Поток"}
               </span>
               <div
                 className="relative w-6 h-20 rounded-full overflow-hidden"

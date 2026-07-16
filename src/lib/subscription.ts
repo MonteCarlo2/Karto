@@ -1,6 +1,6 @@
 /**
  * Константы тарифов: Поток (1, 5, 15) и Свободное творчество (10, 30, 100)
- * Новым пользователям при первом запросе подписки: 3 бесплатные фото-генерации + 100 видео-токенов.
+ * Новым пользователям при первом запросе подписки: 3 бесплатные фото-генерации + 100 видео-токенов + 1 демо-поток.
  */
 export const FLOW_VOLUMES = [1, 5, 15] as const;
 export const CREATIVE_VOLUMES = [10, 30, 100] as const;
@@ -13,7 +13,7 @@ export const FREE_WELCOME_CREATIVE_LIMIT = 3;
 export const FREE_WELCOME_VIDEO_TOKENS = 100;
 export const SUBSCRIPTION_PERIOD_DAYS = 30;
 
-export type PlanType = "flow" | "creative" | "video_tokens";
+export type PlanType = "flow" | "creative" | "video_tokens" | "demo_flow" | "auto_replies";
 
 export interface SubscriptionRow {
   id: string;
@@ -35,6 +35,9 @@ export interface SubscriptionState {
   planVolume: number;
   flowsUsed: number;
   flowsLimit: number;
+  /** Демо-поток: отдельно от платного Потока (1 раз на аккаунт). */
+  demoFlowsUsed: number;
+  demoFlowsLimit: number;
   creativeUsed: number;
   creativeLimit: number;
   /** Кредиты только на видео (пополнение отдельными пакетами). */
@@ -54,6 +57,11 @@ export interface SubscriptionState {
   expiredFlowVolume?: number;
   expiredFlowsUsed?: number;
   expiredFlowPeriodStart?: string;
+  /** Демо-поток был, но 30-дневный period_start истёк. */
+  demoFlowPackExpired?: boolean;
+  expiredDemoFlowVolume?: number;
+  expiredDemoFlowsUsed?: number;
+  expiredDemoFlowPeriodStart?: string;
   /** Пакет creative был, но 30-дневный period_start истёк. */
   creativePackExpired?: boolean;
   expiredCreativeVolume?: number;
@@ -67,6 +75,9 @@ export interface SubscriptionState {
   /** Сроки пакета flow. */
   flowPeriodStart?: string;
   flowPeriodEnd?: string;
+  /** Сроки демо-потока. */
+  demoFlowPeriodStart?: string;
+  demoFlowPeriodEnd?: string;
   /** Сроки пакета video_tokens. */
   videoPeriodStart?: string;
   videoPeriodEnd?: string;
@@ -93,6 +104,8 @@ export function subscriptionToState(row: SubscriptionRow): SubscriptionState {
       planVolume: 0,
       flowsUsed: 0,
       flowsLimit: 0,
+      demoFlowsUsed: 0,
+      demoFlowsLimit: 0,
       creativeUsed: 0,
       creativeLimit: 0,
       videoTokenBalance: Math.max(0, Number(row.plan_volume) || 0),
@@ -105,16 +118,52 @@ export function subscriptionToState(row: SubscriptionRow): SubscriptionState {
       expiresAt: getSubscriptionExpiryIso(row),
     };
   }
+  if (row.plan_type === "demo_flow") {
+    return {
+      planType: "creative",
+      planVolume: 0,
+      flowsUsed: 0,
+      flowsLimit: 0,
+      demoFlowsUsed: row.flows_used,
+      demoFlowsLimit: row.plan_volume,
+      creativeUsed: 0,
+      creativeLimit: 0,
+      videoTokenBalance: 0,
+      videoTokensSpent: 0,
+      videoTokensLifetimePurchased: 0,
+      periodStart: row.period_start,
+      expiresAt: getSubscriptionExpiryIso(row),
+    };
+  }
+  if (row.plan_type === "auto_replies") {
+    return {
+      planType: "creative",
+      planVolume: 0,
+      flowsUsed: 0,
+      flowsLimit: 0,
+      demoFlowsUsed: 0,
+      demoFlowsLimit: 0,
+      creativeUsed: 0,
+      creativeLimit: 0,
+      videoTokenBalance: 0,
+      videoTokensSpent: 0,
+      videoTokensLifetimePurchased: 0,
+      periodStart: row.period_start,
+      expiresAt: getSubscriptionExpiryIso(row),
+    };
+  }
   const flowsLimit = row.plan_type === "flow" ? row.plan_volume : 0;
   const creativeLimit = row.plan_type === "creative" ? row.plan_volume : 0;
   const periodStart = row.period_start;
   const expiresAt = getSubscriptionExpiryIso(row);
   return {
-    planType: row.plan_type,
+    planType: row.plan_type === "flow" ? "flow" : "creative",
     planVolume: row.plan_volume,
-    flowsUsed: row.flows_used,
+    flowsUsed: row.plan_type === "flow" ? row.flows_used : 0,
     flowsLimit,
-    creativeUsed: row.creative_used,
+    demoFlowsUsed: 0,
+    demoFlowsLimit: 0,
+    creativeUsed: row.plan_type === "creative" ? row.creative_used : 0,
     creativeLimit,
     videoTokenBalance: 0,
     videoTokensSpent: 0,
@@ -124,14 +173,17 @@ export function subscriptionToState(row: SubscriptionRow): SubscriptionState {
   };
 }
 
-/** Объединить несколько строк подписки (flow + creative + video_tokens) в одно состояние. */
+/** Объединить несколько строк подписки (flow + demo_flow + creative + video_tokens) в одно состояние. */
 export function mergeSubscriptionRows(rows: SubscriptionRow[]): SubscriptionState {
   const flowRow = rows.find((r) => r.plan_type === "flow");
+  const demoFlowRow = rows.find((r) => r.plan_type === "demo_flow");
   const creativeRow = rows.find((r) => r.plan_type === "creative");
   const videoRow = rows.find((r) => r.plan_type === "video_tokens");
   const flowsLimit = flowRow ? flowRow.plan_volume : 0;
+  const demoFlowsLimit = demoFlowRow ? demoFlowRow.plan_volume : 0;
   const creativeLimit = creativeRow ? creativeRow.plan_volume : 0;
   const flowsUsed = flowRow ? flowRow.flows_used : 0;
+  const demoFlowsUsed = demoFlowRow ? demoFlowRow.flows_used : 0;
   const creativeUsed = creativeRow ? creativeRow.creative_used : 0;
   const videoTokenBalance = videoRow ? Math.max(0, Number(videoRow.plan_volume) || 0) : 0;
   const videoTokensSpent = videoRow ? Math.max(0, Number(videoRow.video_tokens_spent) || 0) : 0;
@@ -140,6 +192,7 @@ export function mergeSubscriptionRows(rows: SubscriptionRow[]): SubscriptionStat
     : 0;
   const periodStart =
     flowRow?.period_start ??
+    demoFlowRow?.period_start ??
     creativeRow?.period_start ??
     videoRow?.period_start ??
     new Date().toISOString();
@@ -148,6 +201,8 @@ export function mergeSubscriptionRows(rows: SubscriptionRow[]): SubscriptionStat
     planVolume: flowsLimit || creativeLimit,
     flowsUsed,
     flowsLimit,
+    demoFlowsUsed,
+    demoFlowsLimit,
     creativeUsed,
     creativeLimit,
     videoTokenBalance,
@@ -156,11 +211,13 @@ export function mergeSubscriptionRows(rows: SubscriptionRow[]): SubscriptionStat
     periodStart,
     expiresAt: flowRow
       ? getSubscriptionExpiryIso(flowRow)
-      : creativeRow
-        ? getSubscriptionExpiryIso(creativeRow)
-        : videoRow
-          ? getSubscriptionExpiryIso(videoRow)
-          : undefined,
+      : demoFlowRow
+        ? getSubscriptionExpiryIso(demoFlowRow)
+        : creativeRow
+          ? getSubscriptionExpiryIso(creativeRow)
+          : videoRow
+            ? getSubscriptionExpiryIso(videoRow)
+            : undefined,
   };
 }
 
@@ -198,12 +255,17 @@ function enrichWithServicePeriods(
   rows: SubscriptionRow[]
 ): SubscriptionState {
   const flowRow = rows.find((r) => r.plan_type === "flow");
+  const demoFlowRow = rows.find((r) => r.plan_type === "demo_flow");
   const creativeRow = rows.find((r) => r.plan_type === "creative");
   const videoRow = rows.find((r) => r.plan_type === "video_tokens");
 
   if (flowRow?.period_start && flowRow.plan_volume > 0) {
     state.flowPeriodStart = flowRow.period_start;
     state.flowPeriodEnd = getSubscriptionExpiryIso(flowRow);
+  }
+  if (demoFlowRow?.period_start && demoFlowRow.plan_volume > 0) {
+    state.demoFlowPeriodStart = demoFlowRow.period_start;
+    state.demoFlowPeriodEnd = getSubscriptionExpiryIso(demoFlowRow);
   }
   if (creativeRow?.period_start && creativeRow.plan_volume > 0) {
     state.creativePeriodStart = creativeRow.period_start;
@@ -238,6 +300,7 @@ export function buildSubscriptionStateFromRows(
   if (active.length > 0) {
     const merged = mergeSubscriptionRows(active);
     const flowRow = rows.find((r) => r.plan_type === "flow");
+    const demoFlowRow = rows.find((r) => r.plan_type === "demo_flow");
     let state = enrichWithServicePeriods(merged, rows);
     if (flowRow && isSubscriptionExpired(flowRow) && flowRow.plan_volume > 0) {
       state = {
@@ -249,10 +312,21 @@ export function buildSubscriptionStateFromRows(
         expiredFlowPeriodStart: flowRow.period_start,
       };
     }
+    if (demoFlowRow && isSubscriptionExpired(demoFlowRow) && demoFlowRow.plan_volume > 0) {
+      state = {
+        ...state,
+        demoFlowsLimit: 0,
+        demoFlowPackExpired: true,
+        expiredDemoFlowVolume: demoFlowRow.plan_volume,
+        expiredDemoFlowsUsed: demoFlowRow.flows_used,
+        expiredDemoFlowPeriodStart: demoFlowRow.period_start,
+      };
+    }
     return state;
   }
 
   const flowRow = rows.find((r) => r.plan_type === "flow");
+  const demoFlowRow = rows.find((r) => r.plan_type === "demo_flow");
   const creativeRow = rows.find((r) => r.plan_type === "creative");
   const videoRow = rows.find((r) => r.plan_type === "video_tokens");
 
@@ -261,6 +335,8 @@ export function buildSubscriptionStateFromRows(
     planVolume: 0,
     flowsUsed: flowRow?.flows_used ?? 0,
     flowsLimit: 0,
+    demoFlowsUsed: demoFlowRow?.flows_used ?? 0,
+    demoFlowsLimit: 0,
     creativeUsed: creativeRow?.creative_used ?? 0,
     creativeLimit: 0,
     videoTokenBalance: 0,
@@ -279,6 +355,13 @@ export function buildSubscriptionStateFromRows(
     state.planVolume = flowRow.plan_volume;
   }
 
+  if (demoFlowRow && demoFlowRow.plan_volume > 0) {
+    state.demoFlowPackExpired = true;
+    state.expiredDemoFlowVolume = demoFlowRow.plan_volume;
+    state.expiredDemoFlowsUsed = demoFlowRow.flows_used;
+    state.expiredDemoFlowPeriodStart = demoFlowRow.period_start;
+  }
+
   if (creativeRow && creativeRow.plan_volume > 0) {
     state.creativePackExpired = true;
     state.expiredCreativeVolume = creativeRow.plan_volume;
@@ -287,6 +370,17 @@ export function buildSubscriptionStateFromRows(
   }
 
   return enrichWithServicePeriods(state, rows);
+}
+
+/** Сколько запусков Потока доступно (платный + демо). */
+export function availableFlowStarts(sub: Pick<SubscriptionState, "flowsLimit" | "flowsUsed" | "demoFlowsLimit" | "demoFlowsUsed">): {
+  paidLeft: number;
+  demoLeft: number;
+  totalLeft: number;
+} {
+  const paidLeft = Math.max(0, (sub.flowsLimit ?? 0) - (sub.flowsUsed ?? 0));
+  const demoLeft = Math.max(0, (sub.demoFlowsLimit ?? 0) - (sub.demoFlowsUsed ?? 0));
+  return { paidLeft, demoLeft, totalLeft: paidLeft + demoLeft };
 }
 
 /** Получить подписку по user_id. Не удаляем строки по сроку — только выборка и объединение. */

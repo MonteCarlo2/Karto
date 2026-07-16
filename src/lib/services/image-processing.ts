@@ -2,6 +2,7 @@ import sharp from "sharp";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import fs from "fs/promises";
+import { Agent as HttpsAgent, get as httpsGet } from "node:https";
 
 // В проде (Timeweb и др.) process.cwd() часто только для чтения — пишем в /tmp
 const WRITABLE_BASE =
@@ -31,40 +32,226 @@ export async function downloadImage(url: string): Promise<string> {
   return downloadImageRobust(url, 120_000);
 }
 
+type RangeResult = { buffer: Buffer; total: number };
+
+function downloadHttpsRange(
+  url: string,
+  start: number,
+  end: number,
+  timeoutMs: number,
+  agent: HttpsAgent
+): Promise<RangeResult> {
+  return new Promise<RangeResult>((resolve, reject) => {
+    const request = httpsGet(
+      url,
+      {
+        agent,
+        headers: {
+          Accept: "image/*,*/*",
+          Range: `bytes=${start}-${end}`,
+          "User-Agent": "KartoImageDownload/3.0",
+        },
+      },
+      (response) => {
+        const status = response.statusCode ?? 0;
+        if (status !== 206) {
+          response.resume();
+          reject(new Error(`CloudFront Range HTTP ${status}`));
+          return;
+        }
+        const match = /\/(\d+)$/.exec(String(response.headers["content-range"] ?? ""));
+        const total = match ? Number(match[1]) : 0;
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+        response.on("end", () => {
+          const buffer = Buffer.concat(chunks);
+          const expected = end - start + 1;
+          if (!total || buffer.length !== expected) {
+            reject(new Error(`Неполный Range ${start}-${end}: ${buffer.length}/${expected}`));
+            return;
+          }
+          resolve({ buffer, total });
+        });
+        response.on("error", reject);
+      }
+    );
+    request.setTimeout(timeoutMs, () => request.destroy(new Error("Range timeout")));
+    request.on("error", reject);
+  });
+}
+
+async function downloadHttpsRangeWithRetry(
+  url: string,
+  start: number,
+  end: number,
+  timeoutMs: number,
+  agent: HttpsAgent
+): Promise<RangeResult> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return await downloadHttpsRange(url, start, end, timeoutMs, agent);
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Range download failed");
+}
+
+async function downloadCloudFrontByRanges(
+  url: string,
+  timeoutMs: number,
+  maxBytes: number
+): Promise<Buffer> {
+  const chunkSize = 16 * 1024;
+  const concurrency = 8;
+  const agent = new HttpsAgent({ keepAlive: true, maxSockets: concurrency });
+  try {
+    const first = await downloadHttpsRangeWithRetry(
+      url,
+      0,
+      chunkSize - 1,
+      Math.min(timeoutMs, 5_000),
+      agent
+    );
+    if (first.total > maxBytes) throw new Error("Файл слишком большой");
+    const count = Math.ceil(first.total / chunkSize);
+    const chunks: Buffer[] = new Array(count);
+    chunks[0] = first.buffer;
+    let nextIndex = 1;
+    const deadline = Date.now() + timeoutMs;
+
+    const worker = async () => {
+      for (;;) {
+        const index = nextIndex++;
+        if (index >= count) return;
+        if (Date.now() >= deadline) throw new Error("Таймаут загрузки изображения");
+        const start = index * chunkSize;
+        const end = Math.min(first.total - 1, start + chunkSize - 1);
+        const result = await downloadHttpsRangeWithRetry(
+          url,
+          start,
+          end,
+          Math.min(3_000, Math.max(1000, deadline - Date.now())),
+          agent
+        );
+        chunks[index] = result.buffer;
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, count - 1) }, () => worker())
+    );
+    const output = Buffer.concat(chunks);
+    if (output.length !== first.total) {
+      throw new Error(`Неполный файл: ${output.length}/${first.total}`);
+    }
+    return output;
+  } finally {
+    agent.destroy();
+  }
+}
+
+/**
+ * Нативный HTTPS без Next.js patched fetch. На Windows dev patched fetch
+ * обрывал CloudFront через 30–90 секунд с `terminated`, хотя CDN отвечал 200.
+ */
+export async function downloadRemoteBufferRobust(
+  url: string,
+  timeoutMs = 120_000,
+  maxBytes = 250 * 1024 * 1024,
+  redirectsLeft = 4
+): Promise<Buffer> {
+  const parsed = new URL(url);
+  if (parsed.hostname.toLowerCase().endsWith(".cloudfront.net")) {
+    return downloadCloudFrontByRanges(url, timeoutMs, maxBytes);
+  }
+
+  return new Promise<Buffer>((resolve, reject) => {
+    let settled = false;
+    const finishError = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    const request = httpsGet(
+      url,
+      {
+        headers: {
+          Accept: "image/avif,image/webp,image/apng,image/png,image/*,*/*",
+          "User-Agent": "KartoImageDownload/3.0",
+        },
+      },
+      (response) => {
+        const status = response.statusCode ?? 0;
+        const location = response.headers.location;
+        if (status >= 300 && status < 400 && location) {
+          response.resume();
+          if (redirectsLeft <= 0) {
+            finishError(new Error("Слишком много перенаправлений"));
+            return;
+          }
+          const redirected = new URL(location, url).toString();
+          void downloadRemoteBufferRobust(
+            redirected,
+            timeoutMs,
+            maxBytes,
+            redirectsLeft - 1
+          ).then(resolve, finishError);
+          return;
+        }
+        if (status < 200 || status >= 300) {
+          response.resume();
+          finishError(new Error(`HTTP ${status} при загрузке изображения`));
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        let total = 0;
+        response.on("data", (chunk: Buffer) => {
+          total += chunk.length;
+          if (total > maxBytes) {
+            response.destroy(new Error("Файл слишком большой"));
+            return;
+          }
+          chunks.push(Buffer.from(chunk));
+        });
+        response.on("end", () => {
+          if (settled) return;
+          const buffer = Buffer.concat(chunks);
+          if (buffer.length < 128) {
+            finishError(new Error("Пустой ответ при загрузке изображения"));
+            return;
+          }
+          settled = true;
+          resolve(buffer);
+        });
+        response.on("error", finishError);
+      }
+    );
+
+    request.setTimeout(timeoutMs, () => {
+      request.destroy(new Error("Таймаут загрузки изображения"));
+    });
+    request.on("error", finishError);
+  });
+}
+
 /** Скачивание с таймаутом и заголовками — для CDN WaveSpeed / CloudFront. */
 export async function downloadImageRobust(
   url: string,
   timeoutMs = 120_000
 ): Promise<string> {
   await ensureDirs();
-
-  const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        Accept: "image/avif,image/webp,image/apng,image/png,image/*,*/*",
-        "User-Agent": "KartoImageDownload/2.0",
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} при загрузке изображения`);
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length < 128) {
-      throw new Error("Пустой ответ при загрузке изображения");
-    }
-
-    const filename = `${uuidv4()}.png`;
-    const filepath = path.join(TEMP_DIR, filename);
-    await fs.writeFile(filepath, buffer);
-    return filepath;
-  } finally {
-    clearTimeout(tid);
-  }
+  const buffer = await downloadRemoteBufferRobust(url, timeoutMs);
+  const filename = `${uuidv4()}.png`;
+  const filepath = path.join(TEMP_DIR, filename);
+  await fs.writeFile(filepath, buffer);
+  return filepath;
 }
 
 /**

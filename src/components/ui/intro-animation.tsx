@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { KartoServicesExplainer } from "@/components/ui/karto-services-explainer";
+import { availableFlowStarts } from "@/lib/subscription";
 
 interface IntroAnimationProps {
   onComplete: () => void;
@@ -91,6 +92,7 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
   const [showContent, setShowContent] = useState(false);
   const [flowError, setFlowError] = useState<ReactNode | null>(null);
   const [checking, setChecking] = useState(false);
+  const [ctaIsDemo, setCtaIsDemo] = useState(false);
 
   const handleOpenFlow = async () => {
     setFlowError(null);
@@ -123,51 +125,56 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
         return;
       }
       const sub = data.subscription;
-      if (sub.flowPackExpired) {
+      const { paidLeft, demoLeft, totalLeft } = availableFlowStarts({
+        flowsLimit: Number(sub.flowsLimit ?? 0),
+        flowsUsed: Number(sub.flowsUsed ?? 0),
+        demoFlowsLimit: Number(sub.demoFlowsLimit ?? 0),
+        demoFlowsUsed: Number(sub.demoFlowsUsed ?? 0),
+      });
+      setCtaIsDemo(paidLeft <= 0 && demoLeft > 0);
+
+      if (totalLeft <= 0) {
+        if (sub.flowPackExpired && !demoLeft) {
+          setFlowError(
+            <>
+              Пакет «Поток» истёк (30 дней). Оформите новый пакет в{" "}
+              <Link href="/#pricing" className="font-semibold underline underline-offset-2 hover:text-white">
+                разделе «Цена»
+              </Link>
+              .
+            </>
+          );
+          return;
+        }
+        if (sub.demoFlowPackExpired && paidLeft <= 0) {
+          setFlowError(
+            <>
+              Демо-поток истёк или уже использован. Оформите полный «Поток» в{" "}
+              <Link href="/#pricing" className="font-semibold underline underline-offset-2 hover:text-white">
+                разделе «Цена»
+              </Link>
+              .
+            </>
+          );
+          return;
+        }
         setFlowError(
           <>
-            Пакет «Поток» в базе есть (до {sub.expiredFlowVolume} потоков), но{" "}
-            <strong>истёк срок действия</strong> (30 дней с даты активации). Оформите новый пакет в{" "}
+            Нет доступных потоков. Оформите пакет в{" "}
             <Link href="/#pricing" className="font-semibold underline underline-offset-2 hover:text-white">
               разделе «Цена»
-            </Link>
-            {" "}
-            или попросите администратора обновить в Supabase для строки <strong>flow</strong> поле{" "}
-            <strong>period_start</strong> на текущую дату.
-          </>
-        );
-        return;
-      }
-      if (sub.planType !== "flow") {
-        setFlowError(
-          <>
-            Сейчас у вас активен тариф <strong>«Свободное творчество»</strong>. Поток (сценарий в
-            Мастерской) в него не входит — пакет Потока нужно <strong>купить отдельно</strong>.{" "}
-            <Link href="/#pricing" className="font-semibold underline underline-offset-2 hover:text-white">
-              Цены и пакеты «Поток»
             </Link>
             .
           </>
         );
         return;
       }
-      const left = Math.max(0, sub.flowsLimit - sub.flowsUsed);
-      if (left <= 0) {
-        setFlowError(
-          <>
-            В текущем пакете не осталось доступных потоков. Новый пакет можно оформить в{" "}
-            <Link href="/#pricing" className="font-semibold underline underline-offset-2 hover:text-white">
-              разделе «Цена»
-            </Link>
-            .
-          </>
-        );
-        return;
-      }
+
       // Новый запуск Потока должен начинаться с чистой сессии.
       // Иначе могут подтягиваться старые этапы/описания и пропускаться экран 1.
       if (typeof window !== "undefined") {
         localStorage.removeItem("karto_session_id");
+        localStorage.removeItem("karto_session_is_demo");
         localStorage.removeItem("understandingPageState");
       }
       router.push("/studio/understanding");
@@ -185,6 +192,35 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
     }, 300);
 
     return () => clearTimeout(timer);
+  }, []);
+
+  // Подпись кнопки: демо vs обычный Поток
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createBrowserClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token || cancelled) return;
+        const res = await fetch("/api/subscription", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json().catch(() => ({}));
+        const sub = data.subscription;
+        if (!sub || cancelled) return;
+        const { paidLeft, demoLeft } = availableFlowStarts({
+          flowsLimit: Number(sub.flowsLimit ?? 0),
+          flowsUsed: Number(sub.flowsUsed ?? 0),
+          demoFlowsLimit: Number(sub.demoFlowsLimit ?? 0),
+          demoFlowsUsed: Number(sub.demoFlowsUsed ?? 0),
+        });
+        if (!cancelled) setCtaIsDemo(paidLeft <= 0 && demoLeft > 0);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
 
@@ -370,7 +406,7 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
                 pointerEvents: "none",
               }}
             />
-            <span>Запустить Поток</span>
+            <span>{ctaIsDemo ? "Запустить демо-поток" : "Запустить Поток"}</span>
             <svg
               width="20"
               height="20"

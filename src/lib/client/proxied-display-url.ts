@@ -84,3 +84,21 @@ export function proxiedHttpsMediaUrl(
     return t;
   }
 }
+
+/**
+ * В локальной Windows-разработке CloudFront body зависает после первых 16KB.
+ * Используем уже развернутый KARTO proxy; в production остаёмся same-origin.
+ */
+export function reliableProxiedHttpsMediaUrl(
+  raw: string,
+  opts?: ProxiedHttpsMediaUrlOptions
+): string {
+  const localPath = proxiedHttpsMediaUrl(raw, opts);
+  if (
+    process.env.NODE_ENV === "development" &&
+    localPath.startsWith("/api/media/proxy-display")
+  ) {
+    return `https://karto.pro${localPath}`;
+  }
+  return localPath;
+}

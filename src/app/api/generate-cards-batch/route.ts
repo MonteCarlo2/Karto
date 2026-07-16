@@ -23,7 +23,7 @@ import {
 } from "@/lib/flow/visual-batch-race";
 import { setVisualBatchProgress } from "@/lib/flow/visual-batch-progress";
 import { runFlowGenerateCardForBatch } from "@/app/api/generate-card/route";
-import { ensureFlowCardDisplayUrl } from "@/lib/flow/cache-flow-card-image";
+import { getSessionImageResolution } from "@/lib/demo-flow-server";
 
 export const maxDuration = 600;
 
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Лимит генераций в Потоке исчерпан (0 из 12).",
+          error: `Лимит генераций в Потоке исчерпан (0 из ${quotaBefore.limit}).`,
           code: "VISUAL_LIMIT_REACHED",
           generationUsed: quotaBefore.used,
           generationRemaining: quotaBefore.remaining,
@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
+    const imageResolution = await getSessionImageResolution(supabase as any, sessionId);
 
     if (photoUrl && isOpenRouterConfigured()) {
       try {
@@ -234,6 +235,7 @@ export async function POST(request: NextRequest) {
       bullets,
       aspectRatio,
       returnRemoteUrl: true,
+      imageResolution,
     };
 
     const generateOne = async (
@@ -255,8 +257,7 @@ export async function POST(request: NextRequest) {
             code: result.code,
           };
         }
-        const displayUrl = await ensureFlowCardDisplayUrl(result.url);
-        return { url: displayUrl };
+        return { url: result.url };
       } catch (error: unknown) {
         const msg = (error as { message?: string })?.message ?? String(error);
         console.error(`❌ [BATCH] ${attemptLabel}:`, msg);
@@ -276,6 +277,8 @@ export async function POST(request: NextRequest) {
       generateOne,
       onSlotFilled: (slots) => {
         setVisualBatchProgress(sessionId, slots, true);
+        // Промежуточный persist — клиент восстановит карточки даже при обрыве HTTP
+        void persistVisualGeneratedCards(sessionId, slots);
       },
     });
 

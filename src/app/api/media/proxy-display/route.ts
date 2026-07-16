@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { isAllowedRemoteMediaUrl } from "@/lib/media/allowed-remote-media-url";
+import { downloadRemoteBufferRobust } from "@/lib/services/image-processing";
 
 /** Явный Node — стабильный stream/fetch для долгих ответов CDN. */
 export const runtime = "nodejs";
@@ -51,12 +52,69 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Next.js patched fetch на Windows dev обрывает CloudFront с `terminated`.
+  // Нативный HTTPS стабильно получает тот же PNG; сразу уменьшаем превью.
+  if (target.hostname.toLowerCase().endsWith(".cloudfront.net")) {
+    try {
+      if (process.env.NODE_ENV === "development") {
+        const hostedPath =
+          `https://karto.pro/api/media/proxy-display?u=${encodeURIComponent(target.toString())}` +
+          (displayMaxWidth > 0 ? `&mw=${displayMaxWidth}` : "");
+        const response = await fetch(hostedPath, {
+          signal: AbortSignal.timeout(60_000),
+        });
+        if (!response.ok) {
+          throw new Error(`Hosted proxy HTTP ${response.status}`);
+        }
+        const output = new Uint8Array(await response.arrayBuffer());
+        return new NextResponse(output, {
+          status: 200,
+          headers: {
+            "Content-Type": response.headers.get("content-type") || "image/png",
+            "Content-Length": String(output.byteLength),
+            "Cache-Control":
+              "public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400",
+          },
+        });
+      }
+      const source = await downloadRemoteBufferRobust(
+        target.toString(),
+        120_000,
+        40 * 1024 * 1024
+      );
+      let output = source;
+      let contentType = "image/png";
+      if (displayMaxWidth > 0) {
+        output = await sharp(source)
+          .resize({ width: displayMaxWidth, withoutEnlargement: true })
+          .webp({ quality: 88, alphaQuality: 92, effort: 3 })
+          .toBuffer();
+        contentType = "image/webp";
+      }
+      return new NextResponse(new Uint8Array(output), {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": String(output.byteLength),
+          "Cache-Control":
+            "public, max-age=604800, s-maxage=604800, stale-while-revalidate=86400",
+        },
+      });
+    } catch (error) {
+      console.warn(
+        "[proxy-display] CloudFront native HTTPS failed:",
+        error instanceof Error ? error.message : error
+      );
+      return NextResponse.json({ error: "Не удалось получить файл" }, { status: 502 });
+    }
+  }
+
   const upstreamFetchMs = Math.min(
     900_000,
     Math.max(60_000, Number(process.env.MEDIA_DOWNLOAD_UPSTREAM_MS) || 600_000)
   );
-  const attemptTimeout = Math.min(upstreamFetchMs, 45_000);
-  const maxUpstreamAttempts = 5;
+  const attemptTimeout = Math.min(upstreamFetchMs, 90_000);
+  const maxUpstreamAttempts = 3;
 
   let upstream: Response | undefined;
   for (let attempt = 0; attempt < maxUpstreamAttempts; attempt++) {

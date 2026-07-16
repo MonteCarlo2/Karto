@@ -2,30 +2,16 @@
 
 import type { ImgHTMLAttributes, SyntheticEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { proxiedHttpsMediaUrl } from "@/lib/client/proxied-display-url";
+import {
+  proxiedHttpsMediaUrl,
+  reliableProxiedHttpsMediaUrl,
+} from "@/lib/client/proxied-display-url";
 import { withServeFilePreviewParam } from "@/lib/client/gallery-display-url";
 
-/** Документ с «частного» origin (localhost, LAN): прямой https к публичному CDN в Chromium ломается (PNA). */
-function isNonPublicDocumentHost(): boolean {
-  if (typeof window === "undefined") return false;
-  const h = window.location.hostname;
-  if (h === "localhost" || h.endsWith(".localhost")) return true;
-  if (h === "[::1]" || h === "::1") return true;
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
-  if (!m) return false;
-  const a = Number(m[1]);
-  const b = Number(m[2]);
-  if (a === 127) return true;
-  if (a === 10) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  return false;
-}
-
-function isHttpsRemoteUrl(url: string): boolean {
+function isWaveSpeedCdnUrl(url: string): boolean {
   try {
-    const u = new URL(url);
-    return u.protocol === "https:";
+    const h = new URL(url).hostname.toLowerCase();
+    return h.endsWith(".cloudfront.net");
   } catch {
     return false;
   }
@@ -44,18 +30,9 @@ export type GalleryProxiedImgProps = Omit<
 };
 
 /**
- * Галерея: сначала same-origin прокси (обход Chromium PNA/CORS на CDN),
- * при ошибке — прямой URL там, где браузер это допускает.
+ * Галерея: CDN показываем напрямую. Same-origin proxy — только fallback.
+ * Порядок одинаков на SSR и клиенте, поэтому гидратация стабильна.
  */
-function isWaveSpeedCdnUrl(url: string): boolean {
-  try {
-    const h = new URL(url).hostname.toLowerCase();
-    return h.endsWith(".cloudfront.net");
-  } catch {
-    return false;
-  }
-}
-
 export function GalleryProxiedImg({
   remoteUrl,
   alt = "",
@@ -77,6 +54,16 @@ export function GalleryProxiedImg({
       ),
     [prepared, previewMaxWidth]
   );
+  const reliableProxied = useMemo(
+    () =>
+      reliableProxiedHttpsMediaUrl(
+        prepared,
+        typeof previewMaxWidth === "number" && previewMaxWidth > 0
+          ? { maxDisplayWidth: previewMaxWidth }
+          : undefined
+      ),
+    [prepared, previewMaxWidth]
+  );
 
   const chain = useMemo(() => {
     const list: string[] = [];
@@ -84,23 +71,23 @@ export function GalleryProxiedImg({
       list.push(prepared);
       return [...new Set(list)];
     }
-    // WaveSpeed CDN: сначала прямой URL (прокси на dev часто 502/71s), потом same-origin прокси
+
     if (isWaveSpeedCdnUrl(prepared)) {
+      if (reliableProxied) list.push(reliableProxied);
+      if (proxied) list.push(proxied);
       list.push(prepared);
+    } else if (proxied) {
+      list.push(proxied);
     }
-    if (proxied) list.push(proxied);
-    const directWouldBeBlockedByPna =
-      isNonPublicDocumentHost() && isHttpsRemoteUrl(prepared);
     if (
       prepared &&
       prepared !== proxied &&
-      !list.includes(prepared) &&
-      !directWouldBeBlockedByPna
+      !list.includes(prepared)
     ) {
       list.push(prepared);
     }
     return [...new Set(list)];
-  }, [proxied, prepared]);
+  }, [proxied, reliableProxied, prepared]);
 
   const [idx, setIdx] = useState(0);
 
@@ -113,7 +100,10 @@ export function GalleryProxiedImg({
   const handleError = useCallback(
     (e: SyntheticEvent<HTMLImageElement, Event>) => {
       onError?.(e);
-      setIdx((prev) => (prev + 1 < chain.length ? prev + 1 : prev));
+      setIdx((prev) => {
+        if (prev + 1 < chain.length) return prev + 1;
+        return prev;
+      });
     },
     [chain.length, onError]
   );
@@ -122,11 +112,12 @@ export function GalleryProxiedImg({
 
   return (
     <img
-      referrerPolicy="no-referrer"
       {...rest}
       alt={alt}
       src={src}
+      loading="eager"
       decoding="async"
+      referrerPolicy="no-referrer"
       onError={handleError}
     />
   );

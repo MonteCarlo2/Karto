@@ -12,6 +12,7 @@ import {
   isSameAppOrigin,
   isAllowedRemoteMediaUrl,
 } from "@/lib/media/allowed-remote-media-url";
+import { downloadRemoteBufferRobust } from "@/lib/services/image-processing";
 
 export const dynamic = "force-dynamic";
 /** Долгие апстрим-ответы tempfile CDN (до нескольких минут на сумму попыток). */
@@ -173,6 +174,55 @@ export async function POST(request: NextRequest) {
       },
       { status: 403 }
     );
+  }
+
+  if (
+    body.mediaType !== "video" &&
+    target.hostname.toLowerCase().endsWith(".cloudfront.net")
+  ) {
+    try {
+      let buffer: Buffer;
+      if (process.env.NODE_ENV === "development") {
+        const hostedProxy =
+          `https://karto.pro/api/media/proxy-display?u=${encodeURIComponent(target.toString())}`;
+        const response = await fetch(hostedProxy, {
+          signal: AbortSignal.timeout(60_000),
+        });
+        if (!response.ok) {
+          throw new Error(`Hosted proxy HTTP ${response.status}`);
+        }
+        buffer = Buffer.from(await response.arrayBuffer());
+      } else {
+        buffer = await downloadRemoteBufferRobust(
+          target.toString(),
+          120_000,
+          45 * 1024 * 1024
+        );
+      }
+      const requested =
+        typeof body.filename === "string" && body.filename.trim()
+          ? sanitizeFilename(body.filename.trim())
+          : `karto-image-${Date.now()}.png`;
+      const safeName = requested.includes(".") ? requested : `${requested}.png`;
+      return new NextResponse(new Uint8Array(buffer), {
+        status: 200,
+        headers: {
+          "Content-Type": "image/png",
+          "Content-Length": String(buffer.byteLength),
+          "Content-Disposition": `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`,
+          "Cache-Control": "private, no-store",
+        },
+      });
+    } catch (error) {
+      console.warn(
+        "[media-download] CloudFront native HTTPS failed:",
+        error instanceof Error ? error.message : error
+      );
+      return NextResponse.json(
+        { error: "Не удалось получить файл с хранилища" },
+        { status: 502 }
+      );
+    }
   }
 
   const upstreamFetchMs = Math.min(

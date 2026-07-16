@@ -3,7 +3,12 @@ import { createServerClient } from "@/lib/supabase/server";
 import { createServerClientWithAuth } from "@/lib/supabase/server-auth";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { isSupabaseFailure, withTimeout } from "@/lib/supabase/with-timeout";
-import { getSubscriptionByUserId, getSubscriptionRowsByUserId } from "@/lib/subscription";
+import {
+  availableFlowStarts,
+  getSubscriptionByUserId,
+  getSubscriptionRowsByUserId,
+} from "@/lib/subscription";
+import { DEMO_FLOW_PLAN_TYPE, DEMO_FLOW_VISUAL_LIMIT } from "@/lib/demo-flow";
 
 /** Получить user id: сначала из Authorization, затем из cookies */
 async function getUserIdFromRequest(request: NextRequest, supabase: ReturnType<typeof createServerClient>): Promise<string | null> {
@@ -39,61 +44,119 @@ function flowQuotaBypassEnabled(): boolean {
   return process.env.NODE_ENV === "development" && process.env.FLOW_DEV_BYPASS === "1";
 }
 
+async function seedDemoVisualQuota(
+  supabase: ReturnType<typeof createServerClient>,
+  sessionId: string
+): Promise<void> {
+  const { error } = await supabase.from("visual_data").upsert(
+    {
+      session_id: sessionId,
+      visual_state: {
+        generation_used: 0,
+        generation_limit: DEMO_FLOW_VISUAL_LIMIT,
+      },
+    },
+    { onConflict: "session_id" }
+  );
+  if (error) {
+    console.warn("⚠️ [demo-flow] Не удалось задать лимит визуала:", error.message);
+  }
+}
+
 async function chargeFlowAndCreateSession(
   supabase: ReturnType<typeof createServerClient>,
   userId: string
-): Promise<{ sessionId: string } | { error: string; status: number }> {
+): Promise<{ sessionId: string; isDemo: boolean } | { error: string; status: number }> {
   if (flowQuotaBypassEnabled()) {
     const { data: newSession, error: sessionError } = await supabase
       .from("product_sessions")
-      .insert({ user_id: userId })
+      .insert({ user_id: userId, is_demo: false })
       .select("id")
       .single();
     if (sessionError || !newSession?.id) {
       console.error("Ошибка создания сессии (dev bypass):", sessionError);
       return { error: "Ошибка создания сессии", status: 500 };
     }
-    return { sessionId: newSession.id as string };
+    return { sessionId: newSession.id as string, isDemo: false };
   }
 
   const sub = await getSubscriptionByUserId(supabase as any, userId);
   if (!sub) {
-    return { error: "Выберите тариф «Поток» на главной странице", status: 403 };
-  }
-  if (sub.flowsLimit <= 0) {
-    return { error: "Поток не куплен. Выберите тариф «Поток» на главной.", status: 403 };
-  }
-  if (sub.flowsUsed >= sub.flowsLimit) {
-    const flowsLeft = Math.max(0, sub.flowsLimit - sub.flowsUsed);
     return {
-      error: `Лимит потоков исчерпан. Доступно: ${flowsLeft}.`,
+      error: "Выберите тариф «Поток» на главной странице или дождитесь демо-потока",
       status: 403,
     };
   }
-  const flowRows = await getSubscriptionRowsByUserId(supabase as any, userId);
-  const flowRow = flowRows.find((r) => r.plan_type === "flow");
-  if (!flowRow) {
-    return { error: "Запись подписки «Поток» не найдена.", status: 403 };
+
+  const { paidLeft, demoLeft, totalLeft } = availableFlowStarts(sub);
+  if (totalLeft <= 0) {
+    return {
+      error:
+        paidLeft <= 0 && demoLeft <= 0
+          ? "Нет доступных потоков. Оформите пакет «Поток» на главной."
+          : "Лимит потоков исчерпан.",
+      status: 403,
+    };
   }
-  const { error: updErr } = await supabase
+
+  // Сначала платный Поток; демо — только если платного нет
+  const useDemo = paidLeft <= 0 && demoLeft > 0;
+  const planType = useDemo ? DEMO_FLOW_PLAN_TYPE : "flow";
+  const flowRows = await getSubscriptionRowsByUserId(supabase as any, userId);
+  const row = flowRows.find((r) => r.plan_type === planType);
+  if (!row) {
+    return {
+      error: useDemo
+        ? "Запись демо-потока не найдена."
+        : "Запись подписки «Поток» не найдена.",
+      status: 403,
+    };
+  }
+
+  const { data: chargedRow, error: updErr } = await supabase
     .from("user_subscriptions")
-    .update({ flows_used: flowRow.flows_used + 1 })
+    .update({ flows_used: row.flows_used + 1 })
     .eq("user_id", userId)
-    .eq("plan_type", "flow");
+    .eq("plan_type", planType)
+    .eq("flows_used", row.flows_used)
+    .lt("flows_used", row.plan_volume)
+    .select("flows_used")
+    .maybeSingle();
   if (updErr) {
     console.error("Ошибка списания потока:", updErr);
     return { error: "Ошибка списания потока", status: 500 };
   }
+  if (!chargedRow) {
+    return {
+      error: "Поток уже запущен в другом запросе. Обновите страницу.",
+      status: 409,
+    };
+  }
+
   const { data: newSession, error: sessionError } = await supabase
     .from("product_sessions")
-    .insert({ user_id: userId })
+    .insert({ user_id: userId, is_demo: useDemo })
     .select("id")
     .single();
   if (sessionError || !newSession?.id) {
     console.error("Ошибка создания сессии:", sessionError);
+    const { error: refundError } = await supabase
+      .from("user_subscriptions")
+      .update({ flows_used: row.flows_used })
+      .eq("user_id", userId)
+      .eq("plan_type", planType)
+      .eq("flows_used", row.flows_used + 1);
+    if (refundError) {
+      console.error("Ошибка возврата потока после сбоя сессии:", refundError);
+    }
     return { error: "Ошибка создания сессии", status: 500 };
   }
-  return { sessionId: newSession.id as string };
+
+  if (useDemo) {
+    await seedDemoVisualQuota(supabase, newSession.id as string);
+  }
+
+  return { sessionId: newSession.id as string, isDemo: useDemo };
 }
 
 /**
@@ -315,6 +378,15 @@ export async function POST(request: NextRequest) {
       success: true,
       session_id: finalSessionId,
       data,
+      is_demo: Boolean(
+        (
+          await supabase
+            .from("product_sessions")
+            .select("is_demo")
+            .eq("id", finalSessionId)
+            .maybeSingle()
+        ).data?.is_demo
+      ),
     });
   } catch (error: unknown) {
     if (isSupabaseNetworkError(error) || isSupabaseFailure(error)) {

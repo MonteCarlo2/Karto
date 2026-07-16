@@ -16,18 +16,16 @@ import fs from "fs/promises";
 /** Батч ждёт WaveSpeed до 7+ мин — без этого route обрывается ~2 мин и URL не доходят до UI. */
 export const maxDuration = 600;
 
-async function resolveCardDisplayUrl(
-  remoteUrl: string,
-  preferRemote: boolean
-): Promise<string> {
-  if (preferRemote && /^https?:\/\//i.test(remoteUrl)) {
+async function resolveCardDisplayUrl(remoteUrl: string): Promise<string> {
+  // Всегда CDN для http(s) — UI не ждёт локальный download
+  if (/^https?:\/\//i.test(remoteUrl)) {
     return remoteUrl;
   }
   try {
     const localPath = await downloadImage(remoteUrl);
     return getPublicUrl(localPath);
   } catch (e) {
-    console.warn("⚠️ Не удалось скачать результат WaveSpeed, отдаём CDN URL:", e);
+    console.warn("⚠️ Не удалось скачать результат WaveSpeed, отдаём как есть:", e);
     return remoteUrl;
   }
 }
@@ -176,6 +174,8 @@ export async function POST(request: NextRequest) {
       designConcept, // Готовая дизайн-концепция (если передана)
       /** Батч: сразу CDN URL WaveSpeed, без локального download (быстрее, без ECONNRESET). */
       returnRemoteUrl = false,
+      /** WaveSpeed resolution: "2k" для демо-потока */
+      imageResolution,
     } = body;
 
     // Проверяем обязательные поля
@@ -603,7 +603,9 @@ ${finalTextPresentation}
     let generatedImageUrl: string;
 
     try {
-      const result = await generateFlowImage(finalPrompt, imageForApi, finalAspectRatio);
+      const result = await generateFlowImage(finalPrompt, imageForApi, finalAspectRatio, {
+        resolution: typeof imageResolution === "string" ? imageResolution : undefined,
+      });
       generatedImageUrl = result.imageUrl;
       console.log(
         `✅ Генерация успешна (референс: ${result.referenceUsed ? "да, edit" : "НЕТ — только текст!"})`
@@ -617,10 +619,7 @@ ${finalTextPresentation}
       );
     }
     
-    const displayUrl = await resolveCardDisplayUrl(
-      generatedImageUrl,
-      Boolean(returnRemoteUrl)
-    );
+    const displayUrl = await resolveCardDisplayUrl(generatedImageUrl);
 
     console.log(`✅ Карточка сгенерирована: ${displayUrl.slice(0, 96)}…`);
 

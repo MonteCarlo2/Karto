@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { markDemoFlowEligibleOnRegistration } from "@/lib/demo-flow-server";
 import { getYandexRedirectUri } from "@/lib/auth/yandex-redirect-uri";
 
 const YANDEX_TOKEN_URL = "https://oauth.yandex.ru/token";
@@ -112,7 +113,7 @@ export async function GET(request: NextRequest) {
   const supabase = createServerClient();
 
   try {
-    const { error: createError } = await supabase.auth.admin.createUser({
+    const { data: createdData, error: createError } = await supabase.auth.admin.createUser({
       email,
       email_confirm: true,
       user_metadata: {
@@ -131,6 +132,13 @@ export async function GET(request: NextRequest) {
       console.error("Supabase createUser error:", createError);
       return NextResponse.redirect(
         `${baseUrl}/login?error=${encodeURIComponent(createError.message)}`
+      );
+    }
+
+    if (!isExistingUser && createdData?.user?.id) {
+      await markDemoFlowEligibleOnRegistration(
+        supabase,
+        createdData.user.id
       );
     }
 

@@ -65,6 +65,8 @@ import {
   withServeFilePreviewParam,
 } from "@/lib/client/gallery-display-url";
 import type { ImgHTMLAttributes } from "react";
+import { DemoFlowBadge } from "@/components/studio/DemoFlowBadge";
+import { useDemoFlowSession } from "@/lib/hooks/use-demo-flow-session";
 
 /** 4 слота вариантов; null = нет картинки (ожидание / сбой). Старые сохранения без null дополняем. */
 function normalizeVisualCardSlots(raw: unknown): (string | null)[] {
@@ -95,7 +97,13 @@ async function hydrateCardUrlSlots(slots: (string | null)[]): Promise<(string | 
     });
     const data = await res.json();
     if (data?.success && Array.isArray(data.urls)) {
-      return normalizeVisualCardSlots(data.urls);
+      const hydrated = normalizeVisualCardSlots(data.urls);
+      // Никогда не затираем уже готовые CDN-слоты пустыми ответами hydrate
+      return hydrated.map((h, i) => {
+        if (typeof h === "string" && h.length > 0) return h;
+        const prev = slots[i];
+        return typeof prev === "string" && prev.length > 0 ? prev : null;
+      });
     }
   } catch (e) {
     console.warn("[visual] hydrate-card-urls failed:", e);
@@ -739,6 +747,7 @@ export default function VisualPage() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [productDescription, setProductDescription] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const demoSession = useDemoFlowSession(sessionId);
   
   // Состояние интерфейса
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1036,6 +1045,7 @@ export default function VisualPage() {
             const norm = normalizeVisualCardSlots(state.generatedCards);
             if (norm.some(Boolean)) {
               setGeneratedCards(norm);
+              lastCardsJsonRef.current = JSON.stringify(norm);
               restoredCards = true;
             }
           }
@@ -1066,7 +1076,10 @@ export default function VisualPage() {
 
         if (!restoredCards && lsState?.generatedCards?.length) {
           const norm = normalizeVisualCardSlots(lsState.generatedCards);
-          if (norm.some(Boolean)) setGeneratedCards(norm);
+          if (norm.some(Boolean)) {
+            setGeneratedCards(norm);
+            lastCardsJsonRef.current = JSON.stringify(norm);
+          }
         }
 
         try {
@@ -1078,9 +1091,14 @@ export default function VisualPage() {
             const norm = normalizeVisualCardSlots(progressData.slots);
             if (norm.some(Boolean)) {
               setGeneratedCards(norm);
+              lastCardsJsonRef.current = JSON.stringify(norm);
             }
+            // Не включаем вечный LoadingDots после F5: только догоняющий poll
             if (progressData.inProgress === true) {
-              setIsGenerating(true);
+              setBatchPolling(true);
+              if (!norm.some(Boolean) && !restoredCards) {
+                setIsGenerating(true);
+              }
             }
           }
         } catch {
@@ -1185,6 +1203,8 @@ export default function VisualPage() {
       if (cancelled) return;
       const hydratedKey = JSON.stringify(hydrated);
       if (hydratedKey !== key) {
+        // Не применяем «пустышку», если hydrate потерял все URL
+        if (!hydrated.some(Boolean) && generatedCards.some(Boolean)) return;
         cardHydrateAttemptRef.current = hydratedKey;
         applyGeneratedCardsIfChanged(hydrated);
       }
@@ -1195,21 +1215,43 @@ export default function VisualPage() {
     };
   }, [generatedCards, filledCardCount, sessionId]);
 
-  // Прогресс батча: только быстрый in-memory API (не Supabase — иначе зависает UI)
+  // Прогресс батча: in-memory + fallback в Supabase (карточки видны до конца HTTP-батча)
   useEffect(() => {
     if (!sessionId || (!isGenerating && !batchPolling)) return;
 
+    let ticks = 0;
     const pollProgress = async () => {
       if (pollInFlightRef.current) return;
       pollInFlightRef.current = true;
+      ticks += 1;
       try {
         const res = await fetch(
           `/api/flow/visual-progress?sessionId=${encodeURIComponent(sessionId)}`
         );
         const data = await res.json().catch(() => ({} as Record<string, unknown>));
+        let gotFromMemory = false;
         if (Array.isArray(data.slots)) {
           const norm = normalizeVisualCardSlots(data.slots);
-          if (norm.some(Boolean)) applyGeneratedCardsIfChanged(norm);
+          if (norm.some(Boolean)) {
+            applyGeneratedCardsIfChanged(norm);
+            gotFromMemory = true;
+          }
+        }
+        // Каждые ~2 тика или если память пуста — тянем уже сохранённые CDN из Supabase
+        if (!gotFromMemory || ticks % 2 === 0) {
+          const synced = await syncGeneratedCardsFromServer(sessionId);
+          if (synced) applyGeneratedCardsIfChanged(synced);
+        }
+        if (data.inProgress === false && Array.isArray(data.slots)) {
+          const norm = normalizeVisualCardSlots(data.slots);
+          if (norm.some(Boolean)) {
+            applyGeneratedCardsIfChanged(norm);
+          } else {
+            const synced = await syncGeneratedCardsFromServer(sessionId);
+            if (synced) applyGeneratedCardsIfChanged(synced);
+          }
+          setIsGenerating(false);
+          setBatchPolling(false);
         }
         if (typeof data.generationUsed === "number") {
           const limit = Math.max(1, Number(data.generationLimit || 12));
@@ -1226,7 +1268,7 @@ export default function VisualPage() {
     };
 
     void pollProgress();
-    const id = setInterval(() => void pollProgress(), 2500);
+    const id = setInterval(() => void pollProgress(), 1000);
     return () => clearInterval(id);
   }, [isGenerating, batchPolling, sessionId]);
 
@@ -1450,6 +1492,8 @@ export default function VisualPage() {
 
     setIsGenerating(true);
     setGeneratedCards([null, null, null, null]);
+    lastCardsJsonRef.current = JSON.stringify([null, null, null, null]);
+    cardHydrateAttemptRef.current = "";
     setGenerationError({ show: false });
 
     const refPhoto = resolveFlowPhoto(sessionId, photoUrl);
@@ -1676,6 +1720,16 @@ export default function VisualPage() {
         longWaitTimerRef.current = null;
       }
       if (error instanceof Error && error.name === "AbortError") {
+        showToast({
+          type: "info",
+          title: "Долгое ожидание",
+          message: "Проверяем, успел ли сервер сохранить готовые карточки…",
+        });
+        const cards = sessionId ? await pollForGeneratedCards(sessionId, 120_000) : null;
+        if (cards && cards.some(Boolean)) {
+          applyGeneratedCardsIfChanged(normalizeVisualCardSlots(cards));
+          return;
+        }
         setGenerationError({
           show: true,
           message: "Время ожидания истекло (генерация заняла более 7 минут). Попробуйте ещё раз.",
@@ -1785,7 +1839,12 @@ export default function VisualPage() {
         suppressHydrationWarning
       />
       
-      <StageMenu currentStage="visual" position="left" visualQuota={visualQuota} />
+      <StageMenu
+        currentStage="visual"
+        position="left"
+        visualQuota={visualQuota}
+        isDemo={demoSession.isDemo}
+      />
       
       {/* Сообщение о несоответствии товара */}
       <AnimatePresence>
@@ -2278,7 +2337,9 @@ export default function VisualPage() {
           </motion.button>
           {visualQuota.remaining <= 0 && (
             <p className="mt-2 text-xs text-red-500 text-center">
-              Лимит генераций в Потоке исчерпан (0/{visualQuota.limit}).
+              Лимит генераций в {demoSession.isDemo ? "демо-потоке" : "Потоке"} исчерпан (0/
+              {visualQuota.limit}).
+              {demoSession.isDemo ? " В полном Потоке — до 12 фото в 4K." : ""}
             </p>
           )}
       </motion.div>
@@ -2644,14 +2705,15 @@ export default function VisualPage() {
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => {
+                      onClick={() => {
                     // Переходим в режим серии карточек
                     if (selectedCardIndex !== null && typeof generatedCards[selectedCardIndex] === "string") {
-                      // Создаем первый слайд с выбранной карточкой
+                      const pickedUrl = generatedCards[selectedCardIndex]!;
+                      // Создаем первый слайд с выбранной карточкой (variants сразу — canvas не пустой)
                       const firstSlide = {
                         id: 1,
-                        imageUrl: generatedCards[selectedCardIndex]!,
-                        variants: [] as string[],
+                        imageUrl: pickedUrl,
+                        variants: [pickedUrl] as string[],
                         prompt: "",
                         scenario: null,
                         aspectRatio: aspectRatio === "3:4" ? "3:4" : "1:1" as "3:4" | "1:1",
@@ -2993,7 +3055,12 @@ export default function VisualPage() {
             
             {/* Линия этапов справа + инструкция */}
             <div className="absolute top-24 right-12 flex flex-col items-end gap-4 z-30">
-              <StageMenu currentStage="visual" position="right" visualQuota={visualQuota} />
+              <StageMenu
+                currentStage="visual"
+                position="right"
+                visualQuota={visualQuota}
+                isDemo={demoSession.isDemo}
+              />
               
               {/* Вопрос-виджет с инструкцией */}
               <motion.div
@@ -3276,31 +3343,33 @@ export default function VisualPage() {
                           });
                         }
                         
-                        // Добавляем новый вариант в массив variants (проверяем на дубликаты)
-                        setSlides(slides.map(s => {
-                          if (s.id === activeSlideId) {
-                            // Проверяем, нет ли уже такого варианта
+                        // Добавляем новый вариант сразу в UI (CDN URL — без ожидания локального кеша)
+                        const newUrl = typeof data.imageUrl === "string" ? data.imageUrl : "";
+                        if (!newUrl) {
+                          setGenerationError({
+                            show: true,
+                            message: "Сервер не вернул URL изображения. Попробуйте ещё раз.",
+                          });
+                          return;
+                        }
+                        setSlides((prev) =>
+                          prev.map((s) => {
+                            if (s.id !== activeSlideId) return s;
                             const existingVariants = s.variants || [];
-                            const isDuplicate = existingVariants.includes(data.imageUrl);
-                            
-                            // Добавляем только если это не дубликат
-                            const newVariants = isDuplicate 
-                              ? existingVariants 
-                              : [...existingVariants, data.imageUrl];
-                            
-                            return { 
-                              ...s, 
+                            const newVariants = existingVariants.includes(newUrl)
+                              ? existingVariants
+                              : [...existingVariants, newUrl];
+                            return {
+                              ...s,
                               variants: newVariants,
-                              // Если это первый вариант или нет выбранного, делаем его выбранным
-                              imageUrl: s.imageUrl || data.imageUrl,
-                              prompt: slidePrompt.trim(), 
-                              scenario: selectedScenario, 
-                              aspectRatio: slideAspectRatio 
+                              imageUrl: newUrl,
+                              prompt: slidePrompt.trim(),
+                              scenario: selectedScenario,
+                              aspectRatio: slideAspectRatio,
                             };
-                          }
-                          return s;
-                        }));
-                        
+                          })
+                        );
+
                         setSlidePrompt("");
                         setSelectedScenario(null);
                       } catch (error: unknown) {

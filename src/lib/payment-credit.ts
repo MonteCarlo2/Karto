@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { clearDemoFlowIfHasPaid } from "@/lib/demo-flow-server";
+
 export type PlanType = "flow" | "creative";
 
 /**
@@ -32,6 +34,9 @@ export async function creditSubscription(
       return { ok: false, error: error.message };
     }
     console.log("[PAYMENT CREDIT] UPDATE ok:", userId, planType, "newVolume:", newVolume);
+    if (planType === "flow") {
+      await clearDemoFlowIfHasPaid(supabase, userId);
+    }
     return { ok: true };
   }
 
@@ -48,5 +53,8 @@ export async function creditSubscription(
     return { ok: false, error: error.message };
   }
   console.log("[PAYMENT CREDIT] INSERT ok:", userId, planType, "volume:", addVolume);
+  if (planType === "flow") {
+    await clearDemoFlowIfHasPaid(supabase, userId);
+  }
   return { ok: true };
 }

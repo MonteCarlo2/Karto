@@ -6,6 +6,7 @@ import {
   hashSignupCode,
   MAX_SIGNUP_CODE_ATTEMPTS,
 } from "@/lib/auth/signup-verification";
+import { markDemoFlowEligibleOnRegistration } from "@/lib/demo-flow-server";
 
 function isUnconfirmedLoginError(err: { message?: string } | null): boolean {
   const m = (err?.message || "").toLowerCase();
@@ -129,6 +130,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    await markDemoFlowEligibleOnRegistration(supabase, user.id);
     await supabase.from("signup_email_verification").delete().eq("user_id", user.id);
 
     try {

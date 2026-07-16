@@ -11,6 +11,8 @@ import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
 import { resolveFlowPhoto, resolveFlowProductName, readUnderstandingPageState } from "@/lib/flow/flow-photo-cache";
 import { flowPriceCacheKey } from "@/lib/flow/flow-persistence-keys";
 import { GALLERY_THUMB_PROXY_MAX_WIDTH } from "@/lib/client/gallery-display-url";
+import { useDemoFlowSession } from "@/lib/hooks/use-demo-flow-session";
+import { DemoFlowBadge } from "@/components/studio/DemoFlowBadge";
 
 const LOGOS = {
   WB: "/logos/wildberries.png",
@@ -113,6 +115,7 @@ export default function PriceStrategyPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<PriceAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const demoSession = useDemoFlowSession(sessionId);
 
   // Скрываем глобальный header/footer как на других этапах
   useEffect(() => {
@@ -435,7 +438,7 @@ export default function PriceStrategyPage() {
         }}
       />
 
-      <StageMenu currentStage="price" position="right" />
+      <StageMenu currentStage="price" position="right" isDemo={demoSession.isDemo} />
 
       {/* Основной контент */}
       <div className="relative z-10 max-w-[1500px] mx-auto px-6 pt-12 pb-6">

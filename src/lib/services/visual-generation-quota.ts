@@ -1,3 +1,6 @@
+import { isDemoProductSession } from "@/lib/demo-flow-server";
+import { DEMO_FLOW_VISUAL_LIMIT } from "@/lib/demo-flow";
+
 const VISUAL_GENERATION_LIMIT = 12;
 
 type VisualQuotaState = {
@@ -16,18 +19,24 @@ function toNonNegativeInt(value: unknown): number {
   return Math.max(0, Math.floor(value));
 }
 
-function defaultQuota(): VisualQuota {
+function defaultQuota(limit: number): VisualQuota {
   return {
     used: 0,
-    remaining: VISUAL_GENERATION_LIMIT,
-    limit: VISUAL_GENERATION_LIMIT,
+    remaining: limit,
+    limit,
   };
+}
+
+async function resolveSessionLimit(supabase: any, sessionId: string): Promise<number> {
+  const isDemo = await isDemoProductSession(supabase, sessionId);
+  return isDemo ? DEMO_FLOW_VISUAL_LIMIT : VISUAL_GENERATION_LIMIT;
 }
 
 export async function getVisualQuota(
   supabase: any,
   sessionId: string
 ): Promise<VisualQuota> {
+  const sessionLimit = await resolveSessionLimit(supabase, sessionId);
   try {
     const { data, error } = await supabase
       .from("visual_data")
@@ -37,18 +46,23 @@ export async function getVisualQuota(
 
     if (error) {
       console.warn("⚠️ [visual-quota] Чтение лимита не удалось, используем дефолт:", error.message);
-      return defaultQuota();
+      return defaultQuota(sessionLimit);
     }
 
     const state = (data?.visual_state || {}) as VisualQuotaState;
     const used = toNonNegativeInt(state.generation_used);
-    const limit = toNonNegativeInt(state.generation_limit) || VISUAL_GENERATION_LIMIT;
+    // Для демо всегда жёсткий лимит; для paid — сохранённый или 12
+    const stored = toNonNegativeInt(state.generation_limit);
+    const limit =
+      sessionLimit === DEMO_FLOW_VISUAL_LIMIT
+        ? DEMO_FLOW_VISUAL_LIMIT
+        : stored || VISUAL_GENERATION_LIMIT;
     const remaining = Math.max(0, limit - used);
 
     return { used, remaining, limit };
   } catch (error) {
     console.warn("⚠️ [visual-quota] Сеть/Supabase недоступны, используем дефолт:", error);
-    return defaultQuota();
+    return defaultQuota(sessionLimit);
   }
 }
 
@@ -58,6 +72,7 @@ export async function incrementVisualQuota(
   incrementBy: number
 ): Promise<VisualQuota> {
   const step = toNonNegativeInt(incrementBy);
+  const sessionLimit = await resolveSessionLimit(supabase, sessionId);
   const { data, error } = await supabase
     .from("visual_data")
     .select("visual_state")
@@ -70,7 +85,11 @@ export async function incrementVisualQuota(
 
   const currentState = (data?.visual_state || {}) as Record<string, unknown>;
   const currentUsed = toNonNegativeInt(currentState.generation_used);
-  const limit = toNonNegativeInt(currentState.generation_limit) || VISUAL_GENERATION_LIMIT;
+  const stored = toNonNegativeInt(currentState.generation_limit);
+  const limit =
+    sessionLimit === DEMO_FLOW_VISUAL_LIMIT
+      ? DEMO_FLOW_VISUAL_LIMIT
+      : stored || VISUAL_GENERATION_LIMIT;
   const nextUsed = Math.min(limit, currentUsed + step);
   const nextState = {
     ...currentState,
@@ -98,4 +117,3 @@ export async function incrementVisualQuota(
     remaining: Math.max(0, limit - nextUsed),
   };
 }
-

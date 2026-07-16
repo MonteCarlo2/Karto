@@ -11,6 +11,7 @@
 
 import { readFlowImageBuffer, isWaveSpeedReadyReferenceUrl } from "@/lib/flow/resolve-flow-reference";
 import { prepareEvolinkImageUrls } from "@/lib/services/evolink-images";
+import { getPublicUrl, saveBase64Image } from "@/lib/services/image-processing";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -105,9 +106,24 @@ function readOutputs(inner: Record<string, unknown>): string[] {
   if (!Array.isArray(o)) return [];
   const out: string[] = [];
   for (const x of o) {
-    if (typeof x === "string" && /^https?:\/\//i.test(x.trim())) out.push(x.trim());
+    if (typeof x === "string" && x.trim()) out.push(x.trim());
   }
   return out;
+}
+
+function outputLogLabel(output: string): string {
+  if (/^https?:\/\//i.test(output)) return output;
+  return `[base64 ${Math.round(output.length / 1024)} KB]`;
+}
+
+async function materializeWaveSpeedOutput(output: string): Promise<string> {
+  if (/^https?:\/\//i.test(output)) return output;
+  const base64 = output.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, "");
+  if (base64.length < 128 || !/^[A-Za-z0-9+/=\r\n]+$/.test(base64)) {
+    throw new Error("WaveSpeed вернул некорректное изображение");
+  }
+  const path = await saveBase64Image(`data:image/png;base64,${base64}`);
+  return getPublicUrl(path);
 }
 
 function isCompletedLike(st: string): boolean {
@@ -115,10 +131,14 @@ function isCompletedLike(st: string): boolean {
   return x === "completed" || x === "success" || x === "succeeded";
 }
 
-function commonNanoBody(prompt: string, aspect_ratio: string): Record<string, unknown> {
+function commonNanoBody(
+  prompt: string,
+  aspect_ratio: string,
+  resolutionOverride?: string
+): Record<string, unknown> {
   const resolution = normalizeNanoResolution(
-    process.env.WAVESPEED_NANO_RESOLUTION,
-    "4k"
+    resolutionOverride ?? process.env.WAVESPEED_NANO_RESOLUTION,
+    resolutionOverride ? resolutionOverride : "4k"
   );
 
   /** Sync дожидается результата на стороне WaveSpeed в одном HTTP; на Vercel / хостах с лимитом 60s может дать 504. Включить явно: WAVESPEED_ENABLE_SYNC_MODE=true */
@@ -134,7 +154,9 @@ function commonNanoBody(prompt: string, aspect_ratio: string): Record<string, un
       ? "jpeg"
       : "png") as "png" | "jpeg",
     enable_sync_mode: syncDefault,
-    enable_base64_output: envBool("WAVESPEED_ENABLE_BASE64_OUTPUT", false),
+    // CDN WaveSpeed нестабилен на Windows/localhost. Base64 приходит прямо
+    // в result API и сразу сохраняется в /api/serve-file без второй сети.
+    enable_base64_output: envBool("WAVESPEED_ENABLE_BASE64_OUTPUT", true),
   };
 }
 
@@ -221,7 +243,10 @@ async function submitWsPrediction(
   }
 
   if (immediateUrl) {
-    console.log("✅ [WaveSpeed] URL в ответе POST (sync или completed):", immediateUrl);
+    console.log(
+      "✅ [WaveSpeed] результат в POST (sync или completed):",
+      outputLogLabel(immediateUrl)
+    );
     return { taskId, pollUrlHint: pollHint, immediateUrl };
   }
 
@@ -324,7 +349,7 @@ async function pollUntilImageUrl(
     if (st === "completed") {
       const outs = readOutputs(inner);
       if (outs.length > 0) {
-        console.log("✅ [WaveSpeed] Готово:", outs[0]);
+        console.log("✅ [WaveSpeed] Готово:", outputLogLabel(outs[0]));
         return outs[0];
       }
     }
@@ -334,7 +359,11 @@ async function pollUntilImageUrl(
       outsEarly.length > 0 &&
       (st === "" || ["processing", "created", "pending", "running"].includes(st))
     ) {
-      console.log("✅ [WaveSpeed] outputs есть при статусе", st || "?", outsEarly[0]);
+      console.log(
+        "✅ [WaveSpeed] outputs есть при статусе",
+        st || "?",
+        outputLogLabel(outsEarly[0])
+      );
       return outsEarly[0];
     }
 
@@ -480,11 +509,13 @@ export type WavespeedNanoGenerationResult = {
 
 /**
  * Nano Banana 2 на WaveSpeed: text-to-image или edit с референсами (URL через WaveSpeed CDN).
+ * @param resolutionOverride — напр. "2k" для демо-потока; иначе env / 4k
  */
 export async function generateWithWaveSpeedNanoBanana2(
   prompt: string,
   imageInput: string[] | undefined,
-  aspectRatio: string
+  aspectRatio: string,
+  resolutionOverride?: string
 ): Promise<WavespeedNanoGenerationResult> {
   const t0 = Date.now();
   const ar = wavespeedNanoAspectRatio(aspectRatio);
@@ -507,10 +538,10 @@ export async function generateWithWaveSpeedNanoBanana2(
     pathRel = wsEditModelPath();
     body = {
       images: imageUrls.slice(0, 14),
-      ...commonNanoBody(prompt, ar),
+      ...commonNanoBody(prompt, ar, resolutionOverride),
     };
     console.log(
-      `🍌 [WaveSpeed] Edit (${pathRel}), refs=${imageUrls.length}, aspect_ratio=${ar}`
+      `🍌 [WaveSpeed] Edit (${pathRel}), refs=${imageUrls.length}, aspect_ratio=${ar}, resolution=${body.resolution}`
     );
   } else {
     if (hasReferenceInput) {
@@ -519,16 +550,19 @@ export async function generateWithWaveSpeedNanoBanana2(
       );
     }
     pathRel = wsTextModelPath();
-    body = commonNanoBody(prompt, ar);
-    console.log(`🍌 [WaveSpeed] Text-to-image (${pathRel}), aspect_ratio=${ar}`);
+    body = commonNanoBody(prompt, ar, resolutionOverride);
+    console.log(
+      `🍌 [WaveSpeed] Text-to-image (${pathRel}), aspect_ratio=${ar}, resolution=${body.resolution}`
+    );
   }
 
   const { taskId, pollUrlHint, immediateUrl } = await submitWsPrediction(pathRel, body);
   console.log(`⏱️ [WaveSpeed] submit/handshake за ${Date.now() - t0} ms`);
 
-  const imageUrl = immediateUrl
+  const output = immediateUrl
     ? immediateUrl
     : await pollUntilImageUrl(taskId, pollUrlHint);
+  const imageUrl = await materializeWaveSpeedOutput(output);
 
   console.log(`⏱️ [WaveSpeed] всего до URL: ${Date.now() - t0} ms`);
 

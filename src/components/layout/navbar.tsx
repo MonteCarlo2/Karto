@@ -185,6 +185,8 @@ export function Navbar() {
           | {
               flowsLimit?: number;
               flowsUsed?: number;
+              demoFlowsLimit?: number;
+              demoFlowsUsed?: number;
               creativeLimit?: number;
               creativeUsed?: number;
               videoTokenBalance?: number;
@@ -192,6 +194,12 @@ export function Navbar() {
           | null
           | undefined;
         const labels: string[] = [];
+        if (s && s.demoFlowsLimit && s.demoFlowsLimit > 0) {
+          const left = Math.max(0, s.demoFlowsLimit - (s.demoFlowsUsed ?? 0));
+          if (left > 0) {
+            labels.push(left === 1 ? "1 демо-поток" : `${left} демо-потоков`);
+          }
+        }
         if (s && s.flowsLimit && s.flowsLimit > 0) {
           const left = Math.max(0, s.flowsLimit - (s.flowsUsed ?? 0));
           labels.push(left === 1 ? "1 поток" : `${left} потоков`);

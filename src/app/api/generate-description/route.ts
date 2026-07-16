@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateProductDescription } from "@/lib/services/openrouter-description";
+import { createServerClient } from "@/lib/supabase/server";
+import {
+  assertDemoDescriptionGenAllowed,
+  consumeDemoDescriptionGeneration,
+  isDemoProductSession,
+} from "@/lib/demo-flow-server";
+import {
+  DEMO_FLOW_DESCRIPTION_STYLE_NAMES,
+  DEMO_FLOW_DESCRIPTION_STYLES,
+} from "@/lib/demo-flow";
 
 // Допускаем долгий ответ (4 параллельных запроса к OpenRouter), чтобы не обрывать по таймауту
 export const maxDuration = 120;
@@ -29,6 +39,35 @@ function messageWhenAllOpenRouterVariantsFailed(reason: unknown): {
   };
 }
 
+async function gateDemoDescriptionPost(
+  sessionId: unknown
+): Promise<{ ok: true; isDemo: boolean; sessionId?: string } | { ok: false; response: NextResponse }> {
+  if (typeof sessionId !== "string" || !sessionId.trim()) {
+    return { ok: true, isDemo: false };
+  }
+  try {
+    const supabase = createServerClient();
+    const sid = sessionId.trim();
+    const isDemo = await isDemoProductSession(supabase as any, sid);
+    if (!isDemo) return { ok: true, isDemo: false };
+
+    const gate = await assertDemoDescriptionGenAllowed(supabase as any, sid);
+    if ("error" in gate) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: gate.error, code: "DEMO_DESCRIPTION_LIMIT" },
+          { status: gate.status }
+        ),
+      };
+    }
+    return { ok: true, isDemo: true, sessionId: sid };
+  } catch (e) {
+    console.warn("[generate-description] demo gate failed:", e);
+    return { ok: true, isDemo: false };
+  }
+}
+
 /**
  * Генерация 4 вариантов описания товара через OpenRouter
  * ВАЖНО: Все операции через серверный API route для безопасности
@@ -45,7 +84,12 @@ export async function POST(request: NextRequest) {
       wants_stickers = false,
       text_length = "medium",
       mark_highlights = false,
+      session_id,
     } = body;
+
+    const quotaGate = await gateDemoDescriptionPost(session_id);
+    if (!quotaGate.ok) return quotaGate.response;
+    const isDemo = quotaGate.isDemo;
 
     const textLength =
       text_length === "shorter" || text_length === "longer" || text_length === "medium"
@@ -60,14 +104,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("🔄 Генерируем 4 варианта описания для:", product_name);
-    console.log("⚡ Запускаем все 4 запроса ПАРАЛЛЕЛЬНО через OpenRouter (без задержек!)...");
+    console.log(
+      isDemo
+        ? `🔄 Демо-поток: генерируем 2 стиля (Продающий + Структурированный) для: ${product_name}`
+        : `🔄 Генерируем 4 варианта описания для: ${product_name}`
+    );
 
-    // Генерируем 4 варианта ПАРАЛЛЕЛЬНО через OpenRouter
-    // OpenRouter поддерживает параллельные запросы без проблем с rate limiting
-    const generateVariant = async (style: number, styleName: string) => {
+    // Генерируем варианты ПАРАЛЛЕЛЬНО через OpenRouter
+    const generateVariant = async (style: number, styleName: string, total: number) => {
       const startTime = Date.now();
-      console.log(`🔄 [${style}/4] ⚡ ЗАПУСК генерации варианта "${styleName}" (параллельно с другими через OpenRouter)...`);
+      console.log(`🔄 [${style}/${total}] ⚡ ЗАПУСК генерации варианта "${styleName}"...`);
       try {
         const result = await generateProductDescription(
           product_name,
@@ -83,29 +129,32 @@ export async function POST(request: NextRequest) {
           }
         );
         const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`✅ [${style}/4] Вариант "${styleName}" успешно сгенерирован за ${duration}с (${result.length} символов)`);
+        console.log(`✅ [${style}/${total}] Вариант "${styleName}" успешно сгенерирован за ${duration}с (${result.length} символов)`);
         return result;
       } catch (error: any) {
         const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.error(`❌ [${style}/4] Ошибка генерации варианта "${styleName}" после ${duration}с:`, error?.message || error);
-        console.error(`❌ [${style}/4] Stack trace:`, error?.stack);
-        // Пробрасываем ошибку дальше, чтобы Promise.allSettled мог её обработать
+        console.error(`❌ [${style}/${total}] Ошибка генерации варианта "${styleName}" после ${duration}с:`, error?.message || error);
         throw error;
       }
     };
 
-    // Запускаем все 4 варианта ПАРАЛЛЕЛЬНО — быстрее в ~4 раза, качество то же (промпты не трогаем)
     const startTime = Date.now();
-    console.log(`⚡ Запускаем 4 запроса ПАРАЛЛЕЛЬНО через OpenRouter...`);
 
-    const descriptionTasks: Array<[1 | 2 | 3 | 4, string]> = [
-      [1, "Официальный"],
-      [2, "Продающий"],
-      [3, "Структурированный"],
-      [4, "Сбалансированный"],
-    ];
+    const descriptionTasks: Array<[1 | 2 | 3 | 4, string]> = isDemo
+      ? DEMO_FLOW_DESCRIPTION_STYLES.map((style) => [
+          style,
+          DEMO_FLOW_DESCRIPTION_STYLE_NAMES[style],
+        ])
+      : [
+          [1, "Официальный"],
+          [2, "Продающий"],
+          [3, "Структурированный"],
+          [4, "Сбалансированный"],
+        ];
     const results = await Promise.allSettled(
-      descriptionTasks.map(([style, styleName]) => generateVariant(style, styleName))
+      descriptionTasks.map(([style, styleName]) =>
+        generateVariant(style, styleName, descriptionTasks.length)
+      )
     );
     const descriptions: PromiseSettledResult<string>[] = results;
 
@@ -136,74 +185,42 @@ export async function POST(request: NextRequest) {
     }
     
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`📊 Все 4 запроса завершены за ${totalTime}с. Обрабатываем результаты...`);
+    console.log(`📊 Все ${descriptionTasks.length} запроса завершены за ${totalTime}с. Обрабатываем результаты...`);
 
-    // Обрабатываем результаты
     const processedDescriptions = descriptions.map((result, index) => {
       if (result.status === "fulfilled") {
         return result.value;
-      } else {
-        const error = result.reason;
-        console.error(`❌ Обработка ошибки для варианта ${index + 1}:`, error);
-        console.error(`❌ Детали ошибки:`, error?.message, error?.stack);
-        
-        // Возвращаем fallback описание
-        const fallbacks = [
-          `Описание товара "${product_name}". Официальный стиль с акцентом на характеристики и технические детали.`,
-          `Описание товара "${product_name}". Продающий стиль с акцентом на преимущества и выгоды для покупателя.`,
-          `Описание товара "${product_name}". Структурированный стиль с четкой организацией информации.`,
-          `Описание товара "${product_name}". Сбалансированный стиль, сочетающий все элементы описания.`,
-        ];
-        console.warn(`⚠️ Используем fallback для варианта ${index + 1}`);
-        return fallbacks[index];
       }
+      const [, styleName] = descriptionTasks[index];
+      console.warn(`⚠️ Используем fallback для варианта "${styleName}"`);
+      return `Описание товара "${product_name}". Стиль: ${styleName}.`;
     });
 
-    // Проверяем, что все описания сгенерированы
-    const validDescriptions = processedDescriptions.filter(d => d && d.trim().length > 0);
-    console.log(`📊 Сгенерировано ${validDescriptions.length} из 4 описаний`);
-    
-    if (validDescriptions.length < 4) {
-      console.warn(`⚠️ Не все описания сгенерированы! Получено: ${validDescriptions.length}, ожидалось: 4`);
-      processedDescriptions.forEach((desc, index) => {
-        if (!desc || desc.trim().length === 0) {
-          console.error(`❌ Описание ${index + 1} пустое или не сгенерировано`);
-        }
-      });
+    const variants = descriptionTasks.map(([styleId, styleName], index) => {
+      const text = processedDescriptions[index] || `Описание товара "${product_name}". Стиль: ${styleName}.`;
+      return {
+        id: styleId,
+        style: styleName,
+        description: text,
+        preview: text.substring(0, 150) + (text.length > 150 ? "..." : ""),
+      };
+    });
+
+    console.log(`✅ Готово вариантов описания: ${variants.length}`);
+
+    if (isDemo && quotaGate.sessionId) {
+      try {
+        const supabase = createServerClient();
+        await consumeDemoDescriptionGeneration(supabase as any, quotaGate.sessionId);
+      } catch (e) {
+        console.warn("[generate-description] demo consume after success:", e);
+      }
     }
-
-    const variants = [
-      {
-        id: 1,
-        style: "Официальный",
-        description: processedDescriptions[0] || `Описание товара "${product_name}". Официальный стиль с акцентом на характеристики и технические детали.`,
-        preview: (processedDescriptions[0] || "").substring(0, 150) + (processedDescriptions[0]?.length > 150 ? "..." : ""),
-      },
-      {
-        id: 2,
-        style: "Продающий",
-        description: processedDescriptions[1] || `Описание товара "${product_name}". Продающий стиль с акцентом на преимущества и выгоды для покупателя.`,
-        preview: (processedDescriptions[1] || "").substring(0, 150) + (processedDescriptions[1]?.length > 150 ? "..." : ""),
-      },
-      {
-        id: 3,
-        style: "Структурированный",
-        description: processedDescriptions[2] || `Описание товара "${product_name}". Структурированный стиль с четкой организацией информации.`,
-        preview: (processedDescriptions[2] || "").substring(0, 150) + (processedDescriptions[2]?.length > 150 ? "..." : ""),
-      },
-      {
-        id: 4,
-        style: "Сбалансированный",
-        description: processedDescriptions[3] || `Описание товара "${product_name}". Сбалансированный стиль, сочетающий все элементы описания.`,
-        preview: (processedDescriptions[3] || "").substring(0, 150) + (processedDescriptions[3]?.length > 150 ? "..." : ""),
-      },
-    ];
-
-    console.log("✅ Все 4 варианта описания готовы (включая fallback при необходимости)");
 
     return NextResponse.json({
       success: true,
       variants,
+      is_demo: isDemo,
     });
   } catch (error: any) {
     console.error("Ошибка API:", error);
@@ -236,7 +253,26 @@ export async function PUT(request: NextRequest) {
       selected_style = 4, // Стиль выбранного варианта
       text_length = "medium",
       mark_highlights = false,
+      session_id,
     } = body;
+
+    if (typeof session_id === "string" && session_id.trim()) {
+      try {
+        const supabase = createServerClient();
+        const editGate = await assertDemoDescriptionGenAllowed(
+          supabase as any,
+          session_id.trim()
+        );
+        if ("error" in editGate) {
+          return NextResponse.json(
+            { error: editGate.error, code: "DEMO_DESCRIPTION_LIMIT" },
+            { status: editGate.status }
+          );
+        }
+      } catch (e) {
+        console.warn("[generate-description] PUT demo gate:", e);
+      }
+    }
 
     const textLength =
       text_length === "shorter" || text_length === "longer" || text_length === "medium"
@@ -281,6 +317,23 @@ export async function PUT(request: NextRequest) {
       console.error("Ошибка перегенерации:", e);
       return current_description; // Возвращаем исходное при ошибке
     });
+
+    if (
+      typeof session_id === "string" &&
+      session_id.trim() &&
+      improvedDescription &&
+      improvedDescription !== current_description
+    ) {
+      try {
+        const supabase = createServerClient();
+        const isDemo = await isDemoProductSession(supabase as any, session_id.trim());
+        if (isDemo) {
+          await consumeDemoDescriptionGeneration(supabase as any, session_id.trim());
+        }
+      } catch (e) {
+        console.warn("[generate-description] PUT demo consume:", e);
+      }
+    }
 
     return NextResponse.json({
       success: true,

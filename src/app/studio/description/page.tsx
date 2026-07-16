@@ -38,6 +38,8 @@ import {
 } from "@/lib/utils/marketplace-formatter";
 import { FlowProductDescription } from "@/components/studio/ProductDescriptionDisplay";
 import { resolveFlowPhoto, resolveFlowProductName } from "@/lib/flow/flow-photo-cache";
+import { DemoFlowBadge } from "@/components/studio/DemoFlowBadge";
+import { useDemoFlowSession } from "@/lib/hooks/use-demo-flow-session";
 
 // Статичный эффект рельефной бумаги (копируем из understanding)
 function CanvasTexture({ patternAlpha = 12 }: { patternAlpha?: number }) {
@@ -173,6 +175,7 @@ export default function DescriptionPage() {
   const [copiedVariantId, setCopiedVariantId] = useState<number | null>(null);
   const [stopWordIssues, setStopWordIssues] = useState<Array<{ word: string; category: string; index: number }>>([]);
   const [isNavigatingToVisual, setIsNavigatingToVisual] = useState(false);
+  const demoSession = useDemoFlowSession(sessionId);
   
   // Скрываем navbar и footer на этой странице
   useEffect(() => {
@@ -263,6 +266,11 @@ export default function DescriptionPage() {
             if (Array.isArray(desc.generated_descriptions) && desc.generated_descriptions.length > 0) {
               setVariants(desc.generated_descriptions);
               setIsStarted(true);
+              const firstId = desc.generated_descriptions[0]?.id;
+              if (typeof firstId === "number") {
+                setSelectedVariantId(firstId);
+                setExpandedVariantId(firstId);
+              }
             }
 
             if (desc.final_description) {
@@ -373,6 +381,7 @@ export default function DescriptionPage() {
           user_preferences: userPreferences.trim(),
           selected_blocks: selectedBlocks,
           wants_stickers: wantsStickers,
+          session_id: sessionId,
         }),
       });
       
@@ -392,6 +401,12 @@ export default function DescriptionPage() {
       if (data.success && data.variants && Array.isArray(data.variants) && data.variants.length > 0) {
         setVariants(data.variants);
         setIsStarted(true);
+        const firstId = data.variants[0]?.id;
+        if (typeof firstId === "number") {
+          setSelectedVariantId(firstId);
+          setExpandedVariantId(firstId);
+        }
+        void demoSession.refresh();
         
         // Сохраняем в Supabase
         if (sessionId) {
@@ -472,6 +487,7 @@ export default function DescriptionPage() {
           edit_instructions: editInstructions.trim(),
           wants_stickers: wantsStickers,
           selected_style: selectedVariant.id, // Передаем стиль выбранного варианта
+          session_id: sessionId,
         }),
       });
       
@@ -580,7 +596,7 @@ export default function DescriptionPage() {
   return (
     <div className="relative min-h-screen flex flex-col">
       <CanvasTexture />
-      <StageMenu currentStage="description" />
+      <StageMenu currentStage="description" isDemo={demoSession.isDemo} />
 
       {/* Карточка с информацией о товаре - справа под этапами (только на первом экране) */}
       {!isStarted && productName && (
@@ -770,6 +786,15 @@ export default function DescriptionPage() {
             </div>
           </div>
         </div>
+
+        {demoSession.isDemo ? (
+          <div className="mb-4 max-w-3xl mx-auto flex flex-wrap items-center gap-x-2 gap-y-1">
+            <DemoFlowBadge />
+            <span className="text-xs text-neutral-500">
+              2 стиля · 1 перегенерация. В полном Потоке — 4 стиля и безлимитные правки.
+            </span>
+          </div>
+        ) : null}
 
         {!isStarted && !isRestoring ? (
           /* Стартовая страница */
@@ -1095,7 +1120,8 @@ export default function DescriptionPage() {
                   );
                 })()}
                 
-                {/* Пожелания (редактируемые) */}
+                {/* Пожелания — только если есть */}
+                {userPreferences.trim() ? (
                 <div className="mb-6">
                   <label className="block text-sm font-medium mb-2" style={{ color: "#666666" }}>
                     Пожелания
@@ -1112,8 +1138,10 @@ export default function DescriptionPage() {
                     }}
                   />
                 </div>
+                ) : null}
 
-                {/* Выбранные блоки (редактируемые) */}
+                {/* Выбранные блоки — только если есть */}
+                {selectedBlocks.length > 0 ? (
                 <div className="mb-6">
                   <label className="block text-sm font-medium mb-2" style={{ color: "#666666" }}>
                     Выбранные блоки
@@ -1134,6 +1162,7 @@ export default function DescriptionPage() {
                     ))}
                   </div>
                 </div>
+                ) : null}
 
                 {/* Кнопка перегенерации (outline) */}
                 <button
@@ -1262,7 +1291,12 @@ export default function DescriptionPage() {
                         {variants.map((variant) => {
                           const config = STYLE_CONFIG[variant.id as keyof typeof STYLE_CONFIG];
                           const isSelected = selectedVariantId === variant.id;
-                          const isActive = expandedVariantId === variant.id || (expandedVariantId === null && variant.id === 1);
+                          const fallbackId = variants[0]?.id;
+                          const isActive =
+                            expandedVariantId === variant.id ||
+                            (expandedVariantId == null &&
+                              (selectedVariantId === variant.id ||
+                                (selectedVariantId == null && variant.id === fallbackId)));
                           
                           return (
                             <button
@@ -1309,8 +1343,12 @@ export default function DescriptionPage() {
                       
                       {/* Большая кнопка Копировать */}
                       {(() => {
-                        const activeVariant = variants.find(v => 
-                          expandedVariantId === v.id || (expandedVariantId === null && v.id === 1)
+                        const fallbackId = variants[0]?.id;
+                        const activeVariant = variants.find(v =>
+                          expandedVariantId === v.id ||
+                          (expandedVariantId == null &&
+                            (selectedVariantId === v.id ||
+                              (selectedVariantId == null && v.id === fallbackId)))
                         );
                         if (!activeVariant) return null;
                         
@@ -1371,7 +1409,12 @@ export default function DescriptionPage() {
                     {/* Область с текстом описания - единый белый лист */}
                     <div className="flex-1 overflow-y-auto px-6 py-6 bg-white rounded-2xl shadow-lg border border-gray-200">
                       {variants.map((variant) => {
-                        const isActive = expandedVariantId === variant.id || (expandedVariantId === null && variant.id === 1);
+                        const fallbackId = variants[0]?.id;
+                          const isActive =
+                            expandedVariantId === variant.id ||
+                            (expandedVariantId == null &&
+                              (selectedVariantId === variant.id ||
+                                (selectedVariantId == null && variant.id === fallbackId)));
                         if (!isActive) return null;
 
                         const raw = variant.description;
@@ -1473,7 +1516,7 @@ export default function DescriptionPage() {
                                     }}
                                   >
                                     <Check className="w-5 h-5" />
-                                    Принять
+                                    {isNavigatingToVisual ? "Переход…" : "Продолжить →"}
                                   </button>
                                 </div>
                               </div>

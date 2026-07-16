@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateFlowImage, isFlowImageProviderConfigured } from "@/lib/services/flow-image-generation";
 import { KieAiContentFilteredError, kieErrorToClient } from "@/lib/services/kie-ai-errors";
-import { 
-  downloadImage, 
-  getPublicUrl,
-} from "@/lib/services/image-processing";
 import { createServerClient } from "@/lib/supabase/server";
 import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
 import { ensureWaveSpeedReferenceUrlWithFallback } from "@/lib/flow/resolve-flow-reference";
-import { ensureFlowCardDisplayUrl } from "@/lib/flow/cache-flow-card-image";
 import {
   runSlideGenerationRace,
   SLIDE_GENERATION_CHECKPOINT_MS,
   SLIDE_GENERATION_MAX_WAIT_MS,
 } from "@/lib/flow/slide-generation-race";
+import { getSessionImageResolution } from "@/lib/demo-flow-server";
 
 export const maxDuration = 600;
 
@@ -72,7 +68,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Лимит генераций в Потоке исчерпан (0 из 12).",
+          error: `Лимит генераций в Потоке исчерпан (0 из ${quotaBefore.limit}).`,
           code: "VISUAL_LIMIT_REACHED",
           generationUsed: quotaBefore.used,
           generationRemaining: quotaBefore.remaining,
@@ -81,6 +77,7 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
+    const imageResolution = await getSessionImageResolution(supabase as any, sessionId);
 
     const useEnvironment = Boolean(environmentImageUrl);
     const rawProductSource = useEnvironment
@@ -287,7 +284,8 @@ ${scenarioPrompt}${environmentReference}${userDescription}
         const result = await generateFlowImage(
           finalPrompt,
           imagesForApi,
-          finalAspectRatio
+          finalAspectRatio,
+          { resolution: imageResolution }
         );
         if (!result.referenceUsed) {
           return {
@@ -296,10 +294,8 @@ ${scenarioPrompt}${environmentReference}${userDescription}
               "WaveSpeed не принял референс (text-to-image вместо edit). Проверьте фото товара.",
           };
         }
-        const generatedPath = await downloadImage(result.imageUrl);
-        const displayUrl = await ensureFlowCardDisplayUrl(getPublicUrl(generatedPath));
-        console.log(`✅ [slide] ${attemptLabel} готово`);
-        return { url: displayUrl };
+        console.log(`✅ [slide] ${attemptLabel} готово (CDN)`);
+        return { url: result.imageUrl };
       } catch (error: unknown) {
         if (error instanceof KieAiContentFilteredError) throw error;
         const msg = error instanceof Error ? error.message : String(error);

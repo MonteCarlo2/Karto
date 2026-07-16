@@ -9,10 +9,12 @@ import {
 import { addVideoTokens } from "@/lib/video-tokens";
 import { sendWelcomeEmail } from "@/lib/send-welcome-email";
 import { fetchAutoReplySubscriptionInfo } from "@/lib/auto-replies-subscription-info";
+import { grantDemoFlowOnWelcome, clearDemoFlowIfHasPaid } from "@/lib/demo-flow-server";
 
 /**
  * GET: текущая подписка пользователя (по Authorization: Bearer <token>).
- * Если у пользователя ещё нет активной подписки — создаём приветственную: 3 фото в «Свободное творчество», 100 видео-токенов (RPC).
+ * Новый аккаунт: 3 фото «Свободное творчество», 100 видео-токенов, 1 демо-поток.
+ * Если есть платный Поток — демо снимается.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -74,7 +76,7 @@ export async function GET(request: NextRequest) {
 
       if (insertError) {
         if (insertError.code === "23505") {
-          row = await getSubscriptionByUserId(supabase as any, user.id) ?? null;
+          row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? null;
         } else {
           console.error("❌ [SUBSCRIPTION] Ошибка создания приветственной подписки:", insertError);
           return NextResponse.json({
@@ -94,12 +96,22 @@ export async function GET(request: NextRequest) {
             videoGrantErr
           );
         }
-        row = await getSubscriptionByUserId(supabase as any, user.id) ?? null;
+        row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? null;
         sendWelcomeEmail({
           to: user.email ?? "",
           name: (user.user_metadata?.name as string) || undefined,
         }).catch(() => {});
       }
+    }
+
+    // Демо получает только аккаунт с маркером новой регистрации и только один раз.
+    await grantDemoFlowOnWelcome(supabase, user.id);
+    row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? row;
+
+    // Платный Поток заменяет демо (демо больше не показываем и не списываем)
+    if (row) {
+      await clearDemoFlowIfHasPaid(supabase, user.id);
+      row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? row;
     }
 
     if (!row) {

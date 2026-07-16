@@ -15,6 +15,11 @@ import {
 
 export type FlowImageGenerationResult = { imageUrl: string; referenceUsed: boolean };
 
+export type FlowImageGenerationOptions = {
+  /** WaveSpeed / Nano: "2k" | "4k" и т.п. Демо-поток → 2k */
+  resolution?: string;
+};
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -42,32 +47,36 @@ async function generateWithEvolinkFlow(
 async function generateWithKieFlow(
   prompt: string,
   imageArray: string[] | undefined,
-  aspectRatio: string
+  aspectRatio: string,
+  resolution?: string
 ): Promise<FlowImageGenerationResult> {
-  console.log("🍌 [Flow/KIE] Генерация nano-banana-2");
-  return generateWithKieAi(prompt, imageArray, aspectRatio, "png", "4K");
+  const kieRes = resolution?.toLowerCase() === "2k" ? "2K" : "4K";
+  console.log(`🍌 [Flow/KIE] Генерация nano-banana-2 (${kieRes})`);
+  return generateWithKieAi(prompt, imageArray, aspectRatio, "png", kieRes);
 }
 
 async function generateWithWaveSpeedFlow(
   prompt: string,
   imageArray: string[] | undefined,
-  aspectRatio: string
+  aspectRatio: string,
+  resolution?: string
 ): Promise<FlowImageGenerationResult> {
-  return generateWithWaveSpeedNanoBanana2(prompt, imageArray, aspectRatio);
+  return generateWithWaveSpeedNanoBanana2(prompt, imageArray, aspectRatio, resolution);
 }
 
 async function runProvider(
   provider: FlowImageProvider,
   prompt: string,
   imageArray: string[] | undefined,
-  aspectRatio: string
+  aspectRatio: string,
+  resolution?: string
 ): Promise<FlowImageGenerationResult> {
   if (provider === "kie") {
-    return generateWithKieFlow(prompt, imageArray, aspectRatio);
+    return generateWithKieFlow(prompt, imageArray, aspectRatio, resolution);
   }
   if (provider === "wavespeed") {
     try {
-      return await generateWithWaveSpeedFlow(prompt, imageArray, aspectRatio);
+      return await generateWithWaveSpeedFlow(prompt, imageArray, aspectRatio, resolution);
     } catch (error: unknown) {
       if (shouldFallbackWaveSpeedToEvolink(error)) {
         console.warn("⚠️ [Flow/WaveSpeed] 401 → EvoLink");
@@ -85,7 +94,8 @@ async function runProvider(
 export async function generateFlowImage(
   prompt: string,
   imageInput?: string | string[],
-  aspectRatio: string = "3:4"
+  aspectRatio: string = "3:4",
+  options?: FlowImageGenerationOptions
 ): Promise<FlowImageGenerationResult> {
   if (!isFlowImageProviderConfigured()) {
     throw new Error(
@@ -95,6 +105,7 @@ export async function generateFlowImage(
 
   const imageArray = normalizeImageInput(imageInput);
   const provider = getFlowImageProvider();
+  const resolution = options?.resolution;
   const maxAttempts = parseInt(
     process.env.FLOW_GENERATION_ATTEMPTS ??
       process.env.KIE_GENERATION_ATTEMPTS ??
@@ -108,13 +119,15 @@ export async function generateFlowImage(
     10
   );
 
-  console.log(`🎨 [Flow/Image] provider=${provider}, aspect=${aspectRatio}`);
+  console.log(
+    `🎨 [Flow/Image] provider=${provider}, aspect=${aspectRatio}, resolution=${resolution ?? "default"}`
+  );
 
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      return await runProvider(provider, prompt, imageArray, aspectRatio);
+      return await runProvider(provider, prompt, imageArray, aspectRatio, resolution);
     } catch (error: unknown) {
       lastError = error;
       const errorMessage = error instanceof Error ? error.message : String(error);
