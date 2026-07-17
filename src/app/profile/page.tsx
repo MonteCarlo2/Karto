@@ -1054,7 +1054,7 @@ function ProfileContent() {
 
               <YookassaTestModeStrip />
 
-              {/* Ваши услуги: всегда три строки (в т.ч. нули), чтобы было видно, чего нет */}
+              {/* Ваши услуги: кредиты, поток, отзывы; демо — только пока доступен */}
               {user && !loading && (
                 <div className="mb-6 p-4 rounded-xl bg-[#F5F5F0] border border-[#2E5A43]/20">
                   <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
@@ -1091,14 +1091,16 @@ function ProfileContent() {
                           periodEnd={subscription.videoPeriodEnd ?? subscription.creativePeriodEnd}
                           unit="кред."
                         />
-                        <ProfileServiceRow
-                          label="Демо-поток"
-                          remaining={subscriptionServiceRemaining(subscription, "demo_flow")}
-                          periodStart={subscription.demoFlowPeriodStart}
-                          periodEnd={subscription.demoFlowPeriodEnd}
-                          unit="демо-поток."
-                          detail={DEMO_FLOW_SHORT_DETAIL_RU}
-                        />
+                        {subscriptionServiceRemaining(subscription, "demo_flow") > 0 ? (
+                          <ProfileServiceRow
+                            label="Демо-поток"
+                            remaining={subscriptionServiceRemaining(subscription, "demo_flow")}
+                            periodStart={subscription.demoFlowPeriodStart}
+                            periodEnd={subscription.demoFlowPeriodEnd}
+                            unit="демо-поток."
+                            detail={DEMO_FLOW_SHORT_DETAIL_RU}
+                          />
+                        ) : null}
                         <ProfileServiceRow
                           label="Поток"
                           remaining={subscriptionServiceRemaining(subscription, "flow")}
