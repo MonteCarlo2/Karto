@@ -3,6 +3,7 @@ import {
   getNormalizedOpenRouterApiKey,
   getOpenRouterRequestHeaders,
 } from "@/lib/openrouter-headers";
+import { openRouterFetch } from "@/lib/openrouter-fetch";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -42,7 +43,7 @@ ${rawDescription}
 
 Пожалуйста, перепиши это описание, сделав его профессиональным и красивым. Верни ТОЛЬКО готовый текст, без каких-либо вводных слов или кавычек.`;
 
-  const response = await fetch(OPENROUTER_API_URL, {
+  const response = await openRouterFetch(OPENROUTER_API_URL, {
     method: "POST",
     headers: getOpenRouterRequestHeaders("Karto brand description formatter"),
     body: JSON.stringify({

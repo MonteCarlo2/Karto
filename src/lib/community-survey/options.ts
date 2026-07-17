@@ -15,8 +15,10 @@ import {
  */
 export const COMMUNITY_SURVEY_VERSION = "2026-04-20" as const;
 
-/** Бонус за участие в голосовании: столько генераций «Свободное творчество» начисляется один раз (см. API). */
-export const COMMUNITY_SURVEY_REWARD_GENERATIONS = 3 as const;
+/** Бонус за участие в голосовании: столько кредитов начисляется один раз (см. API). */
+export const COMMUNITY_SURVEY_REWARD_CREDITS = 300 as const;
+/** @deprecated */
+export const COMMUNITY_SURVEY_REWARD_GENERATIONS = 0 as const;
 
 /** Ответ по одной функции в режиме карточек. */
 export type FeatureSwipeVote = "very" | "need" | "later";

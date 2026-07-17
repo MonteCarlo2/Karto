@@ -64,65 +64,37 @@ ON CONFLICT (user_id, plan_type) DO UPDATE SET
 
 ---
 
-## 3. Свободное творчество (фото): много генераций (по желанию)
+## 3. Кредиты (Свободное творчество: фото + видео)
 
-Тарифы на сайте: **10 / 30 / 100**. Для «полного доступа» часто ставят **100** и обнуляют использование:
+Единый кошелёк: **`plan_type = credits`**. Поле `plan_volume` = остаток кредитов.
 
-```sql
-INSERT INTO public.user_subscriptions (
-  user_id,
-  plan_type,
-  plan_volume,
-  period_start,
-  flows_used,
-  creative_used,
-  video_tokens_spent,
-  video_tokens_lifetime_purchased
-)
-VALUES (
-  '<USER_UUID>'::uuid,
-  'creative',
-  100,
-  NOW(),
-  0,
-  0,
-  0,
-  0
-)
-ON CONFLICT (user_id, plan_type) DO UPDATE SET
-  plan_volume = EXCLUDED.plan_volume,
-  creative_used = 0,
-  period_start = NOW(),
-  updated_at = NOW();
-```
-
----
-
-## 4. Видео-токены
-
-**Надёжно:** вызвать штатную функцию начисления (как после оплаты пакета). Она **прибавляет** токены к текущему остатку и продлевает 30-дневный период для видео.
-
-Пример: **+2500** токенов:
+**Надёжно:** штатная функция начисления (как после оплаты):
 
 ```sql
-SELECT public.add_user_video_tokens('<USER_UUID>'::uuid, 2500);
+SELECT public.add_user_video_tokens('<USER_UUID>'::uuid, 2000);
 ```
 
-Повторный вызов с тем же числом снова **добавит** столько же. Если нужно выставить остаток «ровно N» без арифметики в голове — смотри строку `video_tokens` в Table Editor и вычисли сумму, либо сделай одноразовый `UPDATE` (ниже).
-
-**Точное значение вручную** (осторожно, не перепутай с `video_tokens_spent` / lifetime):
+**Точное значение вручную:**
 
 ```sql
 UPDATE public.user_subscriptions
 SET
-  plan_volume = 2500,
-  video_tokens_lifetime_purchased = GREATEST(video_tokens_lifetime_purchased, 2500),
+  plan_volume = 2000,
+  video_tokens_lifetime_purchased = GREATEST(COALESCE(video_tokens_lifetime_purchased, 0), 2000),
   period_start = NOW(),
   updated_at = NOW()
-WHERE user_id = '<USER_UUID>'::uuid AND plan_type = 'video_tokens';
+WHERE user_id = '<USER_UUID>'::uuid AND plan_type = 'credits';
 ```
 
-Если строки ещё нет — лучше один раз вызвать `add_user_video_tokens(uuid, 2500)` вместо голого `UPDATE`.
+Если строки нет — вызови `add_user_video_tokens(uuid, 2000)`.
+
+> Legacy: строки `plan_type = 'creative'` или `video_tokens` — устарели. После миграции `20260717_user_subscriptions_credits_plan_type.sql` используй только **`credits`**.
+
+---
+
+## 4. (устарело) creative / video_tokens
+
+Не создавай новые строки `creative` или `video_tokens`. Для фото и видео в Мастерской — только **`credits`** (раздел 3).
 
 ---
 

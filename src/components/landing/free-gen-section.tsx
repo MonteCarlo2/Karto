@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { KARTO_CREATIVE_MODE, KARTO_CREATIVE_VALUE_PROP } from "@/lib/karto-modes"
 import { Sparkles, Wand2 } from "lucide-react"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
@@ -87,23 +88,23 @@ export function FreeGenSection() {
             className="text-4xl font-bold leading-[1.1] tracking-tight text-foreground md:text-5xl lg:text-7xl"
             style={{ fontFamily: "var(--font-serif)" }}
           >
-            Свободное{" "}
-            <span className="text-[#84CC16]">творчество.</span>
+            <span className="text-[#84CC16]">{KARTO_CREATIVE_MODE.title}.</span>
           </h2>
 
-          <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-muted-foreground md:text-xl">
-            Пространство для чистого творчества. Генерируйте любые{" "}
-            <span className="font-extrabold tracking-tight text-[#84CC16]">
-              ИЗОБРАЖЕНИЯ
-            </span>{" "}
-            и{" "}
+          <p className="mx-auto mt-4 max-w-xl text-base font-medium text-neutral-700 md:text-lg">
+            {KARTO_CREATIVE_MODE.tagline}
+          </p>
+
+          <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted-foreground md:text-xl">
+            {KARTO_CREATIVE_VALUE_PROP}. Ищите вдохновение и создавайте уникальный стиль — в{" "}
+            <span className="font-extrabold tracking-tight text-[#84CC16]">ИЗОБРАЖЕНИЯХ</span> и{" "}
             <span className="font-extrabold tracking-tight text-[#84CC16] inline-flex items-baseline gap-0">
               ВИДЕО
               <sup className="ml-px translate-y-[-0.02em] text-[0.55em] font-bold leading-none text-[#84CC16]">
                 *
               </sup>
             </span>
-            , ищите вдохновение и создавайте уникальный стиль.
+            .
           </p>
 
           <div className="mt-8 md:mt-10">
@@ -113,7 +114,7 @@ export function FreeGenSection() {
               className="h-14 rounded-xl bg-[#1F4E3D] px-10 text-lg shadow-xl shadow-[#1F4E3D]/20 hover:bg-[#16382c] transition-all hover:scale-105"
             >
               <Link href="/studio/free">
-                Начать творить <Wand2 className="ml-2 h-5 w-5" />
+                Открыть {KARTO_CREATIVE_MODE.title} <Wand2 className="ml-2 h-5 w-5" />
               </Link>
             </Button>
           </div>
@@ -130,7 +131,7 @@ export function FreeGenSection() {
             href="/studio/free"
             className="font-medium text-[#1F4E3D] underline decoration-[#1F4E3D]/30 underline-offset-2 hover:decoration-[#1F4E3D]"
           >
-            Свободное творчество
+            {KARTO_CREATIVE_MODE.title}
           </Link>
           .
         </p>

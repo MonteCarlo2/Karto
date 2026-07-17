@@ -3,6 +3,7 @@ import {
   getNormalizedOpenRouterApiKey,
   getOpenRouterRequestHeaders,
 } from "@/lib/openrouter-headers";
+import { openRouterFetch } from "@/lib/openrouter-fetch";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -251,13 +252,13 @@ ${rawSonarText.slice(0, 14_000)}
   };
 
   try {
-    let response = await fetch(OPENROUTER_API_URL, {
+    let response = await openRouterFetch(OPENROUTER_API_URL, {
       method: "POST",
       headers: getOpenRouterRequestHeaders("KARTO - Price JSON Repair"),
       body: JSON.stringify({ ...baseBody, response_format: { type: "json_object" } }),
     });
     if (!response.ok) {
-      response = await fetch(OPENROUTER_API_URL, {
+      response = await openRouterFetch(OPENROUTER_API_URL, {
         method: "POST",
         headers: getOpenRouterRequestHeaders("KARTO - Price JSON Repair"),
         body: JSON.stringify(baseBody),
@@ -548,7 +549,7 @@ export async function analyzePriceWithPerplexity(params: {
     ],
   };
 
-  const response = await fetch(OPENROUTER_API_URL, {
+  const response = await openRouterFetch(OPENROUTER_API_URL, {
     method: "POST",
     headers: getOpenRouterRequestHeaders("KARTO - Price Strategy"),
     body: JSON.stringify(body),

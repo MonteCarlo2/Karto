@@ -2,13 +2,8 @@ import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
-import {
-  FLOW_VOLUMES,
-  CREATIVE_VOLUMES,
-  FLOW_PRICES,
-  CREATIVE_PRICES,
-} from "@/lib/subscription";
-import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
+import { FLOW_VOLUMES, FLOW_PRICES } from "@/lib/subscription";
+import { CREDIT_PACKAGES } from "@/lib/credits-pricing";
 import {
   AUTO_REPLY_PACKAGES,
   formatAutoReplyVolume,
@@ -20,10 +15,21 @@ const YOOKASSA_API = "https://api.yookassa.ru/v3/payments";
 /** ЮKassa требует ключ идемпотентности не длиннее допустимого (иначе "Idempotence key is too long"). */
 const IDEMPOTENCE_KEY_MAX_LENGTH = 36;
 
+type CheckoutPaymentKind = "flow" | "credits" | "auto_replies";
+
+function resolvePaymentKind(rawKind: string, mode: "0" | "1"): CheckoutPaymentKind {
+  if (rawKind === "auto_replies") return "auto_replies";
+  if (rawKind === "flow") return "flow";
+  if (rawKind === "credits" || rawKind === "creative" || rawKind === "video_tokens") {
+    return "credits";
+  }
+  return mode === "1" ? "credits" : "flow";
+}
+
 /**
  * POST: создание платежа в ЮKassa. Возвращает confirmation_url для редиректа.
- * Body: { mode?: "0"|"1", tariffIndex?: number, paymentKind?: "flow"|"creative"|"video_tokens" }
- * paymentKind приоритетнее mode; video_tokens — пакеты видео-кредитов (только видео).
+ * Body: { mode?: "0"|"1", tariffIndex?: number, paymentKind?: "flow"|"credits"|"creative"|"video_tokens" }
+ * paymentKind приоритетнее mode; credits — пакеты единых кредитов (creative/video_tokens — алиасы).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -86,22 +92,11 @@ export async function POST(request: NextRequest) {
 
     const mode = body?.mode === "1" ? "1" : "0";
     const rawKind = String(body?.paymentKind ?? "").trim();
-    const paymentKind =
-      rawKind === "auto_replies"
-        ? "auto_replies"
-        : rawKind === "video_tokens"
-          ? "video_tokens"
-          : rawKind === "creative"
-            ? "creative"
-            : rawKind === "flow"
-              ? "flow"
-              : mode === "1"
-                ? "creative"
-                : "flow";
+    const paymentKind = resolvePaymentKind(rawKind, mode);
 
-    const tariffIndexCreativeOrFlow = Math.min(2, Math.max(0, Number(body?.tariffIndex) || 0));
-    const tariffIndexVideo = Math.min(
-      VIDEO_TOKEN_PACKAGES.length - 1,
+    const tariffIndexFlow = Math.min(2, Math.max(0, Number(body?.tariffIndex) || 0));
+    const tariffIndexCredits = Math.min(
+      CREDIT_PACKAGES.length - 1,
       Math.max(0, Number(body?.tariffIndex) || 0)
     );
     const tariffIndexAutoReplies = Math.min(
@@ -113,26 +108,21 @@ export async function POST(request: NextRequest) {
     let description: string;
     let metadataTariffIndex: number;
 
-    if (paymentKind === "video_tokens") {
-      const pack = VIDEO_TOKEN_PACKAGES[tariffIndexVideo];
+    if (paymentKind === "credits") {
+      const pack = CREDIT_PACKAGES[tariffIndexCredits];
       amountRub = pack.priceRub;
-      description = `KARTO: Видео-кредиты — ${pack.name} (${pack.tokens} ток.)`;
-      metadataTariffIndex = tariffIndexVideo;
+      description = `KARTO: Креатив — ${pack.credits} кредитов`;
+      metadataTariffIndex = tariffIndexCredits;
     } else if (paymentKind === "auto_replies") {
       const pack = AUTO_REPLY_PACKAGES[tariffIndexAutoReplies];
       amountRub = pack.priceRub;
       description = `KARTO: Автоответы — ${formatAutoReplyVolume(pack.replies)}`;
       metadataTariffIndex = tariffIndexAutoReplies;
-    } else if (paymentKind === "flow") {
-      amountRub = FLOW_PRICES[tariffIndexCreativeOrFlow];
-      const planVolume = FLOW_VOLUMES[tariffIndexCreativeOrFlow];
-      description = `KARTO: Поток — ${planVolume} ${planVolume === 1 ? "поток" : planVolume < 5 ? "потока" : "потоков"}`;
-      metadataTariffIndex = tariffIndexCreativeOrFlow;
     } else {
-      amountRub = CREATIVE_PRICES[tariffIndexCreativeOrFlow];
-      const planVolume = CREATIVE_VOLUMES[tariffIndexCreativeOrFlow];
-      description = `KARTO: Свободное творчество — ${planVolume} генераций`;
-      metadataTariffIndex = tariffIndexCreativeOrFlow;
+      amountRub = FLOW_PRICES[tariffIndexFlow];
+      const planVolume = FLOW_VOLUMES[tariffIndexFlow];
+      description = `KARTO: Поток — ${planVolume} ${planVolume === 1 ? "поток" : planVolume < 5 ? "потока" : "потоков"}`;
+      metadataTariffIndex = tariffIndexFlow;
     }
 
     const rawPromo = typeof body?.promoCode === "string" ? body.promoCode.trim() : "";
@@ -143,11 +133,11 @@ export async function POST(request: NextRequest) {
 
     if (rawPromo) {
       const promoTariffIdx =
-        paymentKind === "video_tokens"
-          ? tariffIndexVideo
+        paymentKind === "credits"
+          ? tariffIndexCredits
           : paymentKind === "auto_replies"
             ? tariffIndexAutoReplies
-            : tariffIndexCreativeOrFlow;
+            : tariffIndexFlow;
       const promoCheck = await validatePromoForCheckout(supabase, {
         userId: user.id,
         rawCode: rawPromo,
@@ -188,7 +178,7 @@ export async function POST(request: NextRequest) {
       description,
       metadata: {
         user_id: user.id,
-        mode: paymentKind === "flow" ? "0" : paymentKind === "creative" ? "1" : "1",
+        mode: paymentKind === "flow" ? "0" : "1",
         payment_kind: paymentKind,
         tariffIndex: String(metadataTariffIndex),
         blogger_code: bloggerCode || undefined,

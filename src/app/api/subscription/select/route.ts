@@ -6,7 +6,7 @@ import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
 /**
  * POST: бета — «выбрать тариф» без оплаты.
  * Body: { mode: "0" | "1", tariffIndex: 0 | 1 | 2 }
- * mode 0 = Поток, 1 = Свободное творчество
+ * mode 0 = Поток, 1 = Креатив
  */
 export async function POST(request: NextRequest) {
   try {

@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
-import {
-  getSubscriptionByUserId,
-  FREE_WELCOME_CREATIVE_LIMIT,
-  FREE_WELCOME_VIDEO_TOKENS,
-} from "@/lib/subscription";
-import { addVideoTokens } from "@/lib/video-tokens";
+import { getSubscriptionByUserId, FREE_WELCOME_CREDITS } from "@/lib/subscription";
+import { addCredits, migrateLegacyCreativeToCredits } from "@/lib/credits";
 import { sendWelcomeEmail } from "@/lib/send-welcome-email";
 import { fetchAutoReplySubscriptionInfo } from "@/lib/auto-replies-subscription-info";
 import { grantDemoFlowOnWelcome, clearDemoFlowIfHasPaid } from "@/lib/demo-flow-server";
 
 /**
  * GET: текущая подписка пользователя (по Authorization: Bearer <token>).
- * Новый аккаунт: 3 фото «Свободное творчество», 100 видео-токенов, 1 демо-поток.
+ * Новый аккаунт: FREE_WELCOME_CREDITS в едином кошельке + 1 демо-поток.
  * Если есть платный Поток — демо снимается.
  */
 export async function GET(request: NextRequest) {
@@ -36,6 +32,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         subscription: null,
+        creditBalance: 0,
         videoTokenBalance: 0,
         videoTokensSpent: 0,
         videoTokensLifetimePurchased: 0,
@@ -65,43 +62,32 @@ export async function GET(request: NextRequest) {
     let row = await getSubscriptionByUserId(supabase as any, user.id);
 
     if (!row) {
-      const { error: insertError } = await supabase.from("user_subscriptions").insert({
-        user_id: user.id,
-        plan_type: "creative",
-        plan_volume: FREE_WELCOME_CREATIVE_LIMIT,
-        period_start: new Date().toISOString(),
-        flows_used: 0,
-        creative_used: 0,
-      });
+      const { data: existingRows } = await supabase
+        .from("user_subscriptions")
+        .select("id")
+        .eq("user_id", user.id)
+        .limit(1);
 
-      if (insertError) {
-        if (insertError.code === "23505") {
-          row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? null;
-        } else {
-          console.error("❌ [SUBSCRIPTION] Ошибка создания приветственной подписки:", insertError);
-          return NextResponse.json({
-            success: true,
-            subscription: null,
-          });
-        }
-      } else {
-        const { ok: videoOk, error: videoGrantErr } = await addVideoTokens(
+      const isNewAccount = !existingRows?.length;
+      if (isNewAccount) {
+        const { ok: creditsOk, error: creditsErr } = await addCredits(
           supabase as any,
           user.id,
-          FREE_WELCOME_VIDEO_TOKENS
+          FREE_WELCOME_CREDITS
         );
-        if (!videoOk) {
+        if (!creditsOk) {
           console.error(
-            "❌ [SUBSCRIPTION] Не удалось начислить приветственные видео-токены:",
-            videoGrantErr
+            "❌ [SUBSCRIPTION] Не удалось начислить приветственные кредиты:",
+            creditsErr
           );
+        } else {
+          sendWelcomeEmail({
+            to: user.email ?? "",
+            name: (user.user_metadata?.name as string) || undefined,
+          }).catch(() => {});
         }
-        row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? null;
-        sendWelcomeEmail({
-          to: user.email ?? "",
-          name: (user.user_metadata?.name as string) || undefined,
-        }).catch(() => {});
       }
+      row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? null;
     }
 
     // Демо получает только аккаунт с маркером новой регистрации и только один раз.
@@ -114,10 +100,15 @@ export async function GET(request: NextRequest) {
       row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? row;
     }
 
+    // Миграция остатка старых creative-генераций → единые кредиты
+    await migrateLegacyCreativeToCredits(supabase as any, user.id);
+    row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? row;
+
     if (!row) {
       return NextResponse.json({
         success: true,
         subscription: null,
+        creditBalance: 0,
         videoTokenBalance: 0,
         videoTokensSpent: 0,
         videoTokensLifetimePurchased: 0,
@@ -125,8 +116,10 @@ export async function GET(request: NextRequest) {
     }
 
     const autoReply = await fetchAutoReplySubscriptionInfo(supabase as any, user.id);
+    const creditBalance = row.videoTokenBalance;
     const subscription = {
       ...row,
+      creditBalance,
       autoReplyBalance: autoReply.balance,
       autoReplyWelcomeRemaining: autoReply.welcomeRemaining,
       autoReplyPaidRemaining: autoReply.paidRemaining,
@@ -146,7 +139,8 @@ export async function GET(request: NextRequest) {
       {
         success: true,
         subscription,
-        videoTokenBalance: row.videoTokenBalance,
+        creditBalance,
+        videoTokenBalance: creditBalance,
         videoTokensSpent: row.videoTokensSpent,
         videoTokensLifetimePurchased: row.videoTokensLifetimePurchased,
         autoReply,

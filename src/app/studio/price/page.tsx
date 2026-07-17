@@ -775,16 +775,18 @@ export default function PriceStrategyPage() {
           </div>
         )}
 
-        {/* Кнопка завершения потока */}
-        <div className="mt-10 flex justify-end">
-          <button
-            type="button"
-            onClick={() => router.push("/studio/results")}
-            className="inline-flex items-center gap-3 rounded-full bg-[#065F46] px-10 py-4 text-base font-semibold text-white shadow-lg hover:bg-[#064E3B] hover:shadow-xl transition-all"
-          >
-            <span>Завершить поток</span>
-          </button>
-        </div>
+        {/* Кнопка завершения потока — только после загрузки анализа цены */}
+        {!isLoading && analysis && (
+          <div className="mt-10 flex justify-end">
+            <button
+              type="button"
+              onClick={() => router.push("/studio/results")}
+              className="inline-flex items-center gap-3 rounded-full bg-[#065F46] px-10 py-4 text-base font-semibold text-white shadow-lg hover:bg-[#064E3B] hover:shadow-xl transition-all"
+            >
+              <span>Завершить поток</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import {
   getNormalizedOpenRouterApiKey,
   getOpenRouterRequestHeaders,
 } from "@/lib/openrouter-headers";
+import { openRouterFetch } from "@/lib/openrouter-fetch";
 import {
   resolveSuggestNamesModel,
   resolveVisionFallbackModel,
@@ -68,7 +69,7 @@ async function callOpenRouter(params: {
   const key = getNormalizedOpenRouterApiKey();
   if (!key) throw new Error("OPENROUTER_API_KEY не настроен");
 
-  const response = await fetch(OPENROUTER_API_URL, {
+  const response = await openRouterFetch(OPENROUTER_API_URL, {
     method: "POST",
     headers: getOpenRouterRequestHeaders(params.title),
     signal: AbortSignal.timeout(params.timeoutMs ?? VISION_TIMEOUT_MS),

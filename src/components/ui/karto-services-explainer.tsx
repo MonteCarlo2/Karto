@@ -5,11 +5,16 @@ import { X, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 
+import {
+  KARTO_CREATIVE_MODE,
+  KARTO_FLOW_MODE,
+} from "@/lib/karto-modes";
+
 const PRIMARY = "#1F4E3D";
 const LIME = "#84CC16";
 
 /**
- * Кнопка + модалка: чем «Поток» отличается от «Свободного творчества».
+ * Кнопка + модалка: чем «Поток» отличается от «Креатива».
  */
 export function KartoServicesExplainer({
   variant = "link",
@@ -32,7 +37,7 @@ export function KartoServicesExplainer({
         }
       >
         <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-80" strokeWidth={2} />
-        Чем Поток отличается от свободного творчества?
+        Чем {KARTO_FLOW_MODE.title} отличается от {KARTO_CREATIVE_MODE.title.toLowerCase()}а?
       </button>
 
       <AnimatePresence>
@@ -99,8 +104,8 @@ export function KartoServicesExplainer({
                     style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
                   >
                     Чем{" "}
-                    <span style={{ color: PRIMARY }}>Поток</span> отличается от{" "}
-                    <span className="text-[#3f6212]">свободного творчества</span>
+                    <span style={{ color: PRIMARY }}>{KARTO_FLOW_MODE.title}</span> отличается от{" "}
+                    <span className="text-[#3f6212]">{KARTO_CREATIVE_MODE.title.toLowerCase()}а</span>
                   </h2>
                   <div
                     className="mt-3 h-1 w-14 sm:w-20 rounded-full"
@@ -138,11 +143,15 @@ export function KartoServicesExplainer({
                       className="relative text-[11px] font-bold uppercase tracking-[0.18em]"
                       style={{ color: "#3f6212" }}
                     >
-                      Свободное творчество
+                      {KARTO_CREATIVE_MODE.title}
                     </h3>
+                    <p className="relative mt-1 text-xs font-medium text-[#3f6212]/90">
+                      {KARTO_CREATIVE_MODE.tagline}
+                    </p>
                     <p className="relative mt-2.5 text-sm leading-relaxed text-neutral-800">
-                      Вы сами задаёте промпты, форматы фото и видео, режим «для товара». Пакеты
-                      генераций изображений и видео-кредиты покупаются отдельно и{" "}
+                      Генерируйте карточки, любые изображения и видео. Покупаете пакеты{" "}
+                      <strong className="font-semibold text-neutral-900">кредитов</strong> — одна
+                      валюта на фото и видео. Кредиты{" "}
                       <strong className="font-semibold text-neutral-900">не открывают Поток</strong>.
                     </p>
                   </div>
@@ -167,11 +176,14 @@ export function KartoServicesExplainer({
                       className="relative text-[11px] font-bold uppercase tracking-[0.18em]"
                       style={{ color: PRIMARY }}
                     >
-                      Поток
+                      {KARTO_FLOW_MODE.title}
                     </h3>
+                    <p className="relative mt-1 text-xs font-medium text-[#1F4E3D]/85">
+                      {KARTO_FLOW_MODE.tagline}
+                    </p>
                     <p className="relative mt-2.5 text-sm leading-relaxed text-neutral-800">
                       Готовый путь карточки: этапы от «Понимания» до цены и результатов. Один запуск
-                      Потока — отдельная покупка. Стартовые бонусы свободного творчества к Потоку{" "}
+                      Потока — отдельная покупка. Стартовые бонусы {KARTO_CREATIVE_MODE.title.toLowerCase()}а к Потоку{" "}
                       <strong className="font-semibold text-neutral-900">не применяются</strong>.
                     </p>
                   </div>
@@ -187,9 +199,9 @@ export function KartoServicesExplainer({
                   }}
                 >
                   <strong className="font-semibold text-neutral-900">Стартовый бонус:</strong> при
-                  регистрации начисляются бесплатные генерации изображений в{" "}
-                  <strong className="text-[#365314]">свободном творчестве</strong> и видео-кредиты —
-                  они видны в профиле и в разделе свободного творчества, но{" "}
+                  регистрации начисляются бесплатные{" "}
+                  <strong className="text-[#365314]">кредиты</strong> в {KARTO_CREATIVE_MODE.title.toLowerCase()}е — они
+                  видны в профиле, но{" "}
                   <strong className="font-semibold text-neutral-900">не заменяют покупку Потока</strong>.
                 </div>
 

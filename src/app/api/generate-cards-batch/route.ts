@@ -8,7 +8,12 @@ import {
 import { isFlowImageProviderConfigured } from "@/lib/services/flow-image-generation";
 import { classifyFlowImageError, type FlowImageErrorCode } from "@/lib/flow-image-errors";
 import { createServerClient } from "@/lib/supabase/server";
-import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
+import { getVisualQuota } from "@/lib/services/visual-generation-quota";
+import {
+  consumeFlowSessionCredits,
+  getFlowSessionCredits,
+} from "@/lib/flow/flow-session-credits";
+import { photoCreditCost } from "@/lib/credits-pricing";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { ensurePublicProductPhotoUrl } from "@/lib/flow/upload-flow-product-photo";
 import {
@@ -75,14 +80,18 @@ export async function POST(request: NextRequest) {
 
     sessionIdForLog = sessionId;
     const supabase = createServerClient();
-
-    const quotaBefore = await getVisualQuota(supabase as any, sessionId);
-    if (quotaBefore.remaining <= 0) {
+    const imageResolution = await getSessionImageResolution(supabase as any, sessionId);
+    const photoCost = photoCreditCost(imageResolution);
+    const creditsBefore = await getFlowSessionCredits(supabase as any, sessionId);
+    if (!creditsBefore || creditsBefore.credits_remaining < photoCost) {
+      const quotaBefore = await getVisualQuota(supabase as any, sessionId);
       return NextResponse.json(
         {
           success: false,
-          error: `Лимит генераций в Потоке исчерпан (0 из ${quotaBefore.limit}).`,
-          code: "VISUAL_LIMIT_REACHED",
+          error: `Недостаточно кредитов Потока (нужно ${photoCost}, осталось ${creditsBefore?.credits_remaining ?? 0}).`,
+          code: "insufficient_flow_credits",
+          credits_remaining: creditsBefore?.credits_remaining ?? 0,
+          credits_total: creditsBefore?.credits_total ?? 0,
           generationUsed: quotaBefore.used,
           generationRemaining: quotaBefore.remaining,
           generationLimit: quotaBefore.limit,
@@ -90,7 +99,6 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
-    const imageResolution = await getSessionImageResolution(supabase as any, sessionId);
 
     if (photoUrl && isOpenRouterConfigured()) {
       try {
@@ -154,13 +162,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const cardsToGenerate = Math.min(count, 4, concepts.length, quotaBefore.remaining);
+    const maxByCredits = Math.floor(creditsBefore.credits_remaining / photoCost);
+    const cardsToGenerate = Math.min(count, 4, concepts.length, maxByCredits);
     if (cardsToGenerate <= 0) {
+      const quotaBefore = await getVisualQuota(supabase as any, sessionId);
       return NextResponse.json(
         {
           success: false,
-          error: "Нет доступных генераций в Потоке.",
-          code: "VISUAL_LIMIT_REACHED",
+          error: "Недостаточно кредитов Потока для генерации карточек.",
+          code: "insufficient_flow_credits",
+          credits_remaining: creditsBefore.credits_remaining,
+          credits_total: creditsBefore.credits_total,
           generationUsed: quotaBefore.used,
           generationRemaining: quotaBefore.remaining,
           generationLimit: quotaBefore.limit,
@@ -334,7 +346,16 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ Успешно сгенерировано ${successfulCards.length}/${cardsToGenerate} карточек`);
-    const quotaAfter = await incrementVisualQuota(supabase as any, sessionId, successfulCards.length);
+    const batchCreditCost = successfulCards.length * photoCost;
+    const consumed = await consumeFlowSessionCredits(
+      supabase as any,
+      sessionId,
+      batchCreditCost
+    );
+    if (!consumed.ok) {
+      console.warn("[BATCH] consume credits after success failed:", consumed.error);
+    }
+    const quotaAfter = await getVisualQuota(supabase as any, sessionId);
 
     setVisualBatchProgress(sessionId, cardUrls, false, {
       generationUsed: quotaAfter.used,
@@ -364,6 +385,10 @@ export async function POST(request: NextRequest) {
         mood: c.mood,
       })),
       message: `Сгенерировано ${successfulCards.length} карточек`,
+      credits_remaining:
+        consumed.state?.credits_remaining ??
+        creditsBefore.credits_remaining - batchCreditCost,
+      credits_total: consumed.state?.credits_total ?? creditsBefore.credits_total,
       generationUsed: quotaAfter.used,
       generationRemaining: quotaAfter.remaining,
       generationLimit: quotaAfter.limit,

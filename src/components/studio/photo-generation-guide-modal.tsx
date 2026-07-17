@@ -64,7 +64,7 @@ export function PhotoGenerationGuideModal({ isOpen, onClose }: PhotoGenerationGu
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#1F4E3D]/75">
-                      Фото · Свободное творчество и «Для товара»
+                      Фото · Креатив и «Для товара»
                     </p>
                     <h2
                       id="photo-guide-title"
@@ -89,7 +89,7 @@ export function PhotoGenerationGuideModal({ isOpen, onClose }: PhotoGenerationGu
                 <div className="mt-4 flex items-center gap-2 rounded-xl border border-[#1F4E3D]/12 bg-[#F0FDF4]/60 px-3 py-2.5 text-[13px] text-[#1F4E3D]">
                   <BookOpen className="h-4 w-4 shrink-0 text-[#84CC16]" />
                   <span className="font-medium leading-snug">
-                    Советы одинаково полезны в режиме «Свободное творчество» и «Для товара».
+                    Советы одинаково полезны в режиме «Креатив» и «Для товара».
                   </span>
                 </div>
               </header>

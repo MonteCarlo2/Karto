@@ -3,11 +3,24 @@
 import { useRouter } from "next/navigation"
 import { createBrowserClient } from "@/lib/supabase/client"
 import { RainbowButton } from "@/components/ui/rainbow-button"
-import { VideoTokenPolicyModal } from "@/components/ui/video-token-policy-modal"
 import { TimelineContent } from "@/components/ui/timeline-animation"
 import { VerticalCutReveal } from "@/components/ui/vertical-cut-reveal"
 import { cn } from "@/lib/utils"
-import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing"
+import {
+  CREDIT_PACKAGES,
+  CREDIT_PHOTO_4K,
+  enoughForCopy,
+  FLOW_CREDITS_PACK_BLURB,
+} from "@/lib/credits-pricing"
+import { CreditsTariffModal } from "@/components/ui/credits-tariff-modal"
+import {
+  KARTO_CREATIVE_MODE,
+  KARTO_CREATIVE_VALUE_PROP,
+  KARTO_FLOW_MODE,
+  KARTO_PRICING_MODES,
+  KARTO_REVIEWS_MODE,
+} from "@/lib/karto-modes"
+import { FLOW_PRICES } from "@/lib/subscription"
 import {
   AUTO_REPLY_OPTION_LABELS,
   AUTO_REPLY_PACKAGES,
@@ -18,79 +31,6 @@ import NumberFlow from "@number-flow/react"
 import { CheckCheck, Loader2, Check, X } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useId, useRef, useState, useEffect, useCallback } from "react"
-
-const PricingSwitch2 = ({
-  button1,
-  button2,
-  selectedKey,
-  onSwitch,
-  className,
-  layoutId,
-}: {
-  button1: string
-  button2: string
-  /** "0" = первая кнопка, "1" = вторая */
-  selectedKey: string
-  onSwitch: (value: string) => void
-  className?: string
-  layoutId?: string
-}) => {
-  const uniqueId = useId()
-  const switchLayoutId = layoutId ?? `switch-${uniqueId}`
-
-  const handleSwitch = (value: string) => {
-    onSwitch(value)
-  }
-
-  return (
-    <div
-      className={cn(
-        /* inline-flex + self-start: в колонке flex не растягивается на всю ширину (как у «Формат») */
-        "relative z-10 inline-flex max-w-full self-start rounded-full bg-neutral-200/80 border border-neutral-300/80 p-1.5",
-        className
-      )}
-    >
-      <button
-        type="button"
-        onClick={() => handleSwitch("0")}
-        className={cn(
-          "relative z-10 min-h-14 flex-shrink-0 rounded-full px-6 py-3 text-base font-semibold transition-colors touch-manipulation",
-          selectedKey === "0"
-            ? "text-white"
-            : "text-neutral-600 hover:text-neutral-900"
-        )}
-      >
-        {selectedKey === "0" && (
-          <motion.span
-            layoutId={switchLayoutId}
-            className="absolute inset-0 rounded-full bg-neutral-900 shadow-lg shadow-black/20"
-            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-          />
-        )}
-        <span className="relative whitespace-nowrap">{button1}</span>
-      </button>
-      <button
-        type="button"
-        onClick={() => handleSwitch("1")}
-        className={cn(
-          "relative z-10 min-h-14 flex-shrink-0 rounded-full px-6 py-3 text-base font-semibold transition-colors touch-manipulation",
-          selectedKey === "1"
-            ? "text-white"
-            : "text-neutral-600 hover:text-neutral-900"
-        )}
-      >
-        {selectedKey === "1" && (
-          <motion.span
-            layoutId={switchLayoutId}
-            className="absolute inset-0 rounded-full bg-neutral-900 shadow-lg shadow-black/20"
-            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-          />
-        )}
-        <span className="relative whitespace-nowrap">{button2}</span>
-      </button>
-    </div>
-  )
-}
 
 /** Селектор пакетов автоответов: шире стандартной строки, салатовая таблетка. */
 const ReviewsPackageSwitch = ({
@@ -208,7 +148,8 @@ const PricingSwitchRow = ({
 }
 
 const FLOW_FEATURES = [
-  "До 12 продающих фото на товар",
+  FLOW_CREDITS_PACK_BLURB,
+  "Фото и видео из одного баланса кредитов",
   "SEO-текст под Wildberries и Ozon",
   "Анализ цен и ниши в один клик",
   "Всё в одном потоке — без лишних переключений",
@@ -216,10 +157,11 @@ const FLOW_FEATURES = [
 ]
 
 const CREATIVE_FEATURES = [
-  "Генерируйте что угодно по своим правилам",
-  "Изображения и видео в одной Мастерской — кадры и кредиты покупаются отдельными пакетами",
-  "Любые стили и сцены — без ограничений",
-  "Без привязки к карточке: чистая креативность",
+  KARTO_CREATIVE_VALUE_PROP,
+  "Один баланс кредитов — фото 4K и видео",
+  "100 кредитов = одно фото 4K; видео «Студия» и «Синхрон» — в таблице тарификации",
+  "Режим «Для товара» и «Свободное фото»",
+  "Любые стили и сцены",
   "Свой промпт — свой результат",
   "Скачивайте в высоком разрешении",
 ]
@@ -233,23 +175,60 @@ const REVIEWS_FEATURES = [
   "API, аналитика и настройки под ваш бренд",
 ]
 
-const FLOW_OPTIONS: [string, string, string] = ["1 Поток", "5 Потоков", "15 Потоков"]
-const CREATIVE_OPTIONS: [string, string, string] = ["10 ген.", "30 ген.", "100 ген."]
-/** Пакеты видео-кредитов (токены только на видео) */
-const VIDEO_TOKEN_OPTIONS: [string, string, string, string] = [
-  "1 250 ток.",
-  "2 850 ток.",
-  "6 250 ток.",
-  "12 500 ток.",
-]
+const PRICING_MODE_LABELS = KARTO_PRICING_MODES.map((m) => m.title)
 
-const FLOW_PRICES = [299, 1190, 2990]
-const CREATIVE_PRICES = [249, 590, 1490]
-/** Цены видео-пакетов = VIDEO_TOKEN_PACKAGES (сейчас тест: 1 ₽). */
-const VIDEO_TOKEN_PRICES = VIDEO_TOKEN_PACKAGES.map((p) => p.priceRub)
+const FLOW_OPTIONS: [string, string, string] = ["1 Поток", "5 Потоков", "15 Потоков"]
+
+/** Переключатель пакетов кредитов — крупные подписи «800 кр.» и т.д. */
+const CreditsPackageSwitch = ({
+  options,
+  value,
+  onSwitch,
+  layoutId,
+}: {
+  options: readonly string[]
+  value: string
+  onSwitch: (value: string) => void
+  layoutId?: string
+}) => {
+  const uniqueId = useId()
+  const switchLayoutId = layoutId ?? `credits-switch-${uniqueId}`
+  const parsed = Number.parseInt(value, 10)
+  const index =
+    Number.isFinite(parsed) && parsed >= 0 && parsed < options.length ? parsed : 0
+
+  return (
+    <div className="relative z-10 flex w-full flex-wrap gap-1.5 rounded-2xl border border-neutral-300/80 bg-neutral-200/80 p-1.5">
+      {options.map((label, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => onSwitch(String(i))}
+          className={cn(
+            "relative z-10 min-h-12 flex-1 min-w-[calc(50%-0.5rem)] rounded-xl px-2 py-2.5 text-sm font-bold tabular-nums transition-colors touch-manipulation sm:min-w-0 sm:flex-1 sm:rounded-full sm:px-3 sm:py-3 sm:text-base md:text-lg",
+            index === i ? "text-white" : "text-neutral-600 hover:text-neutral-900"
+          )}
+        >
+          {index === i && (
+            <motion.span
+              layoutId={switchLayoutId}
+              className="absolute inset-0 rounded-xl bg-[#84CC16] shadow-lg shadow-[#84CC16]/30 sm:rounded-full"
+              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            />
+          )}
+          <span className="relative block text-center leading-tight">{label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+
+const CREDIT_OPTION_LABELS = CREDIT_PACKAGES.map(
+  (p) => `${p.credits.toLocaleString("ru-RU")} кр.`
+)
 
 const FLOW_BONUS: (string | null)[] = [null, "Выгода 305 ₽", "199 ₽ за товар"]
-const CREATIVE_BONUS: (string | null)[] = [null, null, "14.9 ₽ за кадр"]
 
 interface PricingSectionKartoProps {
   user?: { id: string } | null
@@ -259,13 +238,8 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
   const router = useRouter()
   const [mode, setMode] = useState<"0" | "1" | "2">("0")
   const [tariff, setTariff] = useState("0")
-  /** Индекс пакета видео-кредитов (0–3) */
-  const [videoTariff, setVideoTariff] = useState("0")
-  /** В «Свободном творчестве»: "0" фото (генерации), "1" видео (токены) */
-  const [creativeMediaSub, setCreativeMediaSub] = useState<"0" | "1">("0")
   const [selecting, setSelecting] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [videoPolicyOpen, setVideoPolicyOpen] = useState(false)
   const pricingRef = useRef<HTMLDivElement>(null)
   const [promoCodeInput, setPromoCodeInput] = useState("")
   const [promoBusy, setPromoBusy] = useState(false)
@@ -280,11 +254,12 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
   const [promoFieldsOpen, setPromoFieldsOpen] = useState(false)
   /** Автопродление пакета «Отзывы» — по умолчанию включено. */
   const [autoRenewEnabled, setAutoRenewEnabled] = useState(true)
+  const [tariffTableOpen, setTariffTableOpen] = useState(false)
 
   useEffect(() => {
     setPromoApplied(null)
     setPromoError(null)
-  }, [mode, tariff, videoTariff, creativeMediaSub])
+  }, [mode, tariff])
 
   useEffect(() => {
     if (!confirmOpen) {
@@ -309,13 +284,7 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
       }
       const isFl = mode === "0"
       const paymentKind =
-        mode === "2"
-          ? "auto_replies"
-          : isFl
-            ? "flow"
-            : creativeMediaSub === "1"
-              ? "video_tokens"
-              : "creative"
+        mode === "2" ? "auto_replies" : isFl ? "flow" : "credits"
       const res = await fetch("/api/payment/promo-preview", {
         method: "POST",
         headers: {
@@ -326,11 +295,7 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
           promoCode: promoCodeInput.trim(),
           paymentKind,
           mode,
-          tariffIndex:
-            paymentKind === "video_tokens"
-              ? Number.parseInt(videoTariff, 10) || 0
-              : Number.parseInt(tariff, 10) || 0,
-          videoTariff: Number.parseInt(videoTariff, 10) || 0,
+          tariffIndex: Number.parseInt(tariff, 10) || 0,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -351,7 +316,7 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
     } finally {
       setPromoBusy(false)
     }
-  }, [user, mode, creativeMediaSub, tariff, videoTariff, promoCodeInput])
+  }, [user, mode, tariff, promoCodeInput])
 
   const doSelectTariff = async () => {
     if (!user) return
@@ -363,17 +328,8 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
       if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`
       const isFlow = mode === "0"
       const isReviews = mode === "2"
-      const paymentKind = isReviews
-        ? "auto_replies"
-        : isFlow
-          ? "flow"
-          : creativeMediaSub === "1"
-            ? "video_tokens"
-            : "creative"
-      const tariffIndex =
-        paymentKind === "video_tokens"
-          ? Number.parseInt(videoTariff, 10) || 0
-          : Number.parseInt(tariff, 10) || 0
+      const paymentKind = isReviews ? "auto_replies" : isFlow ? "flow" : "credits"
+      const tariffIndex = Number.parseInt(tariff, 10) || 0
 
       const res = await fetch("/api/payment/create", {
         method: "POST",
@@ -428,27 +384,31 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
 
   const isFlow = mode === "0"
   const isReviews = mode === "2"
-  const isCreativeVideo = mode === "1" && creativeMediaSub === "1"
+  const isCreative = mode === "1"
+  const maxTariffIndex = isReviews
+    ? AUTO_REPLY_PACKAGES.length - 1
+    : isFlow
+      ? FLOW_OPTIONS.length - 1
+      : CREDIT_PACKAGES.length - 1
   const tariffIndex = Math.min(
-    isReviews ? AUTO_REPLY_PACKAGES.length - 1 : 2,
+    maxTariffIndex,
     Math.max(0, Number.parseInt(tariff, 10) || 0)
   )
-  const videoTariffIndex = Number.parseInt(videoTariff, 10) || 0
   const reviewsPack = AUTO_REPLY_PACKAGES[tariffIndex] ?? AUTO_REPLY_PACKAGES[0]
+  const creditPack = CREDIT_PACKAGES[tariffIndex] ?? CREDIT_PACKAGES[0]
   const features = isFlow ? FLOW_FEATURES : isReviews ? REVIEWS_FEATURES : CREATIVE_FEATURES
-  const bonuses = isFlow ? FLOW_BONUS : CREATIVE_BONUS
   const currentPrice = isFlow
     ? FLOW_PRICES[tariffIndex] ?? FLOW_PRICES[0]
     : isReviews
       ? reviewsPack.priceRub
-      : isCreativeVideo
-        ? VIDEO_TOKEN_PRICES[videoTariffIndex] ?? VIDEO_TOKEN_PRICES[0]
-        : CREATIVE_PRICES[tariffIndex] ?? CREATIVE_PRICES[0]
+      : creditPack.priceRub
   const bonusLabel = isReviews
     ? `${autoReplyPricePerUnit(reviewsPack.replies, reviewsPack.priceRub)} ₽ за ответ`
-    : isFlow || isCreativeVideo
-      ? null
-      : bonuses[tariffIndex]
+    : isFlow
+      ? FLOW_BONUS[tariffIndex] ?? null
+      : tariffIndex === CREDIT_PACKAGES.length - 1
+        ? `${(creditPack.priceRub / creditPack.photosEquiv).toFixed(1)} ₽ за фото 4K`
+        : null
 
   const revealVariants = {
     visible: (i: number) => ({
@@ -516,7 +476,11 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
           customVariants={revealVariants}
           className="mb-2 text-center text-lg leading-relaxed text-neutral-600 md:text-xl"
         >
-          От разовых генераций до масштабного производства контента. Выберите план, который соответствует вашим амбициям на маркетплейсах.
+          От разовых генераций до масштабного производства контента.{" "}
+          <strong className="font-semibold text-neutral-700">{KARTO_FLOW_MODE.title}</strong> —{" "}
+          {KARTO_FLOW_MODE.tagline.toLowerCase()};{" "}
+          <strong className="font-semibold text-neutral-700">{KARTO_CREATIVE_MODE.title}</strong> —{" "}
+          {KARTO_CREATIVE_MODE.tagline.toLowerCase()}.
         </TimelineContent>
 
         <TimelineContent
@@ -525,7 +489,9 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
           customVariants={revealVariants}
           className="mb-10 text-center text-sm text-neutral-500"
         >
-          Пакеты «Поток», «Свободное творчество» и «Отзывы» не суммируются — выберите нужный режим. В творчестве отдельно покупаются фото и видео-кредиты. Пакеты ответов действуют один месяц.
+          Пакеты «{KARTO_FLOW_MODE.title}», «{KARTO_CREATIVE_MODE.title}» и «{KARTO_REVIEWS_MODE.title}» не
+          суммируются — выберите нужный режим. Пакеты кредитов {KARTO_CREATIVE_MODE.title} — на фото и видео.
+          Пакеты ответов действуют один месяц.
         </TimelineContent>
 
         <div className="grid gap-14 overflow-visible md:grid-cols-[1fr_1.2fr] md:gap-16 lg:gap-20">
@@ -567,37 +533,16 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                 Режим
               </h4>
               <PricingSwitchRow
-                options={["Поток", "Свободное творчество", "Отзывы"]}
+                options={PRICING_MODE_LABELS}
                 value={mode}
                 onSwitch={(v) => {
                   setMode(v as "0" | "1" | "2")
                   setTariff("0")
-                  setVideoTariff("0")
-                  setCreativeMediaSub("0")
                 }}
                 layoutId="karto-mode"
                 largeLabels
               />
             </TimelineContent>
-
-            {mode === "1" && (
-              <>
-                <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
-                  Формат
-                </h4>
-                <PricingSwitch2
-                  button1="Фото"
-                  button2="Видео"
-                  selectedKey={creativeMediaSub}
-                  onSwitch={(v) => {
-                    setCreativeMediaSub(v as "0" | "1")
-                    setTariff("0")
-                    setVideoTariff("0")
-                  }}
-                  layoutId="karto-creative-media"
-                />
-              </>
-            )}
 
             <TimelineContent
               animationNum={5}
@@ -615,6 +560,14 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                     onSwitch={setTariff}
                     layoutId="karto-tariff"
                   />
+                  <p className="mt-3 text-sm text-neutral-500">{FLOW_CREDITS_PACK_BLURB}</p>
+                  <button
+                    type="button"
+                    onClick={() => setTariffTableOpen(true)}
+                    className="mt-2 text-sm font-semibold text-[#1F4E3D] underline decoration-[#1F4E3D]/35 underline-offset-2 hover:text-[#163d30]"
+                  >
+                    Таблица тарификации кредитов →
+                  </button>
                 </>
               ) : isReviews ? (
                 <>
@@ -633,36 +586,32 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                     {formatAutoReplyVolume(reviewsPack.replies)} — на месяц
                   </p>
                 </>
-              ) : isCreativeVideo ? (
-                <>
-                  <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
-                    Видео-кредиты
-                  </h4>
-                  <PricingSwitchRow
-                    options={VIDEO_TOKEN_OPTIONS}
-                    value={videoTariff}
-                    onSwitch={setVideoTariff}
-                    layoutId="karto-video-tariff"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setVideoPolicyOpen(true)}
-                    className="mt-2 text-left text-[11px] font-medium text-[#2E5A43] underline-offset-2 hover:underline decoration-[#84CC16]/60"
-                  >
-                    Ценовая политика видео
-                  </button>
-                </>
               ) : (
                 <>
                   <h4 className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">
-                    Генерации изображений
+                    Пакет кредитов
                   </h4>
-                  <PricingSwitchRow
-                    options={CREATIVE_OPTIONS}
+                  <CreditsPackageSwitch
+                    options={CREDIT_OPTION_LABELS}
                     value={tariff}
                     onSwitch={setTariff}
-                    layoutId="karto-tariff"
+                    layoutId="karto-credits-tariff"
                   />
+                  <p className="mt-3 text-sm text-neutral-500">
+                    {enoughForCopy(creditPack.credits)}
+                  </p>
+                  <div className="mt-4 rounded-xl border border-[#84CC16]/30 bg-white/60 px-4 py-3 text-sm leading-relaxed text-neutral-600">
+                    <p className="font-semibold text-neutral-800">
+                      {CREDIT_PHOTO_4K} кредитов = одно фото 4K
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setTariffTableOpen(true)}
+                      className="mt-2 text-sm font-semibold text-[#1F4E3D] underline decoration-[#1F4E3D]/35 underline-offset-2 hover:text-[#163d30]"
+                    >
+                      Таблица тарификации →
+                    </button>
+                  </div>
                 </>
               )}
             </TimelineContent>
@@ -723,8 +672,6 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
         </div>
       </div>
 
-      <VideoTokenPolicyModal open={videoPolicyOpen} onClose={() => setVideoPolicyOpen(false)} />
-
       {/* Окно подтверждения тарифа */}
       <AnimatePresence>
         {confirmOpen && (
@@ -784,31 +731,30 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                     <div className="flex justify-between text-sm">
                       <span className="text-neutral-500">Режим</span>
                       <span className="font-medium text-neutral-900">
-                        {isFlow ? "Поток" : isReviews ? "Отзывы" : "Свободное творчество"}
+                        {isFlow
+                          ? KARTO_FLOW_MODE.title
+                          : isReviews
+                            ? KARTO_REVIEWS_MODE.title
+                            : KARTO_CREATIVE_MODE.title}
                       </span>
                     </div>
-                    {mode === "1" && (
+                    {isCreative ? (
                       <div className="flex justify-between text-sm">
-                        <span className="text-neutral-500">Формат</span>
-                        <span className="font-medium text-neutral-900">
-                          {isCreativeVideo ? "Видео" : "Фото"}
+                        <span className="text-neutral-500">Пакет</span>
+                        <span className="font-medium text-neutral-900 text-right max-w-[60%]">
+                          {CREDIT_OPTION_LABELS[tariffIndex]} — {enoughForCopy(creditPack.credits)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-neutral-500">Объём</span>
+                        <span className="font-medium text-neutral-900 text-right max-w-[60%]">
+                          {isReviews
+                            ? formatAutoReplyVolume(reviewsPack.replies)
+                            : FLOW_OPTIONS[tariffIndex]}
                         </span>
                       </div>
                     )}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-neutral-500">
-                        {isCreativeVideo ? "Пакет" : "Объём"}
-                      </span>
-                      <span className="font-medium text-neutral-900 text-right max-w-[60%]">
-                        {isCreativeVideo
-                          ? VIDEO_TOKEN_OPTIONS[videoTariffIndex]
-                          : isReviews
-                            ? formatAutoReplyVolume(reviewsPack.replies)
-                            : isFlow
-                              ? FLOW_OPTIONS[tariffIndex]
-                              : CREATIVE_OPTIONS[tariffIndex]}
-                      </span>
-                    </div>
                     {!promoFieldsOpen ? (
                       <button
                         type="button"
@@ -954,6 +900,8 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
           </>
         )}
       </AnimatePresence>
+
+      <CreditsTariffModal open={tariffTableOpen} onClose={() => setTariffTableOpen(false)} />
     </section>
   )
 }

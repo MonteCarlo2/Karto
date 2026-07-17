@@ -113,7 +113,7 @@ interface VideoGenerationGuideModalProps {
 export function VideoGenerationGuideModal({
   isOpen,
   onClose,
-  contextLabel = "Свободное творчество · Видео",
+  contextLabel = "Креатив · Видео",
 }: VideoGenerationGuideModalProps) {
   useEffect(() => {
     if (!isOpen) return;
@@ -241,9 +241,9 @@ export function VideoGenerationGuideModal({
                   <li className="flex gap-2">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#84CC16]" />
                     <span>
-                      Видео-генерация — <strong>ресурсоёмкий процесс</strong>: одна попытка
-                      списывает генерацию. Лучше потратить минуту на уточнение промпта, чем
-                      несколько раз перезапускать «наугад».
+                      Видео-генерация — <strong>ресурсоёмкий процесс</strong>: стоимость зависит от
+                      режима, качества и длительности и списывается в кредитах. Лучше потратить минуту
+                      на уточнение промпта, чем несколько раз перезапускать «наугад».
                     </span>
                   </li>
                   <li className="flex gap-2">

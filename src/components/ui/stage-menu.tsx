@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Fragment } from "react";
+import { demoFlowCreditsLabelRu } from "@/lib/demo-flow";
 
 const STUDIO_HREF: Record<
   "understanding" | "description" | "visual" | "price",
@@ -21,6 +22,8 @@ interface StageMenuProps {
     remaining: number;
     limit: number;
   } | null;
+  /** Остаток кредитов Потока (приоритет над visualQuota для подписи) */
+  creditsRemaining?: number | null;
   /** Компактная метка демо-сессии */
   isDemo?: boolean;
 }
@@ -29,6 +32,7 @@ export function StageMenu({
   currentStage,
   position = "right",
   visualQuota = null,
+  creditsRemaining = null,
   isDemo = false,
 }: StageMenuProps) {
   const stages = [
@@ -110,7 +114,7 @@ export function StageMenu({
         </div>
         {isDemo && currentStage === "visual" ? (
           <div className="absolute left-0 top-full mt-2 whitespace-nowrap rounded-full border border-[#2E5A43]/15 bg-white/90 px-4 py-2 text-xs font-medium text-gray-600 shadow-sm backdrop-blur-xl">
-            Демо: фото в 2K · Полный Поток: 4K и до 12 генераций
+            Демо: {demoFlowCreditsLabelRu()} · Полный Поток: 1 250 кред. и видео
           </div>
         ) : null}
         {visualQuota && currentStage === "visual" && (
@@ -157,8 +161,12 @@ export function StageMenu({
                   }}
                 />
               </div>
-              <span className="text-[11px] font-semibold leading-none" style={{ color: "#2E5A43" }}>
-                {visualQuota.remaining}/{visualQuota.limit}
+              <span className="text-[11px] font-semibold leading-none text-center" style={{ color: "#2E5A43" }}>
+                {creditsRemaining != null
+                  ? `${creditsRemaining} кр.`
+                  : visualQuota
+                    ? `${visualQuota.remaining}/${visualQuota.limit}`
+                    : "—"}
               </span>
             </div>
           </div>

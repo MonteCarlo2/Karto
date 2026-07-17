@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateFlowImage, isFlowImageProviderConfigured } from "@/lib/services/flow-image-generation";
 import { KieAiContentFilteredError, kieErrorToClient } from "@/lib/services/kie-ai-errors";
 import { createServerClient } from "@/lib/supabase/server";
-import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
+import { getVisualQuota } from "@/lib/services/visual-generation-quota";
+import {
+  consumeFlowSessionCredits,
+  getFlowSessionCredits,
+} from "@/lib/flow/flow-session-credits";
+import { photoCreditCost } from "@/lib/credits-pricing";
 import { getSessionImageResolution } from "@/lib/demo-flow-server";
 
 /**
@@ -26,16 +31,22 @@ export async function POST(request: NextRequest) {
     console.log("🔄 [EDIT] Товар:", productName);
     console.log("🔄 [EDIT] Исходный imageUrl:", imageUrl);
 
-    let imageResolution: string | undefined;
+    let imageResolution: "2k" | "4k" | undefined;
+    let photoCost = 0;
     if (sessionId) {
       const supabase = createServerClient();
-      const quota = await getVisualQuota(supabase as any, sessionId);
-      if (quota.remaining <= 0) {
+      imageResolution = await getSessionImageResolution(supabase as any, sessionId);
+      photoCost = photoCreditCost(imageResolution);
+      const credits = await getFlowSessionCredits(supabase as any, sessionId);
+      if (!credits || credits.credits_remaining < photoCost) {
+        const quota = await getVisualQuota(supabase as any, sessionId);
         return NextResponse.json(
           {
             success: false,
-            error: `Лимит генераций в Потоке исчерпан (0 из ${quota.limit}).`,
-            code: "VISUAL_LIMIT_REACHED",
+            error: `Недостаточно кредитов Потока (нужно ${photoCost}, осталось ${credits?.credits_remaining ?? 0}).`,
+            code: "insufficient_flow_credits",
+            credits_remaining: credits?.credits_remaining ?? 0,
+            credits_total: credits?.credits_total ?? 0,
             generationUsed: quota.used,
             generationRemaining: quota.remaining,
             generationLimit: quota.limit,
@@ -43,7 +54,6 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
-      imageResolution = await getSessionImageResolution(supabase as any, sessionId);
     }
 
     // Строим промпт для редактирования с строгими правилами
@@ -202,14 +212,26 @@ ${editRequest}
 
     console.log(`✅ [EDIT] Карточка отредактирована (CDN): ${editedImageUrl}`);
 
-    let quotaPayload: { generationUsed?: number; generationRemaining?: number; generationLimit?: number } = {};
+    let quotaPayload: {
+      generationUsed?: number;
+      generationRemaining?: number;
+      generationLimit?: number;
+      credits_remaining?: number;
+      credits_total?: number;
+    } = {};
     if (sessionId) {
       const supabase = createServerClient();
-      const quotaAfter = await incrementVisualQuota(supabase as any, sessionId, 1);
+      const consumed = await consumeFlowSessionCredits(supabase as any, sessionId, photoCost);
+      if (!consumed.ok) {
+        console.warn("[EDIT] consume credits after success failed:", consumed.error);
+      }
+      const quotaAfter = await getVisualQuota(supabase as any, sessionId);
       quotaPayload = {
         generationUsed: quotaAfter.used,
         generationRemaining: quotaAfter.remaining,
         generationLimit: quotaAfter.limit,
+        credits_remaining: consumed.state?.credits_remaining,
+        credits_total: consumed.state?.credits_total,
       };
     }
 

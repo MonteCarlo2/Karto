@@ -42,6 +42,7 @@ import type { SubscriptionState } from "@/lib/subscription";
 import {
   formatSubscriptionPeriodRu,
 } from "@/lib/subscription";
+import { DEMO_FLOW_SHORT_DETAIL_RU } from "@/lib/demo-flow";
 import { KartoServicesExplainer } from "@/components/ui/karto-services-explainer";
 import { ProfileAutoReplyBillingPanel } from "@/components/profile/profile-auto-reply-billing";
 import { DeleteAccountConfirmDialog } from "@/components/profile/delete-account-confirm-dialog";
@@ -259,8 +260,7 @@ function ProfileContent() {
         }
       } catch {}
     })();
-    // Не обрываем опрос по creative/flow: у большинства уже есть приветственные генерации,
-    // а видео-кредиты приходят отдельной строкой — иначе интервал закрывался сразу и баланс не обновлялся.
+    // Не обрываем опрос рано: после оплаты кредиты могут начислиться с задержкой webhook.
     const maxAttempts = 12;
     const intervalMs = 2000;
     let attempts = 0;
@@ -1080,18 +1080,16 @@ function ProfileContent() {
                       ) : null}
                       <div className="space-y-2">
                         <ProfileServiceRow
-                          label="Свободное творчество"
-                          remaining={subscriptionServiceRemaining(subscription, "creative")}
-                          periodStart={subscription.creativePeriodStart}
-                          periodEnd={subscription.creativePeriodEnd}
-                          unit="ген."
-                        />
-                        <ProfileServiceRow
-                          label="Видео-кредиты"
-                          remaining={subscriptionServiceRemaining(subscription, "video")}
-                          periodStart={subscription.videoPeriodStart}
-                          periodEnd={subscription.videoPeriodEnd}
-                          unit="ток."
+                          label="Кредиты"
+                          remaining={Math.max(
+                            0,
+                            subscription.creditBalance ?? subscription.videoTokenBalance ?? 0
+                          )}
+                          periodStart={
+                            subscription.videoPeriodStart ?? subscription.creativePeriodStart
+                          }
+                          periodEnd={subscription.videoPeriodEnd ?? subscription.creativePeriodEnd}
+                          unit="кред."
                         />
                         <ProfileServiceRow
                           label="Демо-поток"
@@ -1099,7 +1097,7 @@ function ProfileContent() {
                           periodStart={subscription.demoFlowPeriodStart}
                           periodEnd={subscription.demoFlowPeriodEnd}
                           unit="демо-поток."
-                          detail="2 стиля описания и 5 фото в 2K. Только для новых аккаунтов."
+                          detail={DEMO_FLOW_SHORT_DETAIL_RU}
                         />
                         <ProfileServiceRow
                           label="Поток"

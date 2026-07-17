@@ -1,11 +1,18 @@
+import { CREDIT_PHOTO_4K, FLOW_CREDITS_BASE } from "@/lib/credits-pricing";
 import { isDemoProductSession } from "@/lib/demo-flow-server";
 import { DEMO_FLOW_VISUAL_LIMIT } from "@/lib/demo-flow";
+import {
+  getFlowSessionCredits,
+  parseFlowCreditsState,
+} from "@/lib/flow/flow-session-credits";
 
-const VISUAL_GENERATION_LIMIT = 12;
+const VISUAL_GENERATION_LIMIT = Math.floor(FLOW_CREDITS_BASE / CREDIT_PHOTO_4K);
 
 type VisualQuotaState = {
   generation_used?: number;
   generation_limit?: number;
+  credits_remaining?: number;
+  credits_total?: number;
 };
 
 export type VisualQuota = {
@@ -27,15 +34,34 @@ function defaultQuota(limit: number): VisualQuota {
   };
 }
 
+function quotaFromCredits(creditsTotal: number, creditsRemaining: number): VisualQuota {
+  const limit = Math.max(1, Math.floor(creditsTotal / CREDIT_PHOTO_4K));
+  const remaining = Math.floor(creditsRemaining / CREDIT_PHOTO_4K);
+  const used = Math.max(0, limit - remaining);
+  return { used, remaining, limit };
+}
+
 async function resolveSessionLimit(supabase: any, sessionId: string): Promise<number> {
   const isDemo = await isDemoProductSession(supabase, sessionId);
   return isDemo ? DEMO_FLOW_VISUAL_LIMIT : VISUAL_GENERATION_LIMIT;
 }
 
+/**
+ * Квота визуала для UI: читает flow session credits и мапит в «фото 4K эквивалент»
+ * (remaining ≈ floor(credits_remaining / 100)).
+ */
 export async function getVisualQuota(
   supabase: any,
   sessionId: string
 ): Promise<VisualQuota> {
+  const creditsState = await getFlowSessionCredits(supabase, sessionId);
+  if (creditsState && creditsState.credits_total > 0) {
+    return quotaFromCredits(
+      creditsState.credits_total,
+      creditsState.credits_remaining
+    );
+  }
+
   const sessionLimit = await resolveSessionLimit(supabase, sessionId);
   try {
     const { data, error } = await supabase
@@ -50,8 +76,12 @@ export async function getVisualQuota(
     }
 
     const state = (data?.visual_state || {}) as VisualQuotaState;
+    const parsed = parseFlowCreditsState(state as Record<string, unknown>);
+    if (parsed.credits_total > 0) {
+      return quotaFromCredits(parsed.credits_total, parsed.credits_remaining);
+    }
+
     const used = toNonNegativeInt(state.generation_used);
-    // Для демо всегда жёсткий лимит; для paid — сохранённый или 12
     const stored = toNonNegativeInt(state.generation_limit);
     const limit =
       sessionLimit === DEMO_FLOW_VISUAL_LIMIT
@@ -66,54 +96,14 @@ export async function getVisualQuota(
   }
 }
 
+/**
+ * @deprecated Списание через consumeFlowSessionCredits в API-маршрутах генерации.
+ */
 export async function incrementVisualQuota(
   supabase: any,
   sessionId: string,
   incrementBy: number
 ): Promise<VisualQuota> {
-  const step = toNonNegativeInt(incrementBy);
-  const sessionLimit = await resolveSessionLimit(supabase, sessionId);
-  const { data, error } = await supabase
-    .from("visual_data")
-    .select("visual_state")
-    .eq("session_id", sessionId)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Ошибка чтения лимита визуала: ${error.message || String(error)}`);
-  }
-
-  const currentState = (data?.visual_state || {}) as Record<string, unknown>;
-  const currentUsed = toNonNegativeInt(currentState.generation_used);
-  const stored = toNonNegativeInt(currentState.generation_limit);
-  const limit =
-    sessionLimit === DEMO_FLOW_VISUAL_LIMIT
-      ? DEMO_FLOW_VISUAL_LIMIT
-      : stored || VISUAL_GENERATION_LIMIT;
-  const nextUsed = Math.min(limit, currentUsed + step);
-  const nextState = {
-    ...currentState,
-    generation_used: nextUsed,
-    generation_limit: limit,
-  };
-
-  const { error: upsertError } = await supabase
-    .from("visual_data")
-    .upsert(
-      {
-        session_id: sessionId,
-        visual_state: nextState,
-      },
-      { onConflict: "session_id" }
-    );
-
-  if (upsertError) {
-    throw new Error(`Ошибка обновления лимита визуала: ${upsertError.message || String(upsertError)}`);
-  }
-
-  return {
-    used: nextUsed,
-    limit,
-    remaining: Math.max(0, limit - nextUsed),
-  };
+  void incrementBy;
+  return getVisualQuota(supabase, sessionId);
 }

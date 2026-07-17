@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
-import { creditSubscription } from "@/lib/payment-credit";
+import { addCredits } from "@/lib/credits";
 import {
-  COMMUNITY_SURVEY_REWARD_GENERATIONS,
+  COMMUNITY_SURVEY_REWARD_CREDITS,
   COMMUNITY_SURVEY_VERSION,
   isValidFeatureRanking,
   isValidFeatureSwipeVotes,
@@ -174,11 +174,10 @@ export async function POST(request: NextRequest) {
     const row = Array.isArray(data) ? data[0] : data;
 
     if (!wasRewardGranted) {
-      const credit = await creditSubscription(
+      const credit = await addCredits(
         supabase,
         auth.userId,
-        "creative",
-        COMMUNITY_SURVEY_REWARD_GENERATIONS
+        COMMUNITY_SURVEY_REWARD_CREDITS
       );
       if (credit.ok) {
         const { error: flagErr } = await supabase

@@ -6,7 +6,10 @@ import {
   proxiedHttpsMediaUrl,
   reliableProxiedHttpsMediaUrl,
 } from "@/lib/client/proxied-display-url";
-import { withServeFilePreviewParam } from "@/lib/client/gallery-display-url";
+import {
+  GALLERY_LIGHTBOX_SERVE_WIDTH,
+  withServeFilePreviewParam,
+} from "@/lib/client/gallery-display-url";
 
 function isWaveSpeedCdnUrl(url: string): boolean {
   try {
@@ -27,22 +30,24 @@ export type GalleryProxiedImgProps = Omit<
    * Не задавать или 0 — полное разрешение через прокси (лайтбокс).
    */
   previewMaxWidth?: number;
+  /** Ширина для /api/serve-file (?w=). По умолчанию 400; лайтбокс — 960. */
+  serveFilePreviewWidth?: number;
 };
 
 /**
  * Галерея: CDN показываем напрямую. Same-origin proxy — только fallback.
- * Порядок одинаков на SSR и клиенте, поэтому гидратация стабильна.
  */
 export function GalleryProxiedImg({
   remoteUrl,
   alt = "",
   onError,
   previewMaxWidth,
+  serveFilePreviewWidth = 400,
   ...rest
 }: GalleryProxiedImgProps) {
   const prepared = useMemo(
-    () => withServeFilePreviewParam(remoteUrl.trim()),
-    [remoteUrl]
+    () => withServeFilePreviewParam(remoteUrl.trim(), serveFilePreviewWidth),
+    [remoteUrl, serveFilePreviewWidth]
   );
   const proxied = useMemo(
     () =>
@@ -93,7 +98,7 @@ export function GalleryProxiedImg({
 
   useEffect(() => {
     setIdx(0);
-  }, [remoteUrl, previewMaxWidth]);
+  }, [remoteUrl, previewMaxWidth, serveFilePreviewWidth]);
 
   const src = chain[Math.min(idx, Math.max(chain.length - 1, 0))] ?? "";
 
@@ -122,3 +127,5 @@ export function GalleryProxiedImg({
     />
   );
 }
+
+export { GALLERY_LIGHTBOX_SERVE_WIDTH };

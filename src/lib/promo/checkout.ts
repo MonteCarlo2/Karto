@@ -1,9 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { CREATIVE_PRICES, FLOW_PRICES } from "@/lib/subscription";
-import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
+import { FLOW_PRICES } from "@/lib/subscription";
+import { CREDIT_PACKAGES } from "@/lib/credits-pricing";
 import { AUTO_REPLY_PACKAGES } from "@/lib/auto-replies-pricing";
 
-export type PromoPaymentKind = "flow" | "creative" | "video_tokens" | "auto_replies";
+export type PromoPaymentKind = "flow" | "creative" | "video_tokens" | "credits" | "auto_replies";
+
+const CREDITS_KINDS = new Set<PromoPaymentKind>(["credits", "creative", "video_tokens"]);
+
+export function isCreditsPromoKind(kind: PromoPaymentKind): boolean {
+  return CREDITS_KINDS.has(kind);
+}
 
 export function basePriceRub(kind: PromoPaymentKind, tariffIndex: number): number {
   if (kind === "auto_replies") {
@@ -14,12 +20,12 @@ export function basePriceRub(kind: PromoPaymentKind, tariffIndex: number): numbe
     const i = Math.min(FLOW_PRICES.length - 1, Math.max(0, tariffIndex));
     return FLOW_PRICES[i];
   }
-  if (kind === "creative") {
-    const i = Math.min(CREATIVE_PRICES.length - 1, Math.max(0, tariffIndex));
-    return CREATIVE_PRICES[i];
+  if (isCreditsPromoKind(kind)) {
+    const i = Math.min(CREDIT_PACKAGES.length - 1, Math.max(0, tariffIndex));
+    return CREDIT_PACKAGES[i].priceRub;
   }
-  const i = Math.min(VIDEO_TOKEN_PACKAGES.length - 1, Math.max(0, tariffIndex));
-  return VIDEO_TOKEN_PACKAGES[i].priceRub;
+  const i = Math.min(CREDIT_PACKAGES.length - 1, Math.max(0, tariffIndex));
+  return CREDIT_PACKAGES[i].priceRub;
 }
 
 type CampaignRow = {
@@ -33,6 +39,14 @@ type CampaignRow = {
   starts_at: string;
   ends_at: string | null;
 };
+
+function promoKindsMatch(
+  campaignKind: PromoPaymentKind,
+  checkoutKind: PromoPaymentKind
+): boolean {
+  if (campaignKind === checkoutKind) return true;
+  return isCreditsPromoKind(campaignKind) && isCreditsPromoKind(checkoutKind);
+}
 
 /**
  * Проверка промокода перед созданием платежа ЮKassa.
@@ -94,7 +108,7 @@ export async function validatePromoForCheckout(
     return { ok: false, error: "Промокод не найден или недействителен" };
   }
 
-  if (c.payment_kind !== params.paymentKind) {
+  if (!promoKindsMatch(c.payment_kind, params.paymentKind)) {
     return { ok: false, error: "Промокод не действует на выбранный тип услуги" };
   }
 

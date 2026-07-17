@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateFlowImage, isFlowImageProviderConfigured } from "@/lib/services/flow-image-generation";
 import { KieAiContentFilteredError, kieErrorToClient } from "@/lib/services/kie-ai-errors";
 import { createServerClient } from "@/lib/supabase/server";
-import { getVisualQuota, incrementVisualQuota } from "@/lib/services/visual-generation-quota";
+import { getVisualQuota } from "@/lib/services/visual-generation-quota";
+import {
+  consumeFlowSessionCredits,
+  getFlowSessionCredits,
+} from "@/lib/flow/flow-session-credits";
+import { photoCreditCost } from "@/lib/credits-pricing";
 import { ensureWaveSpeedReferenceUrlWithFallback } from "@/lib/flow/resolve-flow-reference";
 import {
   runSlideGenerationRace,
@@ -34,8 +39,8 @@ export async function POST(request: NextRequest) {
       sessionId,
       productName,
       productPhotoUrl,
-      referenceImageUrl, // Карточка (при «Использовать обстановку»)
-      environmentImageUrl, // Та же карточка как фон, если включён чекбокс
+      referenceImageUrl, // Карточка (для обстановки при чекбоксе; иначе запасной референс)
+      environmentImageUrl, // Карточка как фон, если включён «Использовать обстановку»
       userPrompt,
       scenario,
       aspectRatio,
@@ -63,13 +68,18 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createServerClient();
-    const quotaBefore = await getVisualQuota(supabase as any, sessionId);
-    if (quotaBefore.remaining <= 0) {
+    const imageResolution = await getSessionImageResolution(supabase as any, sessionId);
+    const photoCost = photoCreditCost(imageResolution);
+    const creditsBefore = await getFlowSessionCredits(supabase as any, sessionId);
+    if (!creditsBefore || creditsBefore.credits_remaining < photoCost) {
+      const quotaBefore = await getVisualQuota(supabase as any, sessionId);
       return NextResponse.json(
         {
           success: false,
-          error: `Лимит генераций в Потоке исчерпан (0 из ${quotaBefore.limit}).`,
-          code: "VISUAL_LIMIT_REACHED",
+          error: `Недостаточно кредитов Потока (нужно ${photoCost}, осталось ${creditsBefore?.credits_remaining ?? 0}).`,
+          code: "insufficient_flow_credits",
+          credits_remaining: creditsBefore?.credits_remaining ?? 0,
+          credits_total: creditsBefore?.credits_total ?? 0,
           generationUsed: quotaBefore.used,
           generationRemaining: quotaBefore.remaining,
           generationLimit: quotaBefore.limit,
@@ -77,66 +87,120 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
-    const imageResolution = await getSessionImageResolution(supabase as any, sessionId);
 
     const useEnvironment = Boolean(environmentImageUrl);
-    const rawProductSource = useEnvironment
-      ? String(referenceImageUrl || "").trim()
-      : String(productPhotoUrl || referenceImageUrl || "").trim();
-
-    if (!rawProductSource) {
-      return NextResponse.json(
-        { success: false, error: "Требуется фото товара или карточка-референс" },
-        { status: 400 }
-      );
-    }
+    const productPhotoSource =
+      typeof productPhotoUrl === "string" ? productPhotoUrl.trim() : "";
+    const cardSource =
+      typeof referenceImageUrl === "string" ? referenceImageUrl.trim() : "";
+    const environmentSource = useEnvironment
+      ? String(environmentImageUrl || cardSource).trim()
+      : "";
 
     const imagesForApi: string[] = [];
-    const productPhotoFallback =
-      typeof productPhotoUrl === "string" ? productPhotoUrl.trim() : "";
 
-    const productRef = await ensureWaveSpeedReferenceUrlWithFallback(
-      rawProductSource,
-      productPhotoFallback || undefined,
-      sessionId,
-      "slide-product"
-    );
-    if (!productRef) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Не удалось подготовить фото товара для WaveSpeed. Вернитесь на «Понимание» и загрузите фото.",
-          code: "PHOTO_REQUIRED",
-        },
-        { status: 400 }
+    if (useEnvironment) {
+      if (!productPhotoSource) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Для «Использовать обстановку» нужно фото товара с этапа «Понимание».",
+            code: "PHOTO_REQUIRED",
+          },
+          { status: 400 }
+        );
+      }
+      if (!environmentSource) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Нужна первая карточка как референс обстановки.",
+            code: "CARD_REQUIRED",
+          },
+          { status: 400 }
+        );
+      }
+
+      const productRef = await ensureWaveSpeedReferenceUrlWithFallback(
+        productPhotoSource,
+        undefined,
+        sessionId,
+        "slide-product"
       );
-    }
-    imagesForApi.push(productRef);
-    console.log("📷 [slide] Референс товара на WaveSpeed CDN:", productRef.slice(0, 96));
+      if (!productRef) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Не удалось подготовить фото товара. Вернитесь на «Понимание» и загрузите фото.",
+            code: "PHOTO_REQUIRED",
+          },
+          { status: 400 }
+        );
+      }
 
-    if (useEnvironment && environmentImageUrl) {
       const envRef = await ensureWaveSpeedReferenceUrlWithFallback(
-        String(environmentImageUrl),
-        productPhotoFallback || rawProductSource,
+        environmentSource,
+        cardSource || productPhotoSource,
         sessionId,
         "slide-env"
       );
-      if (envRef && envRef !== productRef) {
-        imagesForApi.push(envRef);
-        console.log("📷 [slide] Референс обстановки на WaveSpeed CDN:", envRef.slice(0, 96));
+      if (!envRef) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Не удалось подготовить референс обстановки с карточки.",
+            code: "ENV_REF_FAILED",
+          },
+          { status: 400 }
+        );
       }
+
+      imagesForApi.push(productRef);
+      imagesForApi.push(envRef);
+      console.log("📷 [slide] Референс товара (фото):", productRef.slice(0, 96));
+      console.log("📷 [slide] Референс обстановки (карточка):", envRef.slice(0, 96));
+    } else {
+      const rawProductSource = productPhotoSource || cardSource;
+
+      if (!rawProductSource) {
+        return NextResponse.json(
+          { success: false, error: "Требуется фото товара или карточка-референс" },
+          { status: 400 }
+        );
+      }
+
+      const productRef = await ensureWaveSpeedReferenceUrlWithFallback(
+        rawProductSource,
+        productPhotoSource || undefined,
+        sessionId,
+        "slide-product"
+      );
+      if (!productRef) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Не удалось подготовить фото товара для WaveSpeed. Вернитесь на «Понимание» и загрузите фото.",
+            code: "PHOTO_REQUIRED",
+          },
+          { status: 400 }
+        );
+      }
+      imagesForApi.push(productRef);
+      console.log("📷 [slide] Референс товара на WaveSpeed CDN:", productRef.slice(0, 96));
     }
 
-    // Обстановка: либо референс второго изображения, либо явный запрет копировать фон с первого
+    // Обстановка: два референса (товар + карточка) или один (товар без фона с карточки)
     let environmentReference = "";
-    if (environmentImageUrl) {
-      environmentReference = `\n\n=== РЕФЕРЕНС ОБСТАНОВКИ ===
-СТРОГО ВАЖНО: Используй предоставленное второе изображение как референс обстановки/фона.
-- Сохрани ТУ ЖЕ обстановку, фон, освещение, стиль, что на референсном изображении обстановки
-- Товар должен быть размещен в ТОЙ ЖЕ обстановке, что на референсном изображении
-- Используй те же предметы интерьера, декор, фон, если это уместно
-- Сохрани общий стиль и атмосферу референсного изображения обстановки`;
+    if (useEnvironment) {
+      environmentReference = `\n\n=== РЕФЕРЕНС ОБСТАНОВКИ (второе изображение — карточка) ===
+СТРОГО ВАЖНО: Передано ДВА изображения.
+- ПЕРВОЕ изображение — фото товара: форма, цвет и вид товара бери ТОЛЬКО отсюда.
+- ВТОРОЕ изображение — готовая карточка: используй ТОЛЬКО обстановку, фон, освещение, декор и атмосферу с этой карточки.
+- НЕ копируй с карточки инфографику, текст, надписи и дизайн карточки — только среду/фон.
+- Товар из первого фото размести в той же обстановке, что на втором изображении (карточке).`;
     } else {
       environmentReference = `\n\n=== НЕ ИСПОЛЬЗОВАТЬ ОБСТАНОВКУ С РЕФЕРЕНСА ===
 КРИТИЧЕСКИ ВАЖНО: На референсе передан только ОДИН снимок (товар на фоне). НЕ копируй с него обстановку, фон, декор или окружение. Игнорируй фон на референсе полностью. Создай НОВУЮ обстановку СТРОГО по сценарию съемки ниже.`;
@@ -262,8 +326,8 @@ ${scenarioPrompt}${environmentReference}${userDescription}
     console.log("  - Описание пользователя:", userPrompt || "нет");
     console.log("  - Aspect Ratio:", aspectRatio || "3:4");
     console.log("  - Референсных изображений:", imagesForApi.length);
-    console.log("  - Референс товара:", referenceImageUrl ? "да" : "нет");
-    console.log("  - Референс обстановки:", environmentImageUrl ? "да" : "нет");
+    console.log("  - Фото товара:", productPhotoSource ? "да" : "нет");
+    console.log("  - Карточка (обстановка):", useEnvironment ? "да" : "нет");
     console.log("═══════════════════════════════════════");
     
     // Генерируем через WaveSpeed (Nano Banana 2) — гонка: через 3 мин без успеха второй запрос параллельно
@@ -321,12 +385,18 @@ ${scenarioPrompt}${environmentReference}${userDescription}
 
     console.log(`✅ Слайд сгенерирован: ${generatedLocalUrl}`);
 
-    const quotaAfter = await incrementVisualQuota(supabase as any, sessionId, 1);
+    const consumed = await consumeFlowSessionCredits(supabase as any, sessionId, photoCost);
+    if (!consumed.ok) {
+      console.warn("[slide] consume credits after success failed:", consumed.error);
+    }
+    const quotaAfter = await getVisualQuota(supabase as any, sessionId);
 
     return NextResponse.json({
       success: true,
       imageUrl: generatedLocalUrl,
       message: "Слайд создан!",
+      credits_remaining: consumed.state?.credits_remaining ?? creditsBefore.credits_remaining - photoCost,
+      credits_total: consumed.state?.credits_total ?? creditsBefore.credits_total,
       generationUsed: quotaAfter.used,
       generationRemaining: quotaAfter.remaining,
       generationLimit: quotaAfter.limit,

@@ -616,6 +616,7 @@ export async function checkVideoTaskStatus(taskId: string): Promise<{
 // ─────────────────────────────────────────────────────────────────────────────
 
 const FREE_VIDEO_MODEL = "bytedance/seedance-1.5-pro";
+const FLOW_GROK_VIDEO_MODEL = "grok-imagine-video-1-5-preview";
 const KLING_IMAGE_TO_VIDEO_MODEL = "kling-2.6/image-to-video";
 const KLING_TEXT_TO_VIDEO_MODEL = "kling-2.6/text-to-video";
 const KLING_MOTION_CONTROL_MODEL = "kling-2.6/motion-control";
@@ -746,6 +747,210 @@ export async function createFreeVideoTask(
   if (!taskId) throw new Error("KIE seedance: taskId не получен");
 
   console.log("[seedance] taskId:", taskId);
+  return taskId;
+}
+
+/** Загружает URL карточки Потока (serve-file, CDN, data:) в KIE CDN. */
+export async function uploadFlowImageUrlForKie(
+  imageUrl: string,
+  userId: string
+): Promise<string> {
+  const { readFlowImageBuffer } = await import("@/lib/flow/resolve-flow-reference");
+  const buffer = await readFlowImageBuffer(imageUrl);
+
+  let jpeg: Buffer;
+  try {
+    jpeg = await sharp(buffer).rotate().jpeg({ quality: 90 }).toBuffer();
+  } catch {
+    jpeg = buffer;
+  }
+
+  const dataUrl = `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+  const supabaseUrl = await uploadDataUrlToSupabase(dataUrl, userId);
+  if (supabaseUrl) {
+    const kieUrl = await uploadPublicUrlToKie(supabaseUrl);
+    if (kieUrl) return kieUrl;
+  }
+
+  const direct = await uploadDataUrlToKieDirect(dataUrl);
+  if (!direct) {
+    throw new Error(
+      "Не удалось загрузить изображение карточки для видео. Проверьте подключение и попробуйте снова."
+    );
+  }
+  return direct;
+}
+
+export interface FlowSeedanceVideoTaskParams {
+  prompt: string;
+  /** До 2 URL изображений Потока (serve-file, CDN, data:) */
+  referenceImageUrls: string[];
+  aspectRatio: "1:1" | "4:3" | "3:4" | "16:9" | "9:16";
+  duration: number;
+  generateAudio?: boolean;
+  fixedLens?: boolean;
+  userId: string;
+}
+
+/**
+ * Seedance 1.5 Pro для Потока: референсы + 1080p.
+ */
+export async function createFlowSeedanceVideoTask(
+  params: FlowSeedanceVideoTaskParams
+): Promise<string> {
+  const {
+    prompt,
+    referenceImageUrls,
+    aspectRatio,
+    duration,
+    generateAudio = false,
+    fixedLens = false,
+    userId,
+  } = params;
+
+  const urls = referenceImageUrls.filter(Boolean).slice(0, 2);
+  if (urls.length === 0) {
+    throw new Error("Необходимо хотя бы одно референсное изображение");
+  }
+
+  const inputUrls: string[] = [];
+  for (const ref of urls) {
+    inputUrls.push(await uploadFlowImageUrlForKie(ref, userId));
+  }
+
+  const durationClamped = Math.max(4, Math.min(12, Math.round(duration)));
+  const apiKey = getApiKey();
+
+  const body = JSON.stringify({
+    model: FREE_VIDEO_MODEL,
+    input: {
+      prompt,
+      input_urls: inputUrls,
+      aspect_ratio: aspectRatio,
+      resolution: "1080p",
+      duration: String(durationClamped),
+      fixed_lens: fixedLens,
+      generate_audio: generateAudio,
+      nsfw_checker: false,
+    },
+  });
+
+  console.log("[flow-seedance] Создаём задачу:", {
+    prompt: prompt.slice(0, 80),
+    aspectRatio,
+    duration: durationClamped,
+    fixedLens,
+    generateAudio,
+    refs: inputUrls.length,
+  });
+
+  const response = await fetch(`${KIE_TASK_BASE_URL}/api/v1/jobs/createTask`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body,
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || data.code !== 200) {
+    const msg = data.msg || `HTTP ${response.status}`;
+    console.error("[flow-seedance] createTask error:", msg, JSON.stringify(data).slice(0, 300));
+    throw new Error(`KIE seedance createTask failed: ${msg}`);
+  }
+
+  const taskId: string = data.data?.taskId;
+  if (!taskId) throw new Error("KIE seedance: taskId не получен");
+
+  console.log("[flow-seedance] taskId:", taskId);
+  return taskId;
+}
+
+export type GrokImagineAspect = "1:1" | "16:9" | "9:16" | "3:2" | "2:3" | "auto";
+
+/** Соотношение слайда Потока → поддерживаемые Grok Imagine 1.5 Preview. */
+export function flowAspectToGrokImagine(
+  aspect: "1:1" | "4:3" | "3:4" | "16:9" | "9:16"
+): GrokImagineAspect {
+  switch (aspect) {
+    case "1:1":
+      return "1:1";
+    case "9:16":
+      return "9:16";
+    case "16:9":
+      return "16:9";
+    case "4:3":
+      return "3:2";
+    case "3:4":
+      return "2:3";
+    default:
+      return "auto";
+  }
+}
+
+export interface FlowGrokImagineVideoTaskParams {
+  prompt: string;
+  /** Одно изображение (URL карточки / референса Потока) */
+  imageUrl: string;
+  aspectRatio: GrokImagineAspect;
+  duration: number;
+  userId: string;
+}
+
+/**
+ * Grok Imagine Video 1.5 Preview для Потока (кастомное видео): 720p, звук всегда.
+ */
+export async function createFlowGrokImagineVideoTask(
+  params: FlowGrokImagineVideoTaskParams
+): Promise<string> {
+  const { prompt, imageUrl, aspectRatio, duration, userId } = params;
+
+  const kieImageUrl = await uploadFlowImageUrlForKie(imageUrl, userId);
+  const durationClamped = Math.max(3, Math.min(10, Math.round(duration)));
+  const apiKey = getApiKey();
+
+  const body = JSON.stringify({
+    model: FLOW_GROK_VIDEO_MODEL,
+    input: {
+      prompt,
+      image_urls: [kieImageUrl],
+      aspect_ratio: aspectRatio,
+      resolution: "720p",
+      duration: durationClamped,
+      nsfw_checker: true,
+    },
+  });
+
+  console.log("[flow-grok] Создаём задачу:", {
+    prompt: prompt.slice(0, 80),
+    aspectRatio,
+    duration: durationClamped,
+    resolution: "720p",
+  });
+
+  const response = await fetch(`${KIE_TASK_BASE_URL}/api/v1/jobs/createTask`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body,
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || data.code !== 200) {
+    const msg = data.msg || `HTTP ${response.status}`;
+    console.error("[flow-grok] createTask error:", msg, JSON.stringify(data).slice(0, 300));
+    throw new Error(`KIE grok createTask failed: ${msg}`);
+  }
+
+  const taskId: string = data.data?.taskId;
+  if (!taskId) throw new Error("KIE grok: taskId не получен");
+
+  console.log("[flow-grok] taskId:", taskId);
   return taskId;
 }
 

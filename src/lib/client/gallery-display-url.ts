@@ -1,11 +1,18 @@
 import { proxiedHttpsMediaUrl } from "@/lib/client/proxied-display-url";
 
-/** Для /api/serve-file — превью с диска уже с ?w=400 */
-export function withServeFilePreviewParam(url: string): string {
+/** Для /api/serve-file — превью с диска; w=0 или fullResolution — без уменьшения (лайтбокс). */
+export function withServeFilePreviewParam(url: string, previewWidth = 400): string {
   if (typeof url !== "string" || !url.includes("/api/serve-file")) return url;
+  if (previewWidth <= 0) {
+    const q = url.indexOf("?");
+    return q >= 0 ? url.slice(0, q) : url;
+  }
   const sep = url.includes("?") ? "&" : "?";
-  return `${url}${sep}w=400`;
+  return `${url}${sep}w=${previewWidth}`;
 }
+
+/** ~лайтбокс: чуть крупнее сетки (400 → 960) */
+export const GALLERY_LIGHTBOX_SERVE_WIDTH = 960;
 
 /** ~2× самая широкая карточка сетки на Retina — баланс скорость/качество на экране */
 export const GALLERY_GRID_PROXY_MAX_WIDTH = 1152;

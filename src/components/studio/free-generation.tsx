@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, type Dispatch, type SetStateAction } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -21,7 +21,8 @@ import {
   GALLERY_GRID_PROXY_MAX_WIDTH,
   GALLERY_REFERENCE_PROXY_MAX_WIDTH,
 } from "@/lib/client/gallery-display-url";
-import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
+import { GalleryProxiedImg, GALLERY_LIGHTBOX_SERVE_WIDTH } from "@/components/media/gallery-proxied-img";
+import { kartoStudioFreeModeLabel } from "@/lib/karto-modes";
 import { useToast } from "@/components/ui/toast";
 import { 
   Download,
@@ -70,9 +71,33 @@ import {
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
 import { IosToggleRow } from "@/components/ui/ios-toggle-row";
 import {
-  computeFreeVideoTokenCost,
+  computeFreeVideoCreditCost,
   computeProductVideoTokenCost,
-} from "@/lib/video-token-pricing";
+  CREDIT_PHOTO_4K,
+} from "@/lib/credits-pricing";
+
+function applyCreditBalanceUpdate(
+  payload: {
+    creditBalance?: unknown;
+    creditsCharged?: unknown;
+    tokensCharged?: unknown;
+  },
+  setter: Dispatch<SetStateAction<number>>
+) {
+  if (typeof payload.creditBalance === "number" && Number.isFinite(payload.creditBalance)) {
+    setter(Math.max(0, Math.floor(payload.creditBalance)));
+    return;
+  }
+  const charged =
+    typeof payload.creditsCharged === "number"
+      ? payload.creditsCharged
+      : typeof payload.tokensCharged === "number"
+        ? payload.tokensCharged
+        : null;
+  if (charged != null && Number.isFinite(charged)) {
+    setter((b) => Math.max(0, b - charged));
+  }
+}
 
 /** @see GalleryProxiedImg — логика превью и fallback вынесена в компонент. */
 
@@ -689,7 +714,7 @@ export default function FreeGeneration() {
   // Инициализируем из localStorage — чтобы режим сохранялся после перезагрузки
   // Важно: не читаем localStorage во время SSR/первого рендера, чтобы не ловить hydration-mismatch.
   // Читаем localStorage после mount.
-  const [generationMode, setGenerationModeRaw] = useState<"free" | "for-product">("free");
+  const [generationMode, setGenerationModeRaw] = useState<"free" | "for-product">("for-product");
   const [mediaMode, setMediaModeRaw] = useState<"photo" | "video">("photo");
 
   // Обёртки, сохраняющие в localStorage при каждом изменении
@@ -706,7 +731,7 @@ export default function FreeGeneration() {
   useEffect(() => {
     try {
       const savedGen = localStorage.getItem("karto_generationMode");
-      setGenerationModeRaw(savedGen === "for-product" ? "for-product" : "free");
+      setGenerationModeRaw(savedGen === "free" ? "free" : "for-product");
 
       const savedMedia = localStorage.getItem("karto_mediaMode");
       setMediaModeRaw(savedMedia === "video" ? "video" : "photo");
@@ -745,7 +770,7 @@ export default function FreeGeneration() {
       videoMode === "pro"
         ? (videoDuration && durationMapPro[videoDuration]) || 5
         : (videoDuration && durationMapStandard[videoDuration || "4s"]) || 4;
-    return computeFreeVideoTokenCost({
+    return computeFreeVideoCreditCost({
       videoMode,
       resolution: videoQuality,
       durationSec: videoMode === "sync" ? 0 : durationNum,
@@ -1031,15 +1056,9 @@ export default function FreeGeneration() {
   // Состояние для профиля
   const [user, setUser] = useState<any>(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [creativeQuota, setCreativeQuota] = useState<{
-    used: number;
-    remaining: number;
-    limit: number;
-  } | null>(null);
-  /** Видео-токены (только списание на видео) */
-  const [videoTokenBalance, setVideoTokenBalance] = useState<number>(0);
-  /** «Потолок» капсулы: сумма начисленных покупками токенов (как лимит у фото); для высоты fill */
-  const [videoTokenCap, setVideoTokenCap] = useState<number>(0);
+  const [creditBalance, setCreditBalance] = useState<number>(0);
+  /** «Потолок» капсулы: сумма начисленных покупками кредитов; для высоты fill */
+  const [creditCap, setCreditCap] = useState<number>(0);
   const [hasLoadedFeed, setHasLoadedFeed] = useState(false);
   const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const [isVideoGuideOpen, setIsVideoGuideOpen] = useState(false);
@@ -1530,10 +1549,11 @@ export default function FreeGeneration() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showProfileMenu]);
 
-  // Загружаем остаток генераций для "Свободного творчества"
+  // Загружаем баланс кредитов «Свободного творчества»
   useEffect(() => {
     if (!user?.id) {
-      setCreativeQuota(null);
+      setCreditBalance(0);
+      setCreditCap(0);
       return;
     }
 
@@ -1552,32 +1572,19 @@ export default function FreeGeneration() {
         const payload = await response.json();
         if (!mounted) return;
         const subscription = payload?.subscription;
-        const vt = Number(
-          subscription?.videoTokenBalance ?? payload?.videoTokenBalance ?? 0
+        const balance = Number(
+          subscription?.creditBalance ??
+            subscription?.videoTokenBalance ??
+            payload?.creditBalance ??
+            payload?.videoTokenBalance ??
+            0
         );
-        setVideoTokenBalance(Number.isFinite(vt) ? Math.max(0, vt) : 0);
+        setCreditBalance(Number.isFinite(balance) ? Math.max(0, balance) : 0);
         const life = Number(subscription?.videoTokensLifetimePurchased ?? 0);
-        const capBase = Number.isFinite(life) && life > 0 ? life : Math.max(0, vt);
-        setVideoTokenCap(Math.max(1, capBase, vt));
-
-        if (!subscription || subscription.creativeLimit <= 0) {
-          setCreativeQuota({
-            used: 0,
-            remaining: 0,
-            limit: Number(subscription?.creativeLimit || 0),
-          });
-          return;
-        }
-
-        const limit = Math.max(0, Number(subscription.creativeLimit || 0));
-        const used = Math.max(0, Math.min(limit, Number(subscription.creativeUsed || 0)));
-        setCreativeQuota({
-          used,
-          remaining: Math.max(0, limit - used),
-          limit,
-        });
+        const capBase = Number.isFinite(life) && life > 0 ? life : Math.max(0, balance);
+        setCreditCap(Math.max(1, capBase, balance));
       } catch {
-        // Тихая обработка: при ошибке просто не обновляем квоту
+        // Тихая обработка: при ошибке просто не обновляем баланс
       }
     })();
 
@@ -1585,40 +1592,6 @@ export default function FreeGeneration() {
       mounted = false;
     };
   }, [user?.id]);
-
-  const consumeCreativeGeneration = () => {
-    setCreativeQuota((prev) => {
-      if (!prev || prev.remaining <= 0) return prev;
-      const nextRemaining = Math.max(0, prev.remaining - 1);
-      const nextUsed = Math.min(prev.limit, prev.used + 1);
-      if (prev.remaining > 0 && nextRemaining === 0) {
-        setTimeout(() => {
-          showToast({
-            type: "error",
-            title: "Генерации закончились",
-            message:
-              "Вы израсходовали все доступные генерации в тарифе «Свободное творчество».",
-          });
-        }, 0);
-      }
-      return {
-        ...prev,
-        used: nextUsed,
-        remaining: nextRemaining,
-      };
-    });
-  };
-
-  const markCreativeQuotaExhausted = () => {
-    setCreativeQuota((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        used: prev.limit,
-        remaining: 0,
-      };
-    });
-  };
 
   // Выход из аккаунта
   const handleLogout = async () => {
@@ -2250,24 +2223,23 @@ export default function FreeGeneration() {
           {/* Полноценный переключатель с вертикальным toggle */}
           <div className="space-y-3 mb-4">
             <button
-              onClick={() => setGenerationMode("free")}
+              onClick={() => setGenerationMode("for-product")}
               className={`w-full flex items-center justify-center px-4 py-3 rounded-xl transition-all border-2 ${
-                generationMode === "free"
-                  ? "bg-[#1F4E3D] text-white border-[#1F4E3D] shadow-md"
+                generationMode === "for-product"
+                  ? "bg-[#D1F85A] text-gray-900 border-[#D1F85A] shadow-md"
                   : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"
               }`}
             >
-              <span className="font-medium">Свободная</span>
+              <span className="font-medium">Для товара</span>
             </button>
-            
-            {/* Вертикальный переключатель */}
+
             <div className="flex items-center justify-center py-2">
               <button
-                onClick={() => setGenerationMode(generationMode === "free" ? "for-product" : "free")}
+                onClick={() => setGenerationMode(generationMode === "for-product" ? "free" : "for-product")}
                 className={`relative w-6 h-18 rounded-full transition-colors duration-300 shadow-inner overflow-hidden border-0 focus:outline-none focus:ring-0 ${
-                  generationMode === "free"
-                    ? "bg-[#1F4E3D]"
-                    : "bg-[#D1F85A]"
+                  generationMode === "for-product"
+                    ? "bg-[#D1F85A]"
+                    : "bg-[#1F4E3D]"
                 }`}
                 style={{ height: '4.5rem' }}
                 role="switch"
@@ -2278,7 +2250,7 @@ export default function FreeGeneration() {
                 <motion.div
                   className="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full shadow-lg"
                   animate={{
-                    y: generationMode === "free" ? 0 : 48
+                    y: generationMode === "for-product" ? 0 : 48
                   }}
                   transition={{
                     type: "spring",
@@ -2289,16 +2261,16 @@ export default function FreeGeneration() {
                 />
               </button>
             </div>
-            
+
             <button
-              onClick={() => setGenerationMode("for-product")}
+              onClick={() => setGenerationMode("free")}
               className={`w-full flex items-center justify-center px-4 py-3 rounded-xl transition-all border-2 ${
-                generationMode === "for-product"
-                  ? "bg-[#D1F85A] text-gray-900 border-[#D1F85A] shadow-md"
+                generationMode === "free"
+                  ? "bg-[#1F4E3D] text-white border-[#1F4E3D] shadow-md"
                   : "bg-white text-gray-700 border-gray-200 hover:border-gray-300"
               }`}
             >
-              <span className="font-medium">Для товара</span>
+              <span className="font-medium">{kartoStudioFreeModeLabel(mediaMode)}</span>
             </button>
           </div>
 
@@ -3891,7 +3863,7 @@ export default function FreeGeneration() {
               {mediaMode === "video" && (
                 <div
                   className="shrink-0 pr-0.5"
-                  title="Списание видео-кредитов за этот запуск по выбранным настройкам"
+                  title="Списание кредитов за этот запуск по выбранным настройкам"
                 >
                   <div className="flex flex-col items-end justify-center gap-0.5 rounded-2xl border border-lime-200/70 bg-gradient-to-br from-lime-50 via-white to-emerald-50/80 px-3 py-2 shadow-[0_2px_12px_rgba(22,101,52,0.08)] ring-1 ring-lime-100/50 min-w-[5.25rem]">
                     <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-lime-800/65">
@@ -3912,7 +3884,7 @@ export default function FreeGeneration() {
                       ? productVideoTokenEstimate != null && productVideoTokenEstimate > 0
                       : freeVideoTokenEstimate != null && freeVideoTokenEstimate > 0) && (
                       <span className="text-[10px] font-medium text-lime-800/55 leading-none mt-0.5">
-                        токенов
+                        кредитов
                       </span>
                     )}
                   </div>
@@ -3932,12 +3904,13 @@ export default function FreeGeneration() {
                   return;
                 }
                 const isVideoRun = mediaMode === "video";
-                if (!isVideoRun && creativeQuota && creativeQuota.remaining <= 0) {
+                const photoCost = CREDIT_PHOTO_4K;
+                if (!isVideoRun && creditBalance < photoCost) {
                   showToast({
                     type: "error",
-                    title: "Нет доступных генераций",
+                    title: "Недостаточно кредитов",
                     message:
-                      "У вас закончились генерации в «Свободном творчестве». Выберите тариф на главной странице.",
+                      `Нужно ${photoCost} кред., на балансе ${creditBalance}. Купите пакет на главной (#pricing → Креатив).`,
                   });
                   return;
                 }
@@ -3954,11 +3927,11 @@ export default function FreeGeneration() {
                     });
                     return;
                   }
-                  if (videoTokenBalance < need) {
+                  if (creditBalance < need) {
                     showToast({
                       type: "error",
-                      title: "Недостаточно видео-кредитов",
-                      message: `Нужно ${need} ток., на балансе ${videoTokenBalance}. Пополните на главной (#pricing → свободное творчество → Видео → пакет токенов).`,
+                      title: "Недостаточно кредитов",
+                      message: `Нужно ${need} кред., на балансе ${creditBalance}. Пополните на главной (#pricing → Креатив).`,
                     });
                     return;
                   }
@@ -3966,11 +3939,11 @@ export default function FreeGeneration() {
 
                 if (isVideoRun && generationMode === "for-product") {
                   const need = productVideoTokenEstimate ?? 0;
-                  if (videoTokenBalance < need) {
+                  if (creditBalance < need) {
                     showToast({
                       type: "error",
-                      title: "Недостаточно видео-кредитов",
-                      message: `Нужно ${need} ток., на балансе ${videoTokenBalance}. Пополните на главной (#pricing → свободное творчество → Видео → пакет токенов).`,
+                      title: "Недостаточно кредитов",
+                      message: `Нужно ${need} кред., на балансе ${creditBalance}. Пополните на главной (#pricing → Креатив).`,
                     });
                     return;
                   }
@@ -4072,10 +4045,14 @@ export default function FreeGeneration() {
 
                     const freeVideoData = await freeVideoRes.json().catch(() => ({}));
                     if (!freeVideoRes.ok || !freeVideoData.success) {
-                      if (freeVideoData.code === "INSUFFICIENT_VIDEO_TOKENS") {
+                      if (
+                        freeVideoData.code === "INSUFFICIENT_VIDEO_TOKENS" ||
+                        freeVideoData.code === "INSUFFICIENT_CREDITS"
+                      ) {
+                        setCreditBalance(0);
                         showToast({
                           type: "error",
-                          title: "Недостаточно видео-кредитов",
+                          title: "Недостаточно кредитов",
                           message: freeVideoData.error || "Пополните баланс на главной странице.",
                         });
                         setIsVideoStarting(false);
@@ -4084,11 +4061,7 @@ export default function FreeGeneration() {
                       throw new Error(freeVideoData.error || "Ошибка запуска видео-генерации");
                     }
 
-                    if (typeof freeVideoData.tokensCharged === "number") {
-                      setVideoTokenBalance((b) =>
-                        Math.max(0, b - freeVideoData.tokensCharged)
-                      );
-                    }
+                    applyCreditBalanceUpdate(freeVideoData, setCreditBalance);
 
                     // Задача запущена — ставим pendingVideoTaskId + сохраняем параметры анимации
                     setSlides((prev) =>
@@ -4128,12 +4101,23 @@ export default function FreeGeneration() {
 
                     const errorData = await response.json().catch(() => ({}));
                     if (!response.ok) {
-                      if (response.status === 403) {
-                        markCreativeQuotaExhausted();
+                      if (
+                        response.status === 403 ||
+                        errorData.code === "INSUFFICIENT_CREDITS" ||
+                        errorData.code === "NO_GENERATIONS_LEFT" ||
+                        errorData.code === "NO_CREATIVE_PLAN"
+                      ) {
+                        setCreditBalance(
+                          typeof errorData.creditBalance === "number"
+                            ? Math.max(0, errorData.creditBalance)
+                            : 0
+                        );
                         showToast({
                           type: "error",
-                          title: "Нет доступных генераций",
-                          message: errorData.error || "У вас не куплены генерации или число доступных генераций равно 0. Выберите тариф «Свободное творчество» на главной странице.",
+                          title: "Недостаточно кредитов",
+                          message:
+                            errorData.error ||
+                            "Купите пакет кредитов на главной странице (#pricing → Креатив).",
                         });
                         return;
                       }
@@ -4142,12 +4126,22 @@ export default function FreeGeneration() {
 
                     const data = errorData;
                     if (!data.success) {
-                      if (data.code === "NO_GENERATIONS_LEFT" || data.code === "NO_CREATIVE_PLAN") {
-                        markCreativeQuotaExhausted();
+                      if (
+                        data.code === "INSUFFICIENT_CREDITS" ||
+                        data.code === "NO_GENERATIONS_LEFT" ||
+                        data.code === "NO_CREATIVE_PLAN"
+                      ) {
+                        setCreditBalance(
+                          typeof data.creditBalance === "number"
+                            ? Math.max(0, data.creditBalance)
+                            : 0
+                        );
                         showToast({
                           type: "error",
-                          title: "Нет доступных генераций",
-                          message: data.error || "У вас не куплены генерации. Выберите тариф на главной странице.",
+                          title: "Недостаточно кредитов",
+                          message:
+                            data.error ||
+                            "Купите пакет кредитов на главной странице (#pricing → Креатив).",
                         });
                         return;
                       }
@@ -4155,7 +4149,7 @@ export default function FreeGeneration() {
                     }
 
                     const generatedImageUrl = data.imageUrl;
-                    consumeCreativeGeneration();
+                    applyCreditBalanceUpdate(data, setCreditBalance);
                     if (data.referenceUsed === false && referenceImages.length > 0) {
                       showToast({
                         type: "info",
@@ -4250,10 +4244,14 @@ export default function FreeGeneration() {
 
                       const videoData = await videoRes.json().catch(() => ({}));
                       if (!videoRes.ok || !videoData.success) {
-                        if (videoData.code === "INSUFFICIENT_VIDEO_TOKENS") {
+                        if (
+                          videoData.code === "INSUFFICIENT_VIDEO_TOKENS" ||
+                          videoData.code === "INSUFFICIENT_CREDITS"
+                        ) {
+                          setCreditBalance(0);
                           showToast({
                             type: "error",
-                            title: "Недостаточно видео-кредитов",
+                            title: "Недостаточно кредитов",
                             message: videoData.error || "Пополните баланс на главной странице.",
                           });
                           setIsVideoStarting(false);
@@ -4262,11 +4260,7 @@ export default function FreeGeneration() {
                         throw new Error(videoData.error || "Ошибка запуска видео-генерации");
                       }
 
-                      if (typeof videoData.tokensCharged === "number") {
-                        setVideoTokenBalance((b) =>
-                          Math.max(0, b - videoData.tokensCharged)
-                        );
-                      }
+                      applyCreditBalanceUpdate(videoData, setCreditBalance);
 
                       // Задача запущена — ставим pendingVideoTaskId на слайд
                       setSlides((prev) =>
@@ -4306,12 +4300,23 @@ export default function FreeGeneration() {
 
                     const errorDataForProduct = await response.json().catch(() => ({}));
                     if (!response.ok) {
-                      if (response.status === 403) {
-                        markCreativeQuotaExhausted();
+                      if (
+                        response.status === 403 ||
+                        errorDataForProduct.code === "INSUFFICIENT_CREDITS" ||
+                        errorDataForProduct.code === "NO_GENERATIONS_LEFT" ||
+                        errorDataForProduct.code === "NO_CREATIVE_PLAN"
+                      ) {
+                        setCreditBalance(
+                          typeof errorDataForProduct.creditBalance === "number"
+                            ? Math.max(0, errorDataForProduct.creditBalance)
+                            : 0
+                        );
                         showToast({
                           type: "error",
-                          title: "Нет доступных генераций",
-                          message: errorDataForProduct.error || "У вас не куплены генерации или число доступных генераций равно 0. Выберите тариф «Свободное творчество» на главной странице.",
+                          title: "Недостаточно кредитов",
+                          message:
+                            errorDataForProduct.error ||
+                            "Купите пакет кредитов на главной странице (#pricing → Креатив).",
                         });
                         return;
                       }
@@ -4320,12 +4325,22 @@ export default function FreeGeneration() {
 
                     const data = errorDataForProduct;
                     if (!data.success) {
-                      if (data.code === "NO_GENERATIONS_LEFT" || data.code === "NO_CREATIVE_PLAN") {
-                        markCreativeQuotaExhausted();
+                      if (
+                        data.code === "INSUFFICIENT_CREDITS" ||
+                        data.code === "NO_GENERATIONS_LEFT" ||
+                        data.code === "NO_CREATIVE_PLAN"
+                      ) {
+                        setCreditBalance(
+                          typeof data.creditBalance === "number"
+                            ? Math.max(0, data.creditBalance)
+                            : 0
+                        );
                         showToast({
                           type: "error",
-                          title: "Нет доступных генераций",
-                          message: data.error || "У вас не куплены генерации. Выберите тариф на главной странице.",
+                          title: "Недостаточно кредитов",
+                          message:
+                            data.error ||
+                            "Купите пакет кредитов на главной странице (#pricing → Креатив).",
                         });
                         return;
                       }
@@ -4333,7 +4348,7 @@ export default function FreeGeneration() {
                     }
 
                     const generatedImageUrl = data.imageUrl;
-                    consumeCreativeGeneration();
+                    applyCreditBalanceUpdate(data, setCreditBalance);
 
                     // Сохраняем в Supabase напрямую с клиента (если пользователь авторизован)
                     await saveImageToSupabase({
@@ -4516,7 +4531,8 @@ export default function FreeGeneration() {
                   <GalleryProxiedImg
                     remoteUrl={viewingImage}
                     alt="Просмотр изображения"
-                    className="max-w-full max-h-[85vh] w-auto h-auto object-contain"
+                    serveFilePreviewWidth={GALLERY_LIGHTBOX_SERVE_WIDTH}
+                    className="max-w-full max-h-[88vh] w-auto h-auto object-contain"
                     loading="eager"
                     fetchPriority="high"
                   />
@@ -4616,7 +4632,9 @@ export default function FreeGeneration() {
         isOpen={isVideoGuideOpen}
         onClose={() => setIsVideoGuideOpen(false)}
         contextLabel={
-          generationMode === "for-product" ? "Для товара · Видео" : "Свободное творчество · Видео"
+          generationMode === "for-product"
+            ? "Для товара · Видео"
+            : kartoStudioFreeModeLabel("video")
         }
       />
       <PhotoGenerationGuideModal
@@ -4675,63 +4693,6 @@ export default function FreeGeneration() {
           </AnimatePresence>
         </div>
         <div className="flex flex-row items-end gap-3">
-          {creativeQuota && (
-            <div
-              className="w-fit px-1 py-1"
-              style={{
-                background: "transparent",
-                border: "none",
-                boxShadow: "none",
-              }}
-            >
-              <div className="flex flex-col items-center gap-1">
-                <span
-                  className="text-[10px] font-semibold tracking-wide uppercase"
-                  style={{ color: "rgba(0, 0, 0, 0.55)" }}
-                >
-                  Генерации
-                </span>
-                <div
-                  className="relative w-7 h-24 rounded-full overflow-hidden"
-                  style={{
-                    background:
-                      "linear-gradient(180deg, rgba(226,232,240,0.9) 0%, rgba(203,213,225,0.65) 100%)",
-                    border: "1px solid rgba(15, 23, 42, 0.15)",
-                    boxShadow:
-                      "inset 0 2px 6px rgba(255,255,255,0.6), inset 0 -4px 10px rgba(15,23,42,0.12)",
-                  }}
-                >
-                  <div
-                    className="absolute inset-x-0 bottom-0 transition-all duration-500"
-                    style={{
-                      height: `${Math.max(0, Math.min(100, (creativeQuota.remaining / Math.max(1, creativeQuota.limit || 1)) * 100))}%`,
-                      background:
-                        creativeQuota.remaining > 0
-                          ? "linear-gradient(180deg, rgba(74,222,128,0.95) 0%, rgba(46,90,67,0.95) 100%)"
-                          : "linear-gradient(180deg, rgba(248,113,113,0.9) 0%, rgba(239,68,68,0.95) 100%)",
-                      boxShadow:
-                        "inset 0 1px 6px rgba(255,255,255,0.35), 0 0 8px rgba(46,90,67,0.25)",
-                    }}
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span
-                      className="text-[11px] font-bold leading-none"
-                      style={{ color: creativeQuota.remaining > 0 ? "#0f172a" : "#7f1d1d" }}
-                    >
-                      {creativeQuota.remaining}
-                    </span>
-                  </div>
-                </div>
-                <span
-                  className="text-[10px] font-semibold leading-none"
-                  style={{ color: "#2E5A43", opacity: 0.9 }}
-                >
-                  из {creativeQuota.limit}
-                </span>
-              </div>
-            </div>
-          )}
-
           <div
             className="w-fit px-1 py-1"
             style={{
@@ -4745,7 +4706,7 @@ export default function FreeGeneration() {
                 className="text-[10px] font-semibold tracking-wide uppercase"
                 style={{ color: "rgba(0, 0, 0, 0.55)" }}
               >
-                Видео
+                Кредиты
               </span>
               <div
                 className="relative w-7 h-24 rounded-full overflow-hidden"
@@ -4760,9 +4721,9 @@ export default function FreeGeneration() {
                 <div
                   className="absolute inset-x-0 bottom-0 transition-all duration-500"
                   style={{
-                    height: `${videoTokenBalance <= 0 ? 0 : Math.min(100, Math.round((videoTokenBalance / Math.max(1, videoTokenCap)) * 100))}%`,
+                    height: `${creditBalance <= 0 ? 0 : Math.min(100, Math.round((creditBalance / Math.max(1, creditCap)) * 100))}%`,
                     background:
-                      videoTokenBalance > 0
+                      creditBalance > 0
                         ? "linear-gradient(180deg, #D9F99D 0%, #84CC16 55%, #65A30D 100%)"
                         : "linear-gradient(180deg, rgba(248,113,113,0.35) 0%, rgba(239,68,68,0.5) 100%)",
                     boxShadow:
@@ -4772,11 +4733,11 @@ export default function FreeGeneration() {
                 <div className="absolute inset-0 flex items-center justify-center px-0.5">
                   <span
                     className="text-[10px] font-bold leading-none text-center"
-                    style={{ color: videoTokenBalance > 0 ? "#14532d" : "#7f1d1d" }}
+                    style={{ color: creditBalance > 0 ? "#14532d" : "#7f1d1d" }}
                   >
-                    {videoTokenBalance > 9999
-                      ? `${Math.round(videoTokenBalance / 100) / 10}k`
-                      : videoTokenBalance}
+                    {creditBalance > 9999
+                      ? `${Math.round(creditBalance / 100) / 10}k`
+                      : creditBalance}
                   </span>
                 </div>
               </div>
@@ -4784,9 +4745,9 @@ export default function FreeGeneration() {
                 className="text-[9px] font-semibold leading-none text-center max-w-[4.5rem]"
                 style={{ color: "#4d7c0f", opacity: 0.95 }}
               >
-                {videoTokenCap > 0
-                  ? `из ${videoTokenCap > 9999 ? `${Math.round(videoTokenCap / 100) / 10}k` : videoTokenCap}`
-                  : "токены"}
+                {creditCap > 0
+                  ? `из ${creditCap > 9999 ? `${Math.round(creditCap / 100) / 10}k` : creditCap}`
+                  : "кредиты"}
               </span>
             </div>
           </div>

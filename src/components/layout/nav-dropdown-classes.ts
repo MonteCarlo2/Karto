@@ -5,14 +5,20 @@
 export const NAV_DROPDOWN_PANEL =
   "overflow-hidden rounded-2xl border border-[#070907]/10 bg-[#fffefb]/[0.97] p-1.5 shadow-[0_24px_64px_-34px_rgba(7,9,7,0.42)] ring-1 ring-black/[0.035] backdrop-blur-md";
 
+/** Панель меню «Мастерская» — чуть плотнее профиля. */
+export const NAV_STUDIO_DROPDOWN_PANEL =
+  "overflow-hidden rounded-2xl border border-[#070907]/10 bg-[#fffefb]/[0.97] p-2 shadow-[0_24px_64px_-34px_rgba(7,9,7,0.42)] ring-1 ring-black/[0.035] backdrop-blur-md";
+
 export const NAV_MENU_ROW_STUDIO =
-  "group flex items-start gap-2.5 rounded-xl px-3 py-2.5 text-left outline-none transition-colors duration-150 hover:bg-[#2E5A43]/[0.07] focus-visible:bg-[#2E5A43]/[0.07] focus-visible:ring-2 focus-visible:ring-[#2E5A43]/22 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffefb]";
+  "group flex w-full items-start gap-2.5 rounded-xl px-3 py-2 text-left outline-none transition-colors duration-150 hover:bg-[#2E5A43]/[0.07] focus-visible:bg-[#2E5A43]/[0.07] focus-visible:ring-2 focus-visible:ring-[#2E5A43]/22 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffefb]";
+
+export const NAV_STUDIO_MENU_COLUMN = "flex min-w-0 flex-1 flex-col gap-1.5";
 
 export const NAV_MENU_ICON_WRAP =
   "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#f6fce9] via-[#ecf7db] to-[#dff3c4] text-[#16452f] shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] ring-1 ring-[#2E5A43]/13";
 
 export const NAV_MENU_ICON_STUDIO =
-  "flex shrink-0 items-center justify-center pt-0.5 text-[#2E5A43]";
+  "flex h-[22px] w-[22px] shrink-0 items-center justify-center pt-px text-[#2E5A43]";
 
 export const NAV_MENU_ICON_PROFILE =
   "flex shrink-0 items-center justify-center pt-0.5 text-[#2E5A43]";
@@ -27,8 +33,9 @@ export const NAV_MENU_ICON_WRAP_LOGOUT =
 export const NAV_MENU_DIVIDER = "mx-2 my-0.5 h-px bg-gradient-to-r from-transparent via-[#070907]/10 to-transparent";
 
 export const NAV_MENU_TITLE =
-  "text-[15px] font-semibold leading-[1.18] tracking-[-0.02em] text-[#0f1412] group-hover:text-[#0d281c]";
-export const NAV_MENU_SUBTITLE = "mt-0.5 text-[11px] leading-snug text-neutral-500";
+  "text-base font-semibold leading-tight tracking-[-0.02em] text-[#0f1412] group-hover:text-[#0d281c]";
+export const NAV_MENU_SUBTITLE =
+  "mt-0.5 text-[13px] leading-snug text-neutral-500";
 
 export const NAV_MENU_ROW_PROFILE =
   "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left outline-none transition-colors duration-150 hover:bg-[#2E5A43]/[0.07] focus-visible:bg-[#2E5A43]/[0.07] focus-visible:ring-2 focus-visible:ring-[#2E5A43]/22 focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffefb]";

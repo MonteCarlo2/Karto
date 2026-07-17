@@ -140,7 +140,7 @@ export function PricingSectionCRO() {
           <div className="space-y-6 lg:col-span-6">
             <div>
               <h3 className="text-sm font-semibold uppercase tracking-widest text-[#1F4E3D]/80">
-                Свободное творчество
+                Креатив
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 Чистая мощь интеллекта. Генерация любых образов по вашим правилам.

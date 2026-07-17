@@ -8,7 +8,12 @@ import { Button } from "@/components/ui/button"
 import { Menu, X, User, LogOut } from "lucide-react"
 import { UserNotificationBell } from "@/components/layout/user-notification-bell"
 import {
+  KARTO_CREATIVE_MODE,
+  KARTO_FLOW_MODE,
+} from "@/lib/karto-modes"
+import {
   NAV_DROPDOWN_PANEL,
+  NAV_STUDIO_DROPDOWN_PANEL,
   NAV_MENU_ICON_LOGOUT,
   NAV_MENU_ICON_PROFILE,
   NAV_MENU_ICON_STUDIO,
@@ -16,12 +21,14 @@ import {
   NAV_MENU_ROW_LOGOUT,
   NAV_MENU_ROW_PROFILE,
   NAV_MENU_ROW_STUDIO,
+  NAV_STUDIO_MENU_COLUMN,
   NAV_MENU_SUBTITLE,
   NAV_MENU_TITLE,
   NAV_PROFILE_LABEL,
 } from "@/components/layout/nav-dropdown-classes"
 import { motion, AnimatePresence } from "framer-motion"
 import { createBrowserClient } from "@/lib/supabase/client"
+import { KARTO_SUBSCRIPTION_REFRESH_EVENT } from "@/lib/subscription-refresh"
 import { useProfileUpdateBadge } from "@/hooks/use-profile-update-badge"
 import { cn } from "@/lib/utils"
 import {
@@ -35,77 +42,81 @@ function StudioMenuGrid({ onNavigate }: { onNavigate?: () => void }) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-1">
-      <Link href="/studio?intro=true" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
-        <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
-          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className={NAV_MENU_TITLE}>Поток</div>
-          <div className={NAV_MENU_SUBTITLE}>От идеи до готовой карточки</div>
-        </div>
-      </Link>
-      <Link href="/studio/descriptions" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
-        <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
-          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-            />
-          </svg>
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className={NAV_MENU_TITLE}>SEO-описания</div>
-          <div className={NAV_MENU_SUBTITLE}>Бесплатные тексты для карточки</div>
-        </div>
-      </Link>
-      <Link href="/studio/auto-replies" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
-        <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
-          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"
-            />
-          </svg>
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className={NAV_MENU_TITLE}>Автоответы</div>
-          <div className={NAV_MENU_SUBTITLE}>Ответы на отзывы с ИИ</div>
-        </div>
-      </Link>
-      <Link href="/studio/free" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
-        <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
-          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className={NAV_MENU_TITLE}>Свободное творчество</div>
-          <div className={NAV_MENU_SUBTITLE}>Карточки без полного потока</div>
-        </div>
-      </Link>
-      <Link href="/studio/unit-economics" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
-        <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
-          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-            />
-          </svg>
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className={NAV_MENU_TITLE}>Юнит-экономика</div>
-          <div className={NAV_MENU_SUBTITLE}>Маржа, комиссии и прибыль</div>
-        </div>
-      </Link>
+    <div className="flex gap-1.5">
+      <div className={NAV_STUDIO_MENU_COLUMN}>
+        <Link href="/studio?intro=true" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
+          <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
+            <svg className="h-[22px] w-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className={NAV_MENU_TITLE}>{KARTO_FLOW_MODE.title}</div>
+            <div className={NAV_MENU_SUBTITLE}>{KARTO_FLOW_MODE.tagline}</div>
+          </div>
+        </Link>
+        <Link href="/studio/free" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
+          <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
+            <svg className="h-[22px] w-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className={NAV_MENU_TITLE}>{KARTO_CREATIVE_MODE.title}</div>
+            <div className={NAV_MENU_SUBTITLE}>{KARTO_CREATIVE_MODE.tagline}</div>
+          </div>
+        </Link>
+        <Link href="/studio/auto-replies" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
+          <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
+            <svg className="h-[22px] w-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"
+              />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className={NAV_MENU_TITLE}>Автоответы</div>
+            <div className={NAV_MENU_SUBTITLE}>Ответы на отзывы с ИИ</div>
+          </div>
+        </Link>
+      </div>
+      <div className={NAV_STUDIO_MENU_COLUMN}>
+        <Link href="/studio/unit-economics" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
+          <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
+            <svg className="h-[22px] w-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+              />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className={NAV_MENU_TITLE}>Юнит-экономика</div>
+            <div className={NAV_MENU_SUBTITLE}>Маржа, комиссии и прибыль</div>
+          </div>
+        </Link>
+        <Link href="/studio/descriptions" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
+          <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
+            <svg className="h-[22px] w-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className={NAV_MENU_TITLE}>SEO-описания</div>
+            <div className={NAV_MENU_SUBTITLE}>Бесплатные тексты для карточки</div>
+          </div>
+        </Link>
+      </div>
     </div>
   )
 }
@@ -169,7 +180,8 @@ export function Navbar() {
       return;
     }
     let mounted = true;
-    (async () => {
+
+    const loadSubscription = async () => {
       try {
         const supabase = createBrowserClient();
         const { data: { session } } = await supabase.auth.getSession();
@@ -189,6 +201,7 @@ export function Navbar() {
               demoFlowsUsed?: number;
               creativeLimit?: number;
               creativeUsed?: number;
+              creditBalance?: number;
               videoTokenBalance?: number;
             }
           | null
@@ -204,16 +217,14 @@ export function Navbar() {
           const left = Math.max(0, s.flowsLimit - (s.flowsUsed ?? 0));
           labels.push(left === 1 ? "1 поток" : `${left} потоков`);
         }
-        if (s && s.creativeLimit && s.creativeLimit > 0) {
-          const left = Math.max(0, s.creativeLimit - (s.creativeUsed ?? 0));
-          labels.push(left === 1 ? "1 ген." : `${left} ген.`);
-        }
-        const vt = Number(s?.videoTokenBalance ?? data.videoTokenBalance ?? 0);
-        if (vt > 0) {
+        const credits = Number(
+          s?.creditBalance ?? s?.videoTokenBalance ?? data.creditBalance ?? data.videoTokenBalance ?? 0
+        );
+        if (credits > 0) {
           labels.push(
-            vt >= 1000
-              ? `${(vt / 1000).toFixed(vt % 1000 === 0 ? 0 : 1)}k ток.`
-              : `${vt} ток.`
+            credits >= 1000
+              ? `${(credits / 1000).toFixed(credits % 1000 === 0 ? 0 : 1)}k кр.`
+              : `${credits} кр.`
           );
         }
         setSubscriptionLabels(labels);
@@ -221,8 +232,19 @@ export function Navbar() {
         if (!mounted) return;
         setSubscriptionLabels([]);
       }
-    })();
-    return () => { mounted = false; };
+    };
+
+    void loadSubscription();
+
+    const onRefresh = () => {
+      void loadSubscription();
+    };
+    window.addEventListener(KARTO_SUBSCRIPTION_REFRESH_EVENT, onRefresh);
+
+    return () => {
+      mounted = false;
+      window.removeEventListener(KARTO_SUBSCRIPTION_REFRESH_EVENT, onRefresh);
+    };
   }, [user]);
 
   // Закрытие меню профиля и мастерской при клике вне их
@@ -323,7 +345,7 @@ export function Navbar() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ duration: 0.15, ease: "easeOut" }}
-                    className={`absolute left-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),592px)] ${NAV_DROPDOWN_PANEL}`}
+                    className={`absolute left-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),520px)] ${NAV_STUDIO_DROPDOWN_PANEL}`}
                   >
                     <StudioMenuGrid onNavigate={() => setShowStudioMenu(false)} />
                   </motion.div>
@@ -463,7 +485,7 @@ export function Navbar() {
                   Мастерская
                 </Button>
                 {showStudioMenu && (
-                  <div className={`ml-4 mt-2 ${NAV_DROPDOWN_PANEL}`}>
+                  <div className={`ml-4 mt-2 ${NAV_STUDIO_DROPDOWN_PANEL}`}>
                     <StudioMenuGrid
                       onNavigate={() => {
                         setIsOpen(false)

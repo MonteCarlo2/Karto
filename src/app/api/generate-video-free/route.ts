@@ -7,6 +7,7 @@ import {
 } from "@/lib/services/kie-ai-video";
 import { computeFreeVideoTokenCost } from "@/lib/video-token-pricing";
 import { consumeVideoTokens, addVideoTokens } from "@/lib/video-tokens";
+import { getCreditBalance } from "@/lib/credits";
 
 /**
  * Создание задачи генерации видео для режима «Свободная генерация».
@@ -182,11 +183,11 @@ export async function POST(request: NextRequest) {
           success: false,
           error:
             debitErr === "insufficient_balance"
-              ? "Недостаточно видео-кредитов или истёк 30-дневный период пакета. Пополните баланс на главной (раздел цен → свободное творчество → видео)."
+              ? "Недостаточно кредитов или истёк 30-дневный период пакета. Пополните баланс на главной (раздел «Цена» → Креатив)."
               : isRpcFail
                 ? "Не удалось списать кредиты (ошибка сервера БД). Обновите страницу. Если повторится — напишите в поддержку."
-                : "Не удалось списать видео-кредиты. Попробуйте позже.",
-          code: "INSUFFICIENT_VIDEO_TOKENS",
+                : "Не удалось списать кредиты. Попробуйте позже.",
+          code: "INSUFFICIENT_CREDITS",
           debitDetails: isRpcFail ? debitErr : undefined,
         },
         { status: 403 }
@@ -248,9 +249,17 @@ export async function POST(request: NextRequest) {
       throw taskErr;
     }
 
-    console.log("✅ [generate-video-free] Задача создана:", taskId, "tokens:", tokenCost);
+    console.log("✅ [generate-video-free] Задача создана:", taskId, "credits:", tokenCost);
 
-    return NextResponse.json({ success: true, taskId, tokensCharged: tokenCost });
+    const creditBalance = await getCreditBalance(supabase as never, user.id);
+
+    return NextResponse.json({
+      success: true,
+      taskId,
+      creditsCharged: tokenCost,
+      creditBalance,
+      tokensCharged: tokenCost,
+    });
   } catch (error: any) {
     console.error("❌ [generate-video-free] Ошибка:", error);
     return NextResponse.json(

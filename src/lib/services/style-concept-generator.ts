@@ -12,6 +12,7 @@ import {
   getNormalizedOpenRouterApiKey,
   getOpenRouterRequestHeaders,
 } from "@/lib/openrouter-headers";
+import { openRouterFetch } from "@/lib/openrouter-fetch";
 import { resolveConceptModel } from "@/lib/openrouter-studio-models";
 import {
   buildOpenRouterModelChain,
@@ -115,7 +116,7 @@ ${safeUserPrompt ? " Учти пожелания пользователя в 4 �
 
     for (let modelIndex = 0; modelIndex < modelChain.length; modelIndex++) {
       const model = modelChain[modelIndex];
-      let attempt = await fetch(OPENROUTER_API_URL, {
+      let attempt = await openRouterFetch(OPENROUTER_API_URL, {
         method: "POST",
         headers,
         body: JSON.stringify({ ...buildBody(true), model }),
@@ -126,7 +127,7 @@ ${safeUserPrompt ? " Учти пожелания пользователя в 4 �
         const retryWithoutSchema = /response_format|json_schema|structured|schema/i.test(errText);
         if (retryWithoutSchema) {
           console.warn(`⚠️ [OpenRouter] ${model}: response_format не поддерживается, повтор без схемы`);
-          attempt = await fetch(OPENROUTER_API_URL, {
+          attempt = await openRouterFetch(OPENROUTER_API_URL, {
             method: "POST",
             headers,
             body: JSON.stringify({ ...buildBody(false), model }),

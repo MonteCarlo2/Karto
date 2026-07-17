@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Check, Download, Copy, Loader2 } from "lucide-react";
+import { Check, Download, Copy, Loader2, Film } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { triggerDownloadFromRemoteUrl } from "@/lib/client/media-download";
 import type { PriceAnalysis } from "@/lib/services/price-analyzer";
 import { formatForCopy } from "@/lib/utils/marketplace-formatter";
 import { ResultsProductDescription } from "@/components/studio/ProductDescriptionDisplay";
+import { demoFlowCreditsLabelRu } from "@/lib/demo-flow";
 import { resolveFlowPhoto, resolveFlowProductName } from "@/lib/flow/flow-photo-cache";
 import { flowPriceCacheKey, flowVisualSlidesKey } from "@/lib/flow/flow-persistence-keys";
 import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
@@ -15,6 +16,8 @@ import {
   GALLERY_GRID_PROXY_MAX_WIDTH,
 } from "@/lib/client/gallery-display-url";
 import { useToast } from "@/components/ui/toast";
+import { createBrowserClient } from "@/lib/supabase/client";
+import { clearFlowSessionClient } from "@/lib/flow/clear-flow-session-client";
 import { DemoFlowBadge } from "@/components/studio/DemoFlowBadge";
 import { useDemoFlowSession } from "@/lib/hooks/use-demo-flow-session";
 
@@ -22,9 +25,84 @@ interface VisualSlide {
   id: number;
   imageUrl: string | null;
   variants: string[];
+  videoUrl?: string | null;
+  videoVariants?: string[];
   prompt: string;
   scenario: string | null;
   aspectRatio: "3:4" | "4:3" | "9:16" | "1:1";
+}
+
+type ResultMediaItem =
+  | { kind: "image"; url: string; posterUrl: string; slideId: number }
+  | { kind: "video"; url: string; posterUrl: string | null; slideId: number };
+
+function slideVideosNewestFirst(slide: VisualSlide): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (url: string | null | undefined) => {
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    out.push(url);
+  };
+  push(slide.videoUrl);
+  for (const url of slide.videoVariants || []) push(url);
+  return out;
+}
+
+function buildResultMediaItems(slides: VisualSlide[]): ResultMediaItem[] {
+  const items: ResultMediaItem[] = [];
+  for (const slide of slides) {
+    if (slide.imageUrl) {
+      items.push({
+        kind: "image",
+        url: slide.imageUrl,
+        posterUrl: slide.imageUrl,
+        slideId: slide.id,
+      });
+    }
+    for (const videoUrl of slideVideosNewestFirst(slide)) {
+      items.push({
+        kind: "video",
+        url: videoUrl,
+        posterUrl: slide.imageUrl,
+        slideId: slide.id,
+      });
+    }
+  }
+  return items;
+}
+
+function normalizeVisualSlides(raw: unknown): VisualSlide[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    .map((item, index) => {
+      const aspect = item.aspectRatio;
+      const aspectRatio: VisualSlide["aspectRatio"] =
+        aspect === "3:4" || aspect === "4:3" || aspect === "9:16" || aspect === "1:1"
+          ? aspect
+          : "3:4";
+      return {
+        id: typeof item.id === "number" ? item.id : index + 1,
+        imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : null,
+        variants: Array.isArray(item.variants)
+          ? item.variants.filter((v): v is string => typeof v === "string")
+          : [],
+        videoUrl: typeof item.videoUrl === "string" ? item.videoUrl : null,
+        videoVariants: Array.isArray(item.videoVariants)
+          ? item.videoVariants.filter((v): v is string => typeof v === "string")
+          : [],
+        prompt: typeof item.prompt === "string" ? item.prompt : "",
+        scenario: typeof item.scenario === "string" ? item.scenario : null,
+        aspectRatio,
+      };
+    })
+    .filter(
+      (slide) =>
+        slide.imageUrl ||
+        slide.videoUrl ||
+        (slide.videoVariants?.length ?? 0) > 0
+    );
 }
 
 export default function ResultsPage() {
@@ -119,9 +197,7 @@ export default function ResultsPage() {
           if (resultsData.success) {
             // Загружаем визуальные данные из Supabase
             if (resultsData.visual_slides && Array.isArray(resultsData.visual_slides)) {
-              visualData = resultsData.visual_slides.filter(
-                (slide: VisualSlide) => slide.imageUrl
-              );
+              visualData = normalizeVisualSlides(resultsData.visual_slides);
             }
 
             if (
@@ -166,9 +242,7 @@ export default function ResultsPage() {
             try {
               const visualCached = JSON.parse(visualCachedRaw);
               if (Array.isArray(visualCached)) {
-                visualData = visualCached.filter(
-                  (slide: VisualSlide) => slide.imageUrl
-                );
+                visualData = normalizeVisualSlides(visualCached);
                 setVisualSlides(visualData);
                 if (visualData.length > 0) {
                   setActiveImageIndex(0);
@@ -247,17 +321,22 @@ export default function ResultsPage() {
     loadAllData();
   }, [router]);
 
-  // Получаем все изображения из визуальных слайдов
-  const allImages = visualSlides
-    .map((slide) => slide.imageUrl)
-    .filter((url): url is string => url !== null);
+  // Все медиа: фото и видео из слайдов
+  const allMedia = buildResultMediaItems(visualSlides);
+  const activeMedia = allMedia[activeImageIndex] || null;
+  const activePoster =
+    activeMedia?.kind === "video"
+      ? activeMedia.posterUrl || activeMedia.url
+      : activeMedia?.url || null;
 
-  const activeImage = allImages[activeImageIndex] || null;
-
-  // Скачивание изображения
-  const handleDownloadImage = async (imageUrl: string, index: number, e?: React.MouseEvent) => {
+  // Скачивание фото или видео
+  const handleDownloadMedia = async (
+    item: ResultMediaItem,
+    index: number,
+    e?: React.MouseEvent
+  ) => {
     if (e) e.stopPropagation();
-    const key = `${imageUrl}::${index}`;
+    const key = `${item.url}::${index}`;
     if (downloadBusyKey) return;
     setDownloadBusyKey(key);
     showToast({
@@ -267,9 +346,12 @@ export default function ResultsPage() {
     });
     try {
       await triggerDownloadFromRemoteUrl({
-        url: imageUrl,
-        mediaType: "image",
-        filenameBase: `karto-visual-${index + 1}`,
+        url: item.url,
+        mediaType: item.kind === "video" ? "video" : "image",
+        filenameBase:
+          item.kind === "video"
+            ? `karto-flow-video-${item.slideId}`
+            : `karto-visual-${index + 1}`,
         onFinally: () => setDownloadBusyKey(null),
       });
     } catch (error) {
@@ -277,7 +359,7 @@ export default function ResultsPage() {
       showToast({
         type: "error",
         message:
-          error instanceof Error ? error.message : "Ошибка при скачивании изображения",
+          error instanceof Error ? error.message : "Ошибка при скачивании файла",
       });
     }
   };
@@ -382,13 +464,35 @@ export default function ResultsPage() {
 
 
   // Завершение потока - переход на главный экран
-  const handleCompleteFlow = () => {
+  const handleCompleteFlow = async () => {
+    const sid = sessionId ?? localStorage.getItem("karto_session_id");
+    if (sid) {
+      try {
+        const supabase = createBrowserClient();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          await fetch("/api/flow/burn-credits", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ sessionId: sid }),
+          });
+        }
+      } catch {
+        /* fire-and-forget */
+      }
+    }
+    clearFlowSessionClient();
     router.push("/");
   };
 
   // Адаптивный размер миниатюр в зависимости от количества
   const getThumbnailSize = () => {
-    const count = allImages.length;
+    const count = allMedia.length;
     if (count <= 4) return "w-32";
     if (count <= 6) return "w-28";
     if (count <= 8) return "w-24";
@@ -429,7 +533,9 @@ export default function ResultsPage() {
         {demoSession.isDemo ? (
           <div className="mb-3 flex items-center gap-2 shrink-0">
             <DemoFlowBadge />
-            <span className="text-xs text-neutral-500">Демо-результат · в полном Потоке — 12 фото 4K</span>
+            <span className="text-xs text-neutral-500">
+              Демо · {demoFlowCreditsLabelRu()}. В полном Потоке — 1 250 кред. и видео.
+            </span>
           </div>
         ) : null}
         {/* Хедер - Массивный заголовок */}
@@ -453,24 +559,25 @@ export default function ResultsPage() {
               transition={{ duration: 0.5, delay: 0.1 }}
               className="w-full h-full p-4 flex flex-col"
             >
-              {allImages.length > 0 ? (
+              {allMedia.length > 0 ? (
                 <div className="flex gap-4 flex-1 min-h-0">
-                  {/* Слева: Главное изображение с атмосферным размытым фоном */}
+                  {/* Слева: превью с атмосферным фоном */}
                   <div className="flex-1 relative group rounded-lg overflow-hidden">
-                    {/* Слой 1: Фоновое Размытие (Ambient Layer) - плавное затухание до карточек справа */}
                     <div className="absolute inset-0 overflow-visible">
-                      <GalleryProxiedImg
-                        remoteUrl={activeImage ?? ""}
-                        previewMaxWidth={480}
-                        alt=""
-                        className="absolute inset-0 w-full h-full object-cover blur-3xl"
-                        style={{
-                          transform: "scale(2.2)",
-                          transformOrigin: "center",
-                          opacity: 0.6,
-                        }}
-                        aria-hidden
-                      />
+                      {activePoster ? (
+                        <GalleryProxiedImg
+                          remoteUrl={activePoster}
+                          previewMaxWidth={480}
+                          alt=""
+                          className="absolute inset-0 w-full h-full object-cover blur-3xl"
+                          style={{
+                            transform: "scale(2.2)",
+                            transformOrigin: "center",
+                            opacity: 0.6,
+                          }}
+                          aria-hidden
+                        />
+                      ) : null}
                       <div
                         className="absolute inset-0 pointer-events-none"
                         style={{
@@ -480,24 +587,34 @@ export default function ResultsPage() {
                       />
                     </div>
 
-                    {/* Слой 2: Четкое Изображение (Foreground Layer) */}
                     <div className="relative z-10 h-full w-full flex items-center justify-center p-4">
-                      <GalleryProxiedImg
-                        remoteUrl={activeImage ?? ""}
-                        previewMaxWidth={GALLERY_GRID_PROXY_MAX_WIDTH}
-                        alt={productName}
-                        className="max-h-[90%] max-w-[90%] w-auto h-auto object-contain drop-shadow-2xl"
-                      />
+                      {activeMedia?.kind === "video" ? (
+                        <video
+                          key={activeMedia.url}
+                          src={activeMedia.url}
+                          poster={activeMedia.posterUrl || undefined}
+                          className="max-h-[90%] max-w-[90%] w-auto h-auto object-contain drop-shadow-2xl rounded-lg bg-black"
+                          controls
+                          playsInline
+                          preload="metadata"
+                        />
+                      ) : activeMedia?.kind === "image" ? (
+                        <GalleryProxiedImg
+                          remoteUrl={activeMedia.url}
+                          previewMaxWidth={GALLERY_GRID_PROXY_MAX_WIDTH}
+                          alt={productName}
+                          className="max-h-[90%] max-w-[90%] w-auto h-auto object-contain drop-shadow-2xl"
+                        />
+                      ) : null}
                     </div>
 
-                    {/* Кнопка скачать в углу */}
                     <div
                       onClick={(e) => {
-                        if (activeImage != null) handleDownloadImage(activeImage, activeImageIndex, e);
+                        if (activeMedia) handleDownloadMedia(activeMedia, activeImageIndex, e);
                       }}
                       className={`absolute top-3 right-3 w-10 h-10 bg-white/95 hover:bg-white rounded-full flex items-center justify-center shadow-lg transition-all opacity-0 group-hover:opacity-100 z-20 cursor-pointer ${downloadBusyKey ? "opacity-100 pointer-events-none" : ""}`}
                     >
-                      {downloadBusyKey === `${activeImage}::${activeImageIndex}` ? (
+                      {downloadBusyKey === `${activeMedia?.url}::${activeImageIndex}` ? (
                         <Loader2 className="w-5 h-5 text-gray-900 animate-spin" />
                       ) : (
                         <Download className="w-5 h-5 text-gray-900" />
@@ -505,11 +622,10 @@ export default function ResultsPage() {
                     </div>
                   </div>
 
-                  {/* Справа: Вертикальная колонка миниатюр - адаптивный размер */}
                   <div className={`flex flex-col gap-1.5 ${getThumbnailSize()} flex-shrink-0 overflow-y-auto custom-scrollbar`}>
-                    {allImages.map((img, index) => (
+                    {allMedia.map((item, index) => (
                       <div
-                        key={`thumb-${index}`}
+                        key={`thumb-${item.kind}-${item.url}-${index}`}
                         onClick={() => setActiveImageIndex(index)}
                         className={`relative w-full aspect-square overflow-hidden border-2 transition-all cursor-pointer group bg-white flex-shrink-0 ${
                           index === activeImageIndex
@@ -518,21 +634,41 @@ export default function ResultsPage() {
                         }`}
                         suppressHydrationWarning
                       >
-                        <GalleryProxiedImg
-                          remoteUrl={img}
-                          previewMaxWidth={320}
-                          alt={`${productName} ${index + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                        {/* Кнопка скачать в углу */}
+                        {item.kind === "video" ? (
+                          <>
+                            {item.posterUrl ? (
+                              <GalleryProxiedImg
+                                remoteUrl={item.posterUrl}
+                                previewMaxWidth={320}
+                                alt={`Видео слайд ${item.slideId}`}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-[#0a0a0a] flex items-center justify-center">
+                                <Film className="w-6 h-6 text-[#4ADE80]" />
+                              </div>
+                            )}
+                            <div className="absolute top-1 left-1 bg-black/85 text-white rounded px-1 py-0.5 flex items-center gap-0.5">
+                              <Film className="w-2.5 h-2.5 text-[#4ADE80]" />
+                              <span className="text-[8px] font-bold">Видео</span>
+                            </div>
+                          </>
+                        ) : (
+                          <GalleryProxiedImg
+                            remoteUrl={item.url}
+                            previewMaxWidth={320}
+                            alt={`${productName} ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        )}
                         <div
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDownloadImage(img, index, e);
+                            handleDownloadMedia(item, index, e);
                           }}
                           className={`absolute top-1.5 right-1.5 w-7 h-7 bg-white/95 hover:bg-white rounded-full flex items-center justify-center shadow-md opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10 ${downloadBusyKey ? "opacity-100" : ""}`}
                         >
-                          {downloadBusyKey === `${img}::${index}` ? (
+                          {downloadBusyKey === `${item.url}::${index}` ? (
                             <Loader2 className="w-3.5 h-3.5 text-gray-900 animate-spin" />
                           ) : (
                             <Download className="w-3.5 h-3.5 text-gray-900" />
@@ -544,7 +680,7 @@ export default function ResultsPage() {
                 </div>
               ) : (
                 <div className="flex-1 flex items-center justify-center text-gray-400">
-                  Нет сгенерированных изображений
+                  Нет сгенерированных материалов
                 </div>
               )}
             </motion.div>

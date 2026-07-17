@@ -8,7 +8,8 @@ import {
   getSubscriptionByUserId,
   getSubscriptionRowsByUserId,
 } from "@/lib/subscription";
-import { DEMO_FLOW_PLAN_TYPE, DEMO_FLOW_VISUAL_LIMIT } from "@/lib/demo-flow";
+import { DEMO_FLOW_PLAN_TYPE } from "@/lib/demo-flow";
+import { seedFlowSessionCredits } from "@/lib/flow/flow-session-credits";
 
 /** Получить user id: сначала из Authorization, затем из cookies */
 async function getUserIdFromRequest(request: NextRequest, supabase: ReturnType<typeof createServerClient>): Promise<string | null> {
@@ -44,29 +45,13 @@ function flowQuotaBypassEnabled(): boolean {
   return process.env.NODE_ENV === "development" && process.env.FLOW_DEV_BYPASS === "1";
 }
 
-async function seedDemoVisualQuota(
-  supabase: ReturnType<typeof createServerClient>,
-  sessionId: string
-): Promise<void> {
-  const { error } = await supabase.from("visual_data").upsert(
-    {
-      session_id: sessionId,
-      visual_state: {
-        generation_used: 0,
-        generation_limit: DEMO_FLOW_VISUAL_LIMIT,
-      },
-    },
-    { onConflict: "session_id" }
-  );
-  if (error) {
-    console.warn("⚠️ [demo-flow] Не удалось задать лимит визуала:", error.message);
-  }
-}
-
 async function chargeFlowAndCreateSession(
   supabase: ReturnType<typeof createServerClient>,
   userId: string
-): Promise<{ sessionId: string; isDemo: boolean } | { error: string; status: number }> {
+): Promise<
+  | { sessionId: string; isDemo: boolean; flowCharged: boolean }
+  | { error: string; status: number }
+> {
   if (flowQuotaBypassEnabled()) {
     const { data: newSession, error: sessionError } = await supabase
       .from("product_sessions")
@@ -77,7 +62,11 @@ async function chargeFlowAndCreateSession(
       console.error("Ошибка создания сессии (dev bypass):", sessionError);
       return { error: "Ошибка создания сессии", status: 500 };
     }
-    return { sessionId: newSession.id as string, isDemo: false };
+    await seedFlowSessionCredits(supabase, newSession.id as string, {
+      isDemo: false,
+      flowPlanVolume: 1,
+    });
+    return { sessionId: newSession.id as string, isDemo: false, flowCharged: false };
   }
 
   const sub = await getSubscriptionByUserId(supabase as any, userId);
@@ -152,11 +141,12 @@ async function chargeFlowAndCreateSession(
     return { error: "Ошибка создания сессии", status: 500 };
   }
 
-  if (useDemo) {
-    await seedDemoVisualQuota(supabase, newSession.id as string);
-  }
+  await seedFlowSessionCredits(supabase, newSession.id as string, {
+    isDemo: useDemo,
+    flowPlanVolume: Number(row.plan_volume) || 1,
+  });
 
-  return { sessionId: newSession.id as string, isDemo: useDemo };
+  return { sessionId: newSession.id as string, isDemo: useDemo, flowCharged: true };
 }
 
 /**
@@ -214,6 +204,7 @@ export async function POST(request: NextRequest) {
     // Если session_id передан, сначала валидируем, что такая сессия реально существует.
     // Иначе считаем это новым запуском Потока.
     let finalSessionId = session_id;
+    let flowCharged = false;
     if (finalSessionId) {
       const { data: existingSession, error: sessionCheckError } = await supabase
         .from("product_sessions")
@@ -254,6 +245,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: charged.error }, { status: charged.status });
         }
         finalSessionId = charged.sessionId;
+        flowCharged = charged.flowCharged;
         console.log("✅ Создана новая сессия:", finalSessionId);
         await supabase.from("description_data").delete().eq("session_id", session_id);
       }
@@ -312,6 +304,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: charged.error }, { status: charged.status });
       }
       finalSessionId = charged.sessionId;
+      flowCharged = charged.flowCharged;
     }
 
     resolvedSessionId = finalSessionId;
@@ -378,6 +371,7 @@ export async function POST(request: NextRequest) {
       success: true,
       session_id: finalSessionId,
       data,
+      flow_charged: flowCharged,
       is_demo: Boolean(
         (
           await supabase

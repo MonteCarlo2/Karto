@@ -35,7 +35,10 @@ import {
   ZoomIn,
   Hand,
   Lock,
-  Wrench
+  Wrench,
+  Film,
+  Play,
+  Video,
 } from "lucide-react";
 import { IosToggleRow } from "@/components/ui/ios-toggle-row";
 import {
@@ -67,6 +70,144 @@ import {
 import type { ImgHTMLAttributes } from "react";
 import { DemoFlowBadge } from "@/components/studio/DemoFlowBadge";
 import { useDemoFlowSession } from "@/lib/hooks/use-demo-flow-session";
+import { isFlowDevSkipBatchEnabled, isFlowDevBypassClientEnabled } from "@/lib/flow/flow-dev-skip";
+import { estimateGrokImagine720TokenCost } from "@/lib/video-token-pricing";
+import { CREDIT_PHOTO_4K } from "@/lib/credits-pricing";
+
+type FlowQuotaApiPayload = {
+  generationUsed?: unknown;
+  generationRemaining?: unknown;
+  generationLimit?: unknown;
+  credits_remaining?: unknown;
+  credits_total?: unknown;
+};
+
+function parseFlowQuotaUpdates(data: FlowQuotaApiPayload): {
+  visualQuota?: { used: number; remaining: number; limit: number };
+  creditsRemaining?: number;
+} {
+  const out: {
+    visualQuota?: { used: number; remaining: number; limit: number };
+    creditsRemaining?: number;
+  } = {};
+  if (typeof data.credits_remaining === "number" && Number.isFinite(data.credits_remaining)) {
+    out.creditsRemaining = Math.max(0, Math.floor(data.credits_remaining));
+  }
+  if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
+    const limit = Math.max(1, Number(data.generationLimit || 12));
+    const used = Math.max(0, Number(data.generationUsed || 0));
+    out.visualQuota = {
+      used,
+      limit,
+      remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
+    };
+  } else if (
+    out.creditsRemaining != null &&
+    typeof data.credits_total === "number" &&
+    Number.isFinite(data.credits_total)
+  ) {
+    const total = Math.max(0, Math.floor(Number(data.credits_total)));
+    const limit = Math.max(1, Math.floor(total / CREDIT_PHOTO_4K));
+    const remaining = Math.floor(out.creditsRemaining / CREDIT_PHOTO_4K);
+    out.visualQuota = {
+      used: Math.max(0, limit - remaining),
+      limit,
+      remaining,
+    };
+  }
+  return out;
+}
+
+type FlowSlide = {
+  id: number;
+  imageUrl: string | null;
+  variants: string[];
+  videoUrl: string | null;
+  videoVariants: string[];
+  pendingVideoTaskId?: string;
+  pendingVideoStartedAt?: number;
+  pendingVideoError?: string;
+  prompt: string;
+  scenario: string | null;
+  aspectRatio: "3:4" | "4:3" | "9:16" | "1:1";
+};
+
+async function buildAuthHeaders(): Promise<Record<string, string>> {
+  const supabase = createBrowserClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (session?.access_token) {
+    headers.Authorization = `Bearer ${session.access_token}`;
+  }
+  return headers;
+}
+
+function normalizeFlowSlides(raw: unknown): FlowSlide[] {
+  if (!Array.isArray(raw)) return [];
+  const out: FlowSlide[] = [];
+  for (let index = 0; index < raw.length; index++) {
+    const item = raw[index];
+    if (!item || typeof item !== "object") continue;
+    const s = item as Partial<FlowSlide>;
+    const id = typeof s.id === "number" ? s.id : index + 1;
+    const aspect = s.aspectRatio;
+    const aspectRatio: FlowSlide["aspectRatio"] =
+      aspect === "3:4" || aspect === "4:3" || aspect === "9:16" || aspect === "1:1"
+        ? aspect
+        : "3:4";
+    out.push({
+      id,
+      imageUrl: typeof s.imageUrl === "string" ? s.imageUrl : null,
+      variants: Array.isArray(s.variants)
+        ? s.variants.filter((v): v is string => typeof v === "string")
+        : [],
+      videoUrl: typeof s.videoUrl === "string" ? s.videoUrl : null,
+      videoVariants: Array.isArray(s.videoVariants)
+        ? s.videoVariants.filter((v): v is string => typeof v === "string")
+        : typeof s.videoUrl === "string"
+          ? [s.videoUrl]
+          : [],
+      ...(typeof s.pendingVideoTaskId === "string"
+        ? { pendingVideoTaskId: s.pendingVideoTaskId }
+        : {}),
+      ...(typeof s.pendingVideoStartedAt === "number"
+        ? { pendingVideoStartedAt: s.pendingVideoStartedAt }
+        : {}),
+      ...(typeof s.pendingVideoError === "string"
+        ? { pendingVideoError: s.pendingVideoError }
+        : {}),
+      prompt: typeof s.prompt === "string" ? s.prompt : "",
+      scenario: typeof s.scenario === "string" ? s.scenario : null,
+      aspectRatio,
+    });
+  }
+  return out;
+}
+
+function flowSlideAspectToVideo(
+  aspect: FlowSlide["aspectRatio"]
+): "1:1" | "4:3" | "3:4" | "9:16" {
+  if (aspect === "4:3") return "4:3";
+  if (aspect === "9:16") return "9:16";
+  if (aspect === "1:1") return "1:1";
+  return "3:4";
+}
+
+/** Видео слайда: сверху новее, снизу старее (без дублей). */
+function getFlowSlideVideosNewestFirst(slide: FlowSlide): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (url: string | null | undefined) => {
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    out.push(url);
+  };
+  push(slide.videoUrl);
+  for (const url of slide.videoVariants || []) push(url);
+  return out;
+}
 
 /** 4 слота вариантов; null = нет картинки (ожидание / сбой). Старые сохранения без null дополняем. */
 function normalizeVisualCardSlots(raw: unknown): (string | null)[] {
@@ -281,6 +422,105 @@ function StyleCard({ style, isSelected }: { style: typeof CARD_STYLES[0]; isSele
   return (
     <div className={`w-full h-full ${style.bgColor} flex items-center justify-center`}>
       <Icon className={`w-8 h-8 ${isSelected ? "text-gray-900 opacity-70" : "text-gray-400 opacity-50"}`} />
+    </div>
+  );
+}
+
+// Компактный переключатель Фото / Видео (рядом с полем ввода)
+function FlowSeriesMediaToggle({
+  mode,
+  onChange,
+}: {
+  mode: "photo" | "video";
+  onChange: (mode: "photo" | "video") => void;
+}) {
+  return (
+    <div className="inline-flex items-center rounded-full bg-gray-100 p-1 border border-gray-200 shadow-sm">
+      <button
+        type="button"
+        onClick={() => onChange("photo")}
+        className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+          mode === "photo"
+            ? "bg-[#1F4E3D] text-white shadow-sm"
+            : "text-gray-600 hover:text-gray-900"
+        }`}
+      >
+        <ImageIcon className="w-3.5 h-3.5" />
+        Фото
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("video")}
+        className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+          mode === "video"
+            ? "bg-[#1F4E3D] text-white shadow-sm"
+            : "text-gray-600 hover:text-gray-900"
+        }`}
+      >
+        <Video className="w-3.5 h-3.5" />
+        Видео
+      </button>
+    </div>
+  );
+}
+
+function FlowVideoReferenceThumb({
+  url,
+  index,
+  onRemove,
+  compact = false,
+}: {
+  url: string;
+  index: number;
+  onRemove: () => void;
+  compact?: boolean;
+}) {
+  const thumbClass = compact ? "w-11 h-11" : "w-24 h-16";
+  const radiusClass = compact ? "rounded-lg" : "rounded-2xl";
+  const hoverRadiusClass = compact ? "rounded-xl" : "rounded-2xl";
+
+  return (
+    <div className={`relative group flex-shrink-0 ${thumbClass}`}>
+      <div className={`relative w-full h-full ${radiusClass} overflow-hidden border border-gray-300 bg-white`}>
+        <GalleryProxiedImg
+          remoteUrl={url}
+          previewMaxWidth={GALLERY_REFERENCE_PROXY_MAX_WIDTH}
+          alt={`Референс ${index + 1}`}
+          className="w-full h-full object-cover"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            className={`text-white font-bold leading-none hover:text-gray-200 transition-colors flex items-center justify-center ${
+              compact ? "text-2xl" : "text-5xl"
+            }`}
+            style={{
+              lineHeight: "1",
+              margin: 0,
+              padding: 0,
+              transform: "translateY(-2px)",
+            }}
+          >
+            ×
+          </button>
+        </div>
+      </div>
+      <div className="absolute bottom-full left-0 mb-2 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity duration-200 z-50">
+        <div className={`relative ${hoverRadiusClass} overflow-hidden border-2 border-gray-300 bg-gray-100 shadow-2xl`}>
+          <GalleryProxiedImg
+            remoteUrl={url}
+            previewMaxWidth={GALLERY_REFERENCE_PROXY_MAX_WIDTH}
+            alt={`Референс ${index + 1} увеличенный`}
+            className="block max-w-[240px] max-h-[280px] w-auto h-auto"
+            loading="eager"
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -764,19 +1004,25 @@ export default function VisualPage() {
   
   // Третий экран: Серия карточек
   const [isSeriesMode, setIsSeriesMode] = useState(false); // Режим создания серии
-  const [slides, setSlides] = useState<Array<{ 
-    id: number; 
-    imageUrl: string | null; // Выбранное изображение для слайда
-    variants: string[]; // Массив всех сгенерированных вариантов
-    prompt: string; 
-    scenario: string | null; 
-    aspectRatio: "3:4" | "4:3" | "9:16" | "1:1" 
-  }>>([]);
+  const [slides, setSlides] = useState<FlowSlide[]>([]);
   const [activeSlideId, setActiveSlideId] = useState<number | null>(null);
   const [slidePrompt, setSlidePrompt] = useState("");
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [slideAspectRatio, setSlideAspectRatio] = useState<"3:4" | "4:3" | "9:16" | "1:1">("3:4");
   const [isGeneratingSlide, setIsGeneratingSlide] = useState(false);
+  const [isAnimatingCard, setIsAnimatingCard] = useState(false);
+  const [slideMediaMode, setSlideMediaMode] = useState<"photo" | "video">("photo");
+  const [flowVideoDuration, setFlowVideoDuration] = useState(6);
+  const [flowVideoReferences, setFlowVideoReferences] = useState<string[]>([]);
+  const FLOW_VIDEO_REF_MAX = 1;
+  const processedVideoTaskIdsRef = useRef<Set<string>>(new Set());
+  const flowDevSkipBatch = isFlowDevSkipBatchEnabled();
+  const flowDevBypass = isFlowDevBypassClientEnabled();
+
+  const flowVideoTokenEstimate = useMemo(() => {
+    if (slideMediaMode !== "video") return null;
+    return estimateGrokImagine720TokenCost(flowVideoDuration);
+  }, [slideMediaMode, flowVideoDuration]);
   const [viewingImage, setViewingImage] = useState<string | null>(null); // Изображение для просмотра
   const [useEnvironment, setUseEnvironment] = useState(true); // Использовать обстановку предыдущей карточки
   const [productMismatchError, setProductMismatchError] = useState<{
@@ -805,6 +1051,14 @@ export default function VisualPage() {
     remaining: 12,
     limit: 12,
   });
+  const [flowCreditsRemaining, setFlowCreditsRemaining] = useState<number | null>(null);
+  const applyFlowQuota = (data: FlowQuotaApiPayload) => {
+    const parsed = parseFlowQuotaUpdates(data);
+    if (parsed.creditsRemaining != null) setFlowCreditsRemaining(parsed.creditsRemaining);
+    if (parsed.visualQuota) setVisualQuota(parsed.visualQuota);
+  };
+  const flowCreditsDisplay =
+    flowCreditsRemaining ?? Math.max(0, visualQuota.remaining * CREDIT_PHOTO_4K);
   /** Ключ variantUrl при активном скачивании слайда (анти-спам + спиннер). */
   const [slideDownloadBusy, setSlideDownloadBusy] = useState<string | null>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false); // Открыта ли подсказка справа
@@ -1031,15 +1285,16 @@ export default function VisualPage() {
         // Приоритет 1: Если есть сохраненное состояние
         if (visualStateData.success && visualStateData.visual_state) {
           const state = visualStateData.visual_state;
-          if (typeof state.generation_used === "number" || typeof state.generation_limit === "number") {
-            const limit = Math.max(1, Number(state.generation_limit || 12));
-            const used = Math.max(0, Number(state.generation_used || 0));
-            setVisualQuota({
-              used,
-              limit,
-              remaining: Math.max(0, limit - used),
-            });
-          }
+          applyFlowQuota({
+            generationUsed: state.generation_used,
+            generationRemaining:
+              typeof state.generation_used === "number" && typeof state.generation_limit === "number"
+                ? Math.max(0, Number(state.generation_limit) - Number(state.generation_used))
+                : undefined,
+            generationLimit: state.generation_limit,
+            credits_remaining: state.credits_remaining,
+            credits_total: state.credits_total,
+          });
           
           if (state.generatedCards && Array.isArray(state.generatedCards)) {
             const norm = normalizeVisualCardSlots(state.generatedCards);
@@ -1057,7 +1312,7 @@ export default function VisualPage() {
           if (state.isSeriesMode === true) {
             setIsSeriesMode(true);
             if (visualStateData.visual_slides && Array.isArray(visualStateData.visual_slides) && visualStateData.visual_slides.length > 0) {
-              setSlides(visualStateData.visual_slides);
+              setSlides(normalizeFlowSlides(visualStateData.visual_slides));
               if (visualStateData.visual_slides[0]?.id) {
                 setActiveSlideId(visualStateData.visual_slides[0].id);
               }
@@ -1067,7 +1322,7 @@ export default function VisualPage() {
           applyFormSettings(state.formSettings as PersistedVisualFormSettings | undefined);
         } 
         else if (visualStateData.success && visualStateData.visual_slides && Array.isArray(visualStateData.visual_slides) && visualStateData.visual_slides.length > 0) {
-          setSlides(visualStateData.visual_slides);
+          setSlides(normalizeFlowSlides(visualStateData.visual_slides));
           if (visualStateData.visual_slides[0]?.id) {
             setActiveSlideId(visualStateData.visual_slides[0].id);
           }
@@ -1120,7 +1375,7 @@ export default function VisualPage() {
             try {
               const parsed = JSON.parse(slidesRaw);
               if (Array.isArray(parsed) && parsed.length > 0) {
-                setSlides(parsed);
+                setSlides(normalizeFlowSlides(parsed));
                 setIsSeriesMode(true);
                 if (parsed[0]?.id) setActiveSlideId(parsed[0].id);
               }
@@ -1254,13 +1509,7 @@ export default function VisualPage() {
           setBatchPolling(false);
         }
         if (typeof data.generationUsed === "number") {
-          const limit = Math.max(1, Number(data.generationLimit || 12));
-          const used = Math.max(0, Number(data.generationUsed));
-          setVisualQuota({
-            used,
-            limit,
-            remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
-          });
+          applyFlowQuota(data);
         }
       } finally {
         pollInFlightRef.current = false;
@@ -1285,13 +1534,7 @@ export default function VisualPage() {
       .then((r) => r.json())
       .then((data: Record<string, unknown>) => {
         if (typeof data.generationUsed !== "number") return;
-        const limit = Math.max(1, Number(data.generationLimit || 12));
-        const used = Math.max(0, Number(data.generationUsed));
-        setVisualQuota({
-          used,
-          limit,
-          remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
-        });
+        applyFlowQuota(data);
       })
       .catch(() => {
         /* ignore */
@@ -1309,7 +1552,12 @@ export default function VisualPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           session_id: sessionId,
-          visual_slides: slides.filter((slide) => slide.imageUrl), // Только слайды с изображениями
+          visual_slides: slides.filter(
+            (slide) =>
+              slide.imageUrl ||
+              slide.videoUrl ||
+              (slide.videoVariants?.length ?? 0) > 0
+          ),
           price_analysis: null,
         }),
       }).catch((error) => {
@@ -1439,12 +1687,16 @@ export default function VisualPage() {
           const norm = normalizeVisualCardSlots(cards);
           if (norm.some(Boolean)) {
             if (typeof state.generation_used === "number" || typeof state.generation_limit === "number") {
-              const limit = Math.max(1, Number(state.generation_limit || 12));
-              const used = Math.max(0, Number(state.generation_used || 0));
-              setVisualQuota({
-                used,
-                limit,
-                remaining: Math.max(0, limit - used),
+              applyFlowQuota({
+                generationUsed: state.generation_used,
+                generationRemaining:
+                  typeof state.generation_used === "number" &&
+                  typeof state.generation_limit === "number"
+                    ? Math.max(0, Number(state.generation_limit) - Number(state.generation_used))
+                    : undefined,
+                generationLimit: state.generation_limit,
+                credits_remaining: state.credits_remaining,
+                credits_total: state.credits_total,
               });
             }
             return norm;
@@ -1665,13 +1917,7 @@ export default function VisualPage() {
           return;
         }
         if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
-          const limit = Math.max(1, Number(data.generationLimit || 12));
-          const used = Math.max(0, Number(data.generationUsed || 0));
-          setVisualQuota({
-            used,
-            limit,
-            remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
-          });
+          applyFlowQuota(data);
         }
         
         throw new Error(data.error || data.details || "Ошибка генерации");
@@ -1685,13 +1931,7 @@ export default function VisualPage() {
           writeVisualPageStateToLs(sessionId, { generatedCards: norm });
         }
         if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
-          const limit = Math.max(1, Number(data.generationLimit || 12));
-          const used = Math.max(0, Number(data.generationUsed || 0));
-          setVisualQuota({
-            used,
-            limit,
-            remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
-          });
+          applyFlowQuota(data);
         }
         console.log(
           `✅ [FRONTEND] Сгенерировано ${countFilledCardSlots(normalizeVisualCardSlots(data.imageUrls))} карточек с уникальными концепциями`
@@ -1816,6 +2056,387 @@ export default function VisualPage() {
     }
   };
 
+  const enterSeriesModeWithCard = (cardUrl: string, ratio: "3:4" | "4:3" | "9:16" | "1:1" = "3:4") => {
+    const firstSlide: FlowSlide = {
+      id: 1,
+      imageUrl: cardUrl,
+      variants: [cardUrl],
+      videoUrl: null,
+      videoVariants: [],
+      prompt: "",
+      scenario: null,
+      aspectRatio: ratio,
+    };
+    setSlides([firstSlide]);
+    setActiveSlideId(1);
+    setIsEditMode(false);
+    setIsSeriesMode(true);
+    setEditRequest("");
+    setOriginalCardImage(null);
+    setLastEditedImage(null);
+    try {
+      localStorage.setItem("karto_flow_dev_last_card", cardUrl);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handleDevSkipToSeries = () => {
+    if (!sessionId) {
+      showToast({
+        type: "error",
+        message: "Нет сессии Потока. Вернитесь на этап «Понимание».",
+      });
+      return;
+    }
+    const refPhoto = resolveFlowPhoto(sessionId, photoUrl);
+    if (!refPhoto) {
+      showToast({
+        type: "error",
+        message: "Загрузите фото товара на этапе «Понимание».",
+      });
+      return;
+    }
+    const ratio: "3:4" | "1:1" = aspectRatio === "1:1" ? "1:1" : "3:4";
+    enterSeriesModeWithCard(refPhoto, ratio);
+    showToast({
+      type: "info",
+      title: "Dev: пропуск батча",
+      message: "Перешли в режим серии с фото товара как карточкой.",
+    });
+  };
+
+  const startFlowVideoTask = async (opts: {
+    mode: "animate" | "generate";
+    cardImageUrl: string;
+    aspectRatio: FlowSlide["aspectRatio"];
+    slideId: number;
+  }) => {
+    if (!sessionId) {
+      showToast({ type: "error", message: "Не найдена сессия Потока." });
+      return;
+    }
+    if (demoSession.isDemo && !flowDevBypass) {
+      showToast({
+        type: "error",
+        title: "Только полный Поток",
+        message: "Видео доступно в платном Потоке.",
+      });
+      return;
+    }
+
+    const busy = slides.some((s) => s.id === opts.slideId && s.pendingVideoTaskId);
+    if (busy) {
+      showToast({ type: "info", message: "Видео уже генерируется…" });
+      return;
+    }
+
+    if (opts.mode === "generate" && slidePrompt.trim().length < 3) {
+      showToast({
+        type: "info",
+        message: "Опишите видео в поле ниже (минимум 3 символа).",
+      });
+      return;
+    }
+
+    setIsAnimatingCard(true);
+    try {
+      const headers = await buildAuthHeaders();
+      const customRefs =
+        opts.mode === "generate" && flowVideoReferences.length > 0
+          ? flowVideoReferences.slice(0, FLOW_VIDEO_REF_MAX)
+          : [];
+
+      const response = await fetch("/api/generate-video-flow", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          sessionId,
+          cardImageUrl: opts.cardImageUrl,
+          referenceImageUrls: customRefs,
+          mode: opts.mode,
+          prompt: slidePrompt.trim() || undefined,
+          aspectRatio: flowSlideAspectToVideo(opts.aspectRatio),
+          duration: opts.mode === "animate" ? 4 : flowVideoDuration,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
+        if (data.code === "FLOW_VIDEO_DEMO_BLOCKED") {
+          showToast({
+            type: "error",
+            title: "Только полный Поток",
+            message: data.error || "Видео доступно в платном Потоке.",
+          });
+          return;
+        }
+        throw new Error(data.error || data.details || "Ошибка запуска видео");
+      }
+
+      if (typeof data.credits_remaining === "number") {
+        applyFlowQuota(data);
+      }
+
+      setSlides((prev) =>
+        prev.map((s) =>
+          s.id === opts.slideId
+            ? {
+                ...s,
+                pendingVideoTaskId: data.taskId as string,
+                pendingVideoStartedAt: Date.now(),
+                pendingVideoError: undefined,
+                prompt: slidePrompt.trim() || s.prompt,
+              }
+            : s
+        )
+      );
+
+      showToast({
+        type: "info",
+        title: opts.mode === "animate" ? "Оживляем карточку" : "Генерируем видео",
+        message:
+          opts.mode === "animate"
+            ? "Короткое видео (4 с) — обычно 2–5 минут."
+            : `Видео ${flowVideoDuration} с — обычно 2–5 минут.`,
+        durationMs: 6000,
+      });
+
+      if (opts.mode === "generate") {
+        setSlidePrompt("");
+      }
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Не удалось запустить видео-генерацию";
+      showToast({ type: "error", title: "Ошибка видео", message });
+    } finally {
+      setIsAnimatingCard(false);
+    }
+  };
+
+  const handleAnimateCard = async () => {
+    if (activeSlideId === null) return;
+    const activeSlide = slides.find((s) => s.id === activeSlideId);
+    if (!activeSlide?.imageUrl) {
+      showToast({ type: "info", message: "Сначала выберите изображение карточки." });
+      return;
+    }
+    const firstSlide = slides.find((s) => s.id === 1);
+    const refUrl = activeSlide.imageUrl || firstSlide?.imageUrl;
+    if (!refUrl) return;
+
+    await startFlowVideoTask({
+      mode: "animate",
+      cardImageUrl: refUrl,
+      aspectRatio: activeSlide.aspectRatio,
+      slideId: activeSlideId,
+    });
+  };
+
+  const handleSeriesGenerate = async () => {
+    if (activeSlideId === null) {
+      showToast({ type: "info", message: "Выберите слайд для генерации." });
+      return;
+    }
+
+    const activeSlide = slides.find((s) => s.id === activeSlideId);
+    const firstSlide = slides.find((s) => s.id === 1);
+    if (!firstSlide?.imageUrl) {
+      showToast({ type: "error", message: "Первый слайд не найден или не имеет изображения." });
+      return;
+    }
+    if (!sessionId) {
+      showToast({ type: "error", message: "Не найдена сессия Потока." });
+      return;
+    }
+
+    const refCardUrl = activeSlide?.imageUrl || firstSlide.imageUrl;
+    if (!refCardUrl) {
+      showToast({ type: "info", message: "Нужна карточка-референс для генерации." });
+      return;
+    }
+
+    if (slideMediaMode === "video") {
+      await startFlowVideoTask({
+        mode: "generate",
+        cardImageUrl: refCardUrl,
+        aspectRatio: activeSlide?.aspectRatio ?? firstSlide.aspectRatio,
+        slideId: activeSlideId,
+      });
+      return;
+    }
+
+    setIsGeneratingSlide(true);
+    const slideAbort = new AbortController();
+    const slideFetchTimeout = setTimeout(() => slideAbort.abort(), 480_000);
+    try {
+      const productPhoto = resolveFlowPhoto(sessionId, photoUrl);
+      if (!productPhoto) {
+        showToast({ type: "error", message: "Фото товара не найдено. Вернитесь на этап «Понимание»." });
+        return;
+      }
+
+      const response = await fetch("/api/generate-slide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: slideAbort.signal,
+        body: JSON.stringify({
+          sessionId,
+          productName: productName,
+          productPhotoUrl: productPhoto,
+          referenceImageUrl: firstSlide.imageUrl,
+          environmentImageUrl: useEnvironment ? firstSlide.imageUrl : null,
+          userPrompt: slidePrompt.trim() || "",
+          scenario: selectedScenario || null,
+          aspectRatio: slideAspectRatio,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
+          applyFlowQuota(data);
+        }
+        setGenerationError({
+          show: true,
+          message:
+            data.error ||
+            "Ошибка произошла на нашей стороне. Извиняемся, пожалуйста, попробуйте еще раз чуть позже.",
+        });
+        return;
+      }
+      if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
+        applyFlowQuota(data);
+      }
+
+      const newUrl = typeof data.imageUrl === "string" ? data.imageUrl : "";
+      if (!newUrl) {
+        setGenerationError({
+          show: true,
+          message: "Сервер не вернул URL изображения. Попробуйте ещё раз.",
+        });
+        return;
+      }
+      setSlides((prev) =>
+        prev.map((s) => {
+          if (s.id !== activeSlideId) return s;
+          const existingVariants = s.variants || [];
+          const newVariants = existingVariants.includes(newUrl)
+            ? existingVariants
+            : [...existingVariants, newUrl];
+          return {
+            ...s,
+            variants: newVariants,
+            imageUrl: newUrl,
+            prompt: slidePrompt.trim(),
+            scenario: selectedScenario,
+            aspectRatio: slideAspectRatio,
+          };
+        })
+      );
+
+      setSlidePrompt("");
+      setSelectedScenario(null);
+    } catch (error: unknown) {
+      const aborted = error instanceof DOMException && error.name === "AbortError";
+      setGenerationError({
+        show: true,
+        message: aborted
+          ? "Время ожидания истекло (генерация заняла более 8 минут). Попробуйте ещё раз."
+          : "Ошибка произошла на нашей стороне. Извиняемся, пожалуйста, попробуйте еще раз чуть позже.",
+      });
+    } finally {
+      clearTimeout(slideFetchTimeout);
+      setIsGeneratingSlide(false);
+    }
+  };
+
+  // Поллинг статуса видео-задач в режиме серии
+  useEffect(() => {
+    const pending = slides.filter((s) => s.pendingVideoTaskId);
+    if (pending.length === 0) return;
+
+    const timers: { intervalId: ReturnType<typeof setInterval> }[] = [];
+
+    for (const slide of pending) {
+      const taskId = slide.pendingVideoTaskId!;
+      if (processedVideoTaskIdsRef.current.has(taskId)) continue;
+
+      const slideId = slide.id;
+      const intervalId = setInterval(async () => {
+        if (processedVideoTaskIdsRef.current.has(taskId)) {
+          clearInterval(intervalId);
+          return;
+        }
+        try {
+          const headers = await buildAuthHeaders();
+          const res = await fetch(`/api/video-status/${taskId}`, { headers });
+          const data = await res.json();
+
+          if (data.status === "success" && data.videoUrl) {
+            clearInterval(intervalId);
+            if (processedVideoTaskIdsRef.current.has(taskId)) return;
+            processedVideoTaskIdsRef.current.add(taskId);
+
+            if (typeof data.credits_remaining === "number") {
+              applyFlowQuota(data);
+            }
+
+            setSlides((prev) =>
+              prev.map((s) => {
+                if (s.id !== slideId) return s;
+                const newVideo = data.videoUrl as string;
+                const prevVideos = s.videoVariants || [];
+                const merged = prevVideos.includes(newVideo)
+                  ? prevVideos
+                  : [newVideo, ...prevVideos];
+                return {
+                  ...s,
+                  videoUrl: newVideo,
+                  videoVariants: merged,
+                  pendingVideoTaskId: undefined,
+                  pendingVideoStartedAt: undefined,
+                  pendingVideoError: undefined,
+                };
+              })
+            );
+            showToast({
+              type: "success",
+              title: "Видео готово",
+              message: "Можно посмотреть, скачать или продолжить работу.",
+            });
+          } else if (data.status === "failed") {
+            clearInterval(intervalId);
+            processedVideoTaskIdsRef.current.add(taskId);
+            setSlides((prev) =>
+              prev.map((s) =>
+                s.id === slideId
+                  ? {
+                      ...s,
+                      pendingVideoTaskId: undefined,
+                      pendingVideoStartedAt: undefined,
+                      pendingVideoError: data.error || "Не удалось сгенерировать видео",
+                    }
+                  : s
+              )
+            );
+            showToast({
+              type: "error",
+              title: "Ошибка видео",
+              message: data.error || "Не удалось оживить карточку.",
+            });
+          }
+        } catch (e) {
+          console.warn("[flow-visual] video polling error:", e);
+        }
+      }, 7000);
+
+      timers.push({ intervalId });
+    }
+
+    return () => timers.forEach(({ intervalId }) => clearInterval(intervalId));
+  }, [slides.map((s) => s.pendingVideoTaskId).join("|"), showToast]);
+
 
   return (
     <div
@@ -1843,6 +2464,7 @@ export default function VisualPage() {
         currentStage="visual"
         position="left"
         visualQuota={visualQuota}
+        creditsRemaining={flowCreditsDisplay}
         isDemo={demoSession.isDemo}
       />
       
@@ -2337,10 +2959,21 @@ export default function VisualPage() {
           </motion.button>
           {visualQuota.remaining <= 0 && (
             <p className="mt-2 text-xs text-red-500 text-center">
-              Лимит генераций в {demoSession.isDemo ? "демо-потоке" : "Потоке"} исчерпан (0/
-              {visualQuota.limit}).
-              {demoSession.isDemo ? " В полном Потоке — до 12 фото в 4K." : ""}
+              Кредиты {demoSession.isDemo ? "демо-потока" : "Потока"} исчерпаны ({flowCreditsDisplay}{" "}
+              кред.).
+              {demoSession.isDemo
+                ? ` В полном Потоке — 1 250 кред. и видео.`
+                : ""}
             </p>
+          )}
+          {flowDevSkipBatch && !isSeriesMode && (
+            <button
+              type="button"
+              onClick={handleDevSkipToSeries}
+              className="mt-3 w-full py-2.5 px-4 rounded-xl border border-dashed border-amber-400 bg-amber-50 text-amber-900 text-xs font-semibold hover:bg-amber-100 transition-colors"
+            >
+              Dev: пропустить 4 карточки → серия
+            </button>
           )}
       </motion.div>
       
@@ -2654,13 +3287,7 @@ export default function VisualPage() {
                               const data = await response.json();
                               if (data.success && data.imageUrl) {
                                 if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
-                                  const limit = Math.max(1, Number(data.generationLimit || 12));
-                                  const used = Math.max(0, Number(data.generationUsed || 0));
-                                  setVisualQuota({
-                                    used,
-                                    limit,
-                                    remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
-                                  });
+                                  applyFlowQuota(data);
                                 }
                                 if (!originalCardImage && selectedCardIndex !== null) {
                                   setOriginalCardImage(srcUrl);
@@ -2674,9 +3301,7 @@ export default function VisualPage() {
                                 setEditRequest("");
                               } else {
                                 if (response.status === 403 && (data.generationUsed != null || data.generationRemaining != null)) {
-                                  const limit = Math.max(1, Number(data.generationLimit || 12));
-                                  const used = Math.max(0, Number(data.generationUsed ?? 0));
-                                  setVisualQuota({ used, limit, remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)) });
+                                  applyFlowQuota(data);
                                 }
                                 throw new Error(data.error || "Ошибка редактирования");
                               }
@@ -2710,13 +3335,15 @@ export default function VisualPage() {
                     if (selectedCardIndex !== null && typeof generatedCards[selectedCardIndex] === "string") {
                       const pickedUrl = generatedCards[selectedCardIndex]!;
                       // Создаем первый слайд с выбранной карточкой (variants сразу — canvas не пустой)
-                      const firstSlide = {
+                      const firstSlide: FlowSlide = {
                         id: 1,
                         imageUrl: pickedUrl,
-                        variants: [pickedUrl] as string[],
+                        variants: [pickedUrl],
+                        videoUrl: null,
+      videoVariants: [],
                         prompt: "",
                         scenario: null,
-                        aspectRatio: aspectRatio === "3:4" ? "3:4" : "1:1" as "3:4" | "1:1",
+                        aspectRatio: aspectRatio === "3:4" ? "3:4" : "1:1",
                       };
                       setSlides([firstSlide]);
                       setActiveSlideId(1);
@@ -2847,6 +3474,12 @@ export default function VisualPage() {
                         <Lock className="w-3 h-3" />
                       </div>
                     )}
+                    {(slide.videoUrl || (slide.videoVariants?.length ?? 0) > 0) && (
+                      <div className="absolute top-1 left-1 bg-black/90 text-white rounded-md px-1.5 py-0.5 flex items-center gap-1 shadow">
+                        <Film className="w-3 h-3 text-[#4ADE80]" />
+                        <span className="text-[10px] font-bold">Видео</span>
+                      </div>
+                    )}
                     <div className="absolute bottom-1 left-1 bg-black/50 text-white text-xs px-2 py-1 rounded">
                       {slide.id}
                     </div>
@@ -2859,10 +3492,12 @@ export default function VisualPage() {
                   whileTap={{ scale: 0.95 }}
                   onClick={() => {
                     const newSlideId = slides.length + 1;
-                    const newSlide = {
+                    const newSlide: FlowSlide = {
                       id: newSlideId,
                       imageUrl: null,
-                      variants: [], // Пустой массив вариантов для нового слайда
+                      variants: [],
+                      videoUrl: null,
+      videoVariants: [],
                       prompt: "",
                       scenario: null,
                       aspectRatio: slideAspectRatio,
@@ -2926,6 +3561,81 @@ export default function VisualPage() {
                   <div className="w-full py-8 pl-8">
                     {/* Сетка 2 колонки для заполнения пространства */}
                     <div className="grid grid-cols-2 gap-6" style={{ maxWidth: `${imageWidth * 2 + 24}px` }}>
+                      {/* Генерация видео — сверху */}
+                      {activeSlide.pendingVideoTaskId && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="relative w-full rounded-lg border-2 border-dashed border-[#1F4E3D]/30 bg-white flex flex-col items-center justify-center gap-3 p-8"
+                          style={{ aspectRatio: aspectRatioValue }}
+                        >
+                          <Loader2 className="w-10 h-10 text-[#1F4E3D] animate-spin" />
+                          <p className="text-sm font-semibold text-gray-700">Генерируем видео…</p>
+                          <p className="text-xs text-gray-400 text-center">Обычно 2–5 минут</p>
+                        </motion.div>
+                      )}
+
+                      {/* Готовые видео — новее сверху */}
+                      {getFlowSlideVideosNewestFirst(activeSlide).map((videoSrc) => (
+                        <motion.div
+                          key={videoSrc}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="relative w-full group rounded-xl overflow-hidden ring-2 ring-black/10 shadow-md"
+                          style={{ aspectRatio: aspectRatioValue }}
+                        >
+                          <video
+                            src={videoSrc}
+                            poster={
+                              activeSlide.imageUrl && !activeSlide.imageUrl.startsWith("data:")
+                                ? activeSlide.imageUrl
+                                : undefined
+                            }
+                            className="w-full h-full object-contain bg-[#0a0a0a] rounded-xl"
+                            controls
+                            playsInline
+                            preload="metadata"
+                          />
+                          <div className="absolute top-3 left-3 px-3 py-1.5 rounded-lg bg-black/85 backdrop-blur-sm text-white text-sm font-semibold flex items-center gap-2 shadow-lg pointer-events-none">
+                            <Film className="w-4 h-4 text-[#4ADE80]" />
+                            Видео
+                          </div>
+                          <button
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (slideDownloadBusy) return;
+                              setSlideDownloadBusy(videoSrc);
+                              try {
+                                await triggerDownloadFromRemoteUrl({
+                                  url: videoSrc,
+                                  mediaType: "video",
+                                  filenameBase: `karto-flow-video-${Date.now()}`,
+                                  onFinally: () => setSlideDownloadBusy(null),
+                                });
+                              } catch (error) {
+                                showToast({
+                                  type: "error",
+                                  message:
+                                    error instanceof Error
+                                      ? error.message
+                                      : "Не удалось скачать видео",
+                                });
+                              }
+                            }}
+                            disabled={slideDownloadBusy !== null}
+                            className="absolute top-3 right-3 p-2 bg-white/95 hover:bg-white rounded-lg shadow-lg transition-colors z-20 disabled:opacity-60"
+                            title="Скачать видео"
+                          >
+                            {slideDownloadBusy === videoSrc ? (
+                              <Loader2 className="w-4 h-4 text-gray-900 animate-spin" />
+                            ) : (
+                              <Download className="w-4 h-4 text-gray-900" />
+                            )}
+                          </button>
+                        </motion.div>
+                      ))}
+
                       {sortedVariants.map((variantUrl, index) => (
                         <motion.div
                           key={`${variantUrl}-${index}`}
@@ -2974,6 +3684,42 @@ export default function VisualPage() {
                             )}
                           </button>
 
+                          {/* Добавить в референс (видео) */}
+                          {slideMediaMode === "video" &&
+                            flowVideoReferences.length < FLOW_VIDEO_REF_MAX && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (flowVideoReferences.includes(variantUrl)) {
+                                    showToast({
+                                      type: "info",
+                                      message: "Изображение уже в референсах",
+                                    });
+                                    return;
+                                  }
+                                  setFlowVideoReferences((prev) =>
+                                    [...prev, variantUrl].slice(0, FLOW_VIDEO_REF_MAX)
+                                  );
+                                  showToast({
+                                    type: "success",
+                                    message: "Добавлено в референс для видео",
+                                  });
+                                }}
+                                className={`absolute top-3 left-14 p-2 rounded-lg shadow-lg transition-all z-20 ${
+                                  flowVideoReferences.includes(variantUrl)
+                                    ? "bg-[#1F4E3D] opacity-100"
+                                    : "bg-black/50 hover:bg-black/70 opacity-0 group-hover:opacity-100"
+                                }`}
+                                title="Добавить в референс для видео"
+                              >
+                                <div className="relative">
+                                  <Plus className="w-4 h-4 text-white" />
+                                  <ArrowRight className="w-2.5 h-2.5 text-white absolute -bottom-0.5 -right-0.5" />
+                                </div>
+                              </button>
+                            )}
+
                           {/* Кнопка скачивания как на экране 1 */}
                           <button
                             type="button"
@@ -3014,8 +3760,58 @@ export default function VisualPage() {
                               <Download className="w-4 h-4 text-gray-900" />
                             )}
                           </button>
+
+                          {/* Оживить карточку — только на выбранном варианте */}
+                          {activeSlide.imageUrl === variantUrl && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleAnimateCard();
+                              }}
+                              disabled={
+                                Boolean(activeSlide.pendingVideoTaskId) ||
+                                isAnimatingCard ||
+                                (demoSession.isDemo && !flowDevBypass)
+                              }
+                              className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-4 py-2 rounded-full bg-[#1F4E3D] text-white text-xs font-semibold shadow-lg hover:bg-[#2E5A43] transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+                              title={
+                                demoSession.isDemo && !flowDevBypass
+                                  ? "Видео доступно в полном Потоке (не в демо)"
+                                  : "Создать короткое видео из этой карточки"
+                              }
+                            >
+                              {activeSlide.pendingVideoTaskId || isAnimatingCard ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Play className="w-3.5 h-3.5 fill-current" />
+                              )}
+                              Оживить карточку
+                            </button>
+                          )}
                         </motion.div>
                       ))}
+
+                      {activeSlide.pendingVideoError && (
+                        <div className="col-span-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                          {activeSlide.pendingVideoError}
+                          <button
+                            type="button"
+                            className="ml-2 underline text-red-800/80"
+                            onClick={() =>
+                              setSlides((prev) =>
+                                prev.map((s) =>
+                                  s.id === activeSlideId
+                                    ? { ...s, pendingVideoError: undefined }
+                                    : s
+                                )
+                              )
+                            }
+                          >
+                            Скрыть
+                          </button>
+                        </div>
+                      )}
                         
                         {/* Анимация генерации, если идет генерация */}
                         {isGeneratingSlide && (
@@ -3059,6 +3855,7 @@ export default function VisualPage() {
                 currentStage="visual"
                 position="right"
                 visualQuota={visualQuota}
+        creditsRemaining={flowCreditsDisplay}
                 isDemo={demoSession.isDemo}
               />
               
@@ -3107,24 +3904,27 @@ export default function VisualPage() {
                       >
                         <div className="mt-3 space-y-2 text-[11px] leading-relaxed text-gray-600">
                           <p>
-                            На этом шаге вы добавляете к первой карточке дополнительные кадры
-                            с тем же товаром.
+                            На этом шаге вы собираете визуал карточки: дополнительные фото с тем же
+                            товаром и видео для маркетплейса.
                           </p>
                           <p>
-                            Внизу опишите, какой кадр нужен: обстановку, ракурс, детали. При
-                            необходимости добавьте текст, который должен появиться на изображении.
-                          </p>
-                          <p>
-                            Сценарии
-                            <span className="font-semibold">
-                              {" "}«Жилое пространство», «Студийный подиум», «Макро-деталь», «С человеком»
-                            </span>{" "}
-                            помогают задать контекст, где будет находиться товар.
+                            <span className="font-semibold">Фото:</span> внизу опишите кадр — фон,
+                            ракурс, детали. Выберите сценарий («Студийный подиум», «Жилое
+                            пространство», «Макро-деталь», «С человеком») и формат. Нажмите зелёную
+                            стрелку для генерации.
                           </p>
                           <p>
                             Галочка <span className="font-semibold">«Использовать обстановку»</span>
-                            сохраняет фон и атмосферу первой карточки и добавляет новые ракурсы
-                            в той же среде.
+                            отправляет <span className="font-semibold">два референса</span>: фото
+                            товара с этапа «Понимание» и первую карточку. С карточки берётся только
+                            фон и атмосфера — новый кадр в той же среде. Без галочки — один
+                            референс, фон задаёт сценарий.
+                          </p>
+                          <p>
+                            <span className="font-semibold">Видео:</span> переключите режим «Видео»
+                            над полем ввода. Опишите движение (3–10 секунд) и нажмите кнопку с
+                            камерой. На готовой карточке — «Оживить карточку» для короткого ролика
+                            из выбранного кадра. Видео появляются сверху; их можно скачать.
                           </p>
                         </div>
                       </motion.div>
@@ -3134,269 +3934,282 @@ export default function VisualPage() {
               </motion.div>
             </div>
             
-            {/* Нижняя панель: Unified Command Capsule */}
-            <div className="absolute bottom-8 left-[250px] right-0 px-8 flex items-center justify-center z-20">
-              <div className="w-full max-w-5xl bg-white rounded-[24px] shadow-2xl border border-gray-200 py-3 px-4 flex items-center gap-4 relative">
-                {/* Чекбокс использования обстановки - над настройками, вне панели */}
-                <div className="absolute -top-10 right-0 flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="useEnvironment"
-                    checked={useEnvironment}
-                    onChange={(e) => setUseEnvironment(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded border-gray-300 text-[#4ADE80] focus:ring-0 cursor-pointer"
-                  />
-                  <label htmlFor="useEnvironment" className="text-xs text-gray-400 cursor-pointer whitespace-nowrap">
-                    Использовать обстановку
-                  </label>
-                </div>
-                {/* Зона 1: Input Area (50%) */}
-                <div className="flex items-center bg-gray-100 rounded-2xl p-3" style={{ width: "50%" }}>
-                  <textarea
-                    value={slidePrompt}
-                    onChange={(e) => {
-                      setSlidePrompt(e.target.value);
-                      const textarea = e.target;
-                      // Сбрасываем высоту для правильного расчета
-                      textarea.style.height = 'auto';
-                      const scrollHeight = textarea.scrollHeight;
-                      const maxHeight = 120; // Примерно 5 строк
-                      
-                      // Устанавливаем высоту и скроллинг
-                      if (scrollHeight <= maxHeight) {
-                        textarea.style.height = `${scrollHeight}px`;
-                        textarea.style.overflowY = 'hidden';
-                      } else {
-                        textarea.style.height = `${maxHeight}px`;
-                        textarea.style.overflowY = 'auto';
-                      }
-                    }}
-                    placeholder="Опишите, что должно быть на этом слайде (например: товар на кухонном столе)..."
-                    className="w-full bg-transparent text-gray-900 placeholder:text-gray-400 text-base border-none outline-none resize-none"
-                    rows={1}
-                    style={{ 
-                      minHeight: "24px", 
-                      maxHeight: "120px"
-                    }}
+            {/* Нижняя панель — переключатель снаружи, вплотную над общим полем */}
+            <div className="absolute bottom-8 left-[250px] right-0 px-8 z-20">
+              <div className="w-full flex justify-center">
+              <motion.div
+                transition={{ type: "spring", stiffness: 320, damping: 32 }}
+                className={`flex flex-col items-start mx-auto origin-bottom ${
+                  slideMediaMode === "video" ? "w-max scale-[1.15]" : "w-full max-w-5xl"
+                }`}
+              >
+                <div className="pl-4 -mb-px">
+                  <FlowSeriesMediaToggle
+                    mode={slideMediaMode}
+                    onChange={setSlideMediaMode}
                   />
                 </div>
-                
-                {/* Разделитель */}
-                <div className="w-[1px] bg-gray-200 h-10" />
-                
-                {/* Зона 2: Settings Grid (50%) */}
-                <div className="flex items-center gap-3 flex-1" style={{ width: "50%" }}>
-                  <div className="grid grid-cols-2 gap-2 flex-1">
-                    {/* Сценарии - чистый черный при выборе */}
-                    {[
-                      { id: "studio", name: "Студийный подиум", icon: Box },
-                      { id: "lifestyle", name: "Жилое пространство", icon: Home },
-                      { id: "macro", name: "Макро-деталь", icon: ZoomIn },
-                      { id: "with-person", name: "С человеком", icon: Hand },
-                    ].map((scenario) => {
-                      const Icon = scenario.icon;
-                      const isSelected = selectedScenario === scenario.id;
-                      return (
-                        <motion.button
-                          key={scenario.id}
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => {
-                            // Переключаем: если уже выбран - отменяем, иначе выбираем
-                            setSelectedScenario(selectedScenario === scenario.id ? null : scenario.id);
-                          }}
-                          className={`p-2 rounded-lg flex flex-col items-center justify-center gap-1 transition-all ${
-                            isSelected
-                              ? "bg-black text-white shadow-md"
-                              : "bg-gray-50 text-gray-700 hover:bg-gray-100"
-                          }`}
-                          title={scenario.name}
-                        >
-                          <Icon className="w-4 h-4" />
-                          <span className="text-xs font-semibold text-center leading-tight">
-                            {scenario.name}
-                          </span>
-                        </motion.button>
-                      );
-                    })}
+
+                <motion.div
+                  layout
+                  className={`bg-white rounded-[24px] shadow-2xl border border-gray-200 py-3 px-4 flex items-stretch gap-3 relative min-h-[88px] ${
+                    slideMediaMode === "video" ? "w-max" : "w-full"
+                  }`}
+                >
+                {slideMediaMode === "photo" && (
+                  <div className="absolute -top-10 right-0 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="useEnvironment"
+                      checked={useEnvironment}
+                      onChange={(e) => setUseEnvironment(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded border-gray-300 text-[#4ADE80] focus:ring-0 cursor-pointer"
+                    />
+                    <label
+                      htmlFor="useEnvironment"
+                      className="text-xs text-gray-400 cursor-pointer whitespace-nowrap"
+                    >
+                      Использовать обстановку
+                    </label>
                   </div>
-                  
-                  {/* Переключатель формата - сетка 2x2 с визуальными прямоугольниками */}
-                  <div className="grid grid-cols-2 gap-2 flex-shrink-0 place-items-center" style={{ width: "120px" }}>
-                    {[
-                      { value: "9:16", label: "9:16", width: 32, height: 56 }, // Узкий высокий вертикальный прямоугольник
-                      { value: "3:4", label: "3:4", width: 42, height: 56 }, // Вертикальный прямоугольник (3:4 = вертикальный)
-                      { value: "1:1", label: "1:1", width: 56, height: 56 }, // Квадрат
-                      { value: "4:3", label: "4:3", width: 56, height: 42 }, // Горизонтальный прямоугольник (4:3 = горизонтальный)
-                    ].map((format) => (
-                      <div key={format.value} className="flex items-center justify-center w-full h-full" style={{ minHeight: "60px" }}>
-                        <button
-                          onClick={() => setSlideAspectRatio(format.value as "3:4" | "4:3" | "9:16" | "1:1")}
-                          className="rounded-lg text-xs font-bold transition-all flex items-center justify-center flex-shrink-0 border-2"
-                          style={{
-                            width: `${format.width}px`,
-                            height: `${format.height}px`,
-                            minWidth: `${format.width}px`,
-                            minHeight: `${format.height}px`,
-                            maxWidth: `${format.width}px`,
-                            maxHeight: `${format.height}px`,
-                            backgroundColor: slideAspectRatio === format.value ? "#000000" : "#F3F4F6",
-                            color: slideAspectRatio === format.value ? "#FFFFFF" : "#4B5563",
-                            borderColor: slideAspectRatio === format.value ? "#000000" : "#D1D5DB",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (slideAspectRatio !== format.value) {
-                              e.currentTarget.style.backgroundColor = "#E5E7EB";
-                              e.currentTarget.style.borderColor = "#9CA3AF";
+                )}
+
+                <div
+                  className={`flex flex-shrink-0 min-w-0 self-stretch ${
+                    slideMediaMode === "video" ? "w-[22rem]" : ""
+                  }`}
+                  style={slideMediaMode === "photo" ? { width: "50%" } : undefined}
+                >
+                  <div className="flex flex-1 min-w-0 items-center gap-2 bg-gray-100 rounded-2xl px-3 py-2 h-full">
+                    {slideMediaMode === "video" && flowVideoReferences.length > 0 && (
+                      <div className="flex items-center gap-1.5 flex-shrink-0 self-center">
+                        {flowVideoReferences.map((refUrl, idx) => (
+                          <FlowVideoReferenceThumb
+                            key={`${refUrl}-${idx}`}
+                            url={refUrl}
+                            index={idx}
+                            compact
+                            onRemove={() =>
+                              setFlowVideoReferences((prev) =>
+                                prev.filter((_, i) => i !== idx)
+                              )
                             }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (slideAspectRatio !== format.value) {
-                              e.currentTarget.style.backgroundColor = "#F3F4F6";
-                              e.currentTarget.style.borderColor = "#D1D5DB";
-                            }
-                          }}
-                        >
-                          {format.label}
-                        </button>
+                          />
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                  
-                  {/* Кнопка запуска генерации - салатовая */}
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={async () => {
-                      if (activeSlideId === null) {
-                        alert("Выберите слайд для генерации");
-                        return;
-                      }
-                      
-                      // Находим первый слайд для получения референсного изображения
-                      const firstSlide = slides.find(s => s.id === 1);
-                      if (!firstSlide || !firstSlide.imageUrl) {
-                        alert("Первый слайд не найден или не имеет изображения");
-                        return;
-                      }
-                      if (!sessionId) {
-                        alert("Не найдена сессия Потока. Вернитесь на этап «Понимание» и начните заново.");
-                        return;
-                      }
-                      
-                      setIsGeneratingSlide(true);
-                      const slideAbort = new AbortController();
-                      const slideFetchTimeout = setTimeout(
-                        () => slideAbort.abort(),
-                        480_000
-                      );
-                      try {
-                        const productPhoto = resolveFlowPhoto(sessionId, photoUrl);
-                        if (!productPhoto) {
-                          alert("Фото товара не найдено. Вернитесь на этап «Понимание».");
-                          return;
-                        }
-
-                        const response = await fetch("/api/generate-slide", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          signal: slideAbort.signal,
-                          body: JSON.stringify({
-                            sessionId,
-                            productName: productName,
-                            productPhotoUrl: productPhoto,
-                            referenceImageUrl: firstSlide.imageUrl,
-                            environmentImageUrl: useEnvironment ? firstSlide.imageUrl : null,
-                            userPrompt: slidePrompt.trim() || "",
-                            scenario: selectedScenario || null,
-                            aspectRatio: slideAspectRatio,
-                          }),
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (!data.success) {
-                          if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
-                            const limit = Math.max(1, Number(data.generationLimit || 12));
-                            const used = Math.max(0, Number(data.generationUsed || 0));
-                            setVisualQuota({
-                              used,
-                              limit,
-                              remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
-                            });
-                          }
-                          setGenerationError({
-                            show: true,
-                            message:
-                              data.error ||
-                              "Ошибка произошла на нашей стороне. Извиняемся, пожалуйста, попробуйте еще раз чуть позже.",
-                          });
-                          return;
-                        }
-                        if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
-                          const limit = Math.max(1, Number(data.generationLimit || 12));
-                          const used = Math.max(0, Number(data.generationUsed || 0));
-                          setVisualQuota({
-                            used,
-                            limit,
-                            remaining: Math.max(0, Number(data.generationRemaining ?? limit - used)),
-                          });
-                        }
-                        
-                        // Добавляем новый вариант сразу в UI (CDN URL — без ожидания локального кеша)
-                        const newUrl = typeof data.imageUrl === "string" ? data.imageUrl : "";
-                        if (!newUrl) {
-                          setGenerationError({
-                            show: true,
-                            message: "Сервер не вернул URL изображения. Попробуйте ещё раз.",
-                          });
-                          return;
-                        }
-                        setSlides((prev) =>
-                          prev.map((s) => {
-                            if (s.id !== activeSlideId) return s;
-                            const existingVariants = s.variants || [];
-                            const newVariants = existingVariants.includes(newUrl)
-                              ? existingVariants
-                              : [...existingVariants, newUrl];
-                            return {
-                              ...s,
-                              variants: newVariants,
-                              imageUrl: newUrl,
-                              prompt: slidePrompt.trim(),
-                              scenario: selectedScenario,
-                              aspectRatio: slideAspectRatio,
-                            };
-                          })
-                        );
-
-                        setSlidePrompt("");
-                        setSelectedScenario(null);
-                      } catch (error: unknown) {
-                        const aborted =
-                          error instanceof DOMException && error.name === "AbortError";
-                        setGenerationError({
-                          show: true,
-                          message: aborted
-                            ? "Время ожидания истекло (генерация заняла более 8 минут). Попробуйте ещё раз."
-                            : "Ошибка произошла на нашей стороне. Извиняемся, пожалуйста, попробуйте еще раз чуть позже.",
-                        });
-                      } finally {
-                        clearTimeout(slideFetchTimeout);
-                        setIsGeneratingSlide(false);
-                      }
-                    }}
-                    disabled={isGeneratingSlide || activeSlideId === null || visualQuota.remaining <= 0}
-                    className="aspect-square h-full rounded-xl bg-[#4ADE80] flex items-center justify-center shadow-lg hover:shadow-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                    style={{ minHeight: "48px", minWidth: "48px" }}
-                  >
-                    {isGeneratingSlide ? (
-                      <Loader2 className="w-5 h-5 animate-spin text-white" />
-                    ) : (
-                      <ArrowRight className="w-5 h-5 text-white" />
                     )}
-                  </motion.button>
+                    <textarea
+                      value={slidePrompt}
+                      onChange={(e) => {
+                        setSlidePrompt(e.target.value);
+                        const textarea = e.target;
+                        textarea.style.height = "auto";
+                        const scrollHeight = textarea.scrollHeight;
+                        const maxHeight = 72;
+                        if (scrollHeight <= maxHeight) {
+                          textarea.style.height = `${Math.max(scrollHeight, 56)}px`;
+                          textarea.style.overflowY = "hidden";
+                        } else {
+                          textarea.style.height = `${maxHeight}px`;
+                          textarea.style.overflowY = "auto";
+                        }
+                      }}
+                      placeholder={
+                        slideMediaMode === "video"
+                          ? "Опишите видео (например: человек берёт товар в руки)..."
+                          : "Опишите, что должно быть на этом слайде (например: товар на кухонном столе)..."
+                      }
+                      className="w-full min-w-0 flex-1 self-stretch bg-transparent text-gray-900 placeholder:text-gray-400 text-base border-none outline-none resize-none leading-normal"
+                      rows={2}
+                      style={{ minHeight: "56px", maxHeight: "72px" }}
+                    />
+                  </div>
                 </div>
+
+                <div className="w-px self-stretch bg-gray-200 flex-shrink-0" />
+
+                <AnimatePresence mode="wait" initial={false}>
+                  {slideMediaMode === "photo" ? (
+                    <motion.div
+                      key="photo-settings"
+                      initial={{ opacity: 0, x: 8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -8 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="flex flex-1 items-center gap-3 min-w-0 self-stretch"
+                    >
+                      <div className="grid grid-cols-2 gap-2 flex-1 min-w-0">
+                        {[
+                          { id: "studio", name: "Студийный подиум", icon: Box },
+                          { id: "lifestyle", name: "Жилое пространство", icon: Home },
+                          { id: "macro", name: "Макро-деталь", icon: ZoomIn },
+                          { id: "with-person", name: "С человеком", icon: Hand },
+                        ].map((scenario) => {
+                          const Icon = scenario.icon;
+                          const isSelected = selectedScenario === scenario.id;
+                          return (
+                            <motion.button
+                              key={scenario.id}
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() =>
+                                setSelectedScenario(
+                                  selectedScenario === scenario.id ? null : scenario.id
+                                )
+                              }
+                              className={`p-2 rounded-lg flex flex-col items-center justify-center gap-1 transition-all ${
+                                isSelected
+                                  ? "bg-black text-white shadow-md"
+                                  : "bg-gray-50 text-gray-700 hover:bg-gray-100"
+                              }`}
+                              title={scenario.name}
+                            >
+                              <Icon className="w-4 h-4" />
+                              <span className="text-xs font-semibold text-center leading-tight">
+                                {scenario.name}
+                              </span>
+                            </motion.button>
+                          );
+                        })}
+                      </div>
+                      <div
+                        className="grid grid-cols-2 gap-2 flex-shrink-0 place-items-center"
+                        style={{ width: "120px" }}
+                      >
+                        {[
+                          { value: "9:16", label: "9:16", width: 32, height: 56 },
+                          { value: "3:4", label: "3:4", width: 42, height: 56 },
+                          { value: "1:1", label: "1:1", width: 56, height: 56 },
+                          { value: "4:3", label: "4:3", width: 56, height: 42 },
+                        ].map((format) => (
+                          <div
+                            key={format.value}
+                            className="flex items-center justify-center w-full h-full"
+                            style={{ minHeight: "60px" }}
+                          >
+                            <button
+                              onClick={() =>
+                                setSlideAspectRatio(
+                                  format.value as "3:4" | "4:3" | "9:16" | "1:1"
+                                )
+                              }
+                              className="rounded-lg text-xs font-bold transition-all flex items-center justify-center flex-shrink-0 border-2"
+                              style={{
+                                width: `${format.width}px`,
+                                height: `${format.height}px`,
+                                backgroundColor:
+                                  slideAspectRatio === format.value ? "#000000" : "#F3F4F6",
+                                color:
+                                  slideAspectRatio === format.value ? "#FFFFFF" : "#4B5563",
+                                borderColor:
+                                  slideAspectRatio === format.value ? "#000000" : "#D1D5DB",
+                              }}
+                            >
+                              {format.label}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => void handleSeriesGenerate()}
+                        disabled={
+                          isGeneratingSlide ||
+                          activeSlideId === null ||
+                          visualQuota.remaining <= 0
+                        }
+                        className="flex-shrink-0 rounded-xl bg-[#4ADE80] flex items-center justify-center shadow-lg hover:shadow-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                        style={{ minHeight: "48px", minWidth: "48px" }}
+                      >
+                        {isGeneratingSlide ? (
+                          <Loader2 className="w-5 h-5 animate-spin text-white" />
+                        ) : (
+                          <ArrowRight className="w-5 h-5 text-white" />
+                        )}
+                      </motion.button>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="video-settings"
+                      initial={{ opacity: 0, x: 8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -8 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="flex items-center gap-2 flex-shrink-0 self-stretch"
+                    >
+                      <div className="flex-shrink-0 w-[11.5rem] rounded-2xl bg-gray-100 px-3 py-2.5 flex flex-col justify-center self-stretch">
+                        <div className="w-full">
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <span className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">
+                              Длительность
+                            </span>
+                            <motion.span
+                              key={flowVideoDuration}
+                              initial={{ opacity: 0, y: 2 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.18, ease: "easeOut" }}
+                              className="text-xs font-bold text-gray-900 tabular-nums whitespace-nowrap"
+                            >
+                              {flowVideoDuration} сек
+                            </motion.span>
+                          </div>
+                          <input
+                            type="range"
+                            min={3}
+                            max={10}
+                            step={1}
+                            value={flowVideoDuration}
+                            onChange={(e) => setFlowVideoDuration(Number(e.target.value))}
+                            className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-gray-300 accent-[#1F4E3D] transition-all duration-200 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#1F4E3D] [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div
+                        className="flex-shrink-0 flex flex-col items-center justify-center rounded-lg border border-lime-200/70 bg-gradient-to-br from-lime-50 to-white px-1.5 py-1.5 w-[3.5rem] self-stretch"
+                        title="Ориентировочная стоимость"
+                      >
+                        <span className="text-[7px] font-semibold uppercase tracking-wide text-lime-800/55 leading-none text-center">
+                          ~кредитов
+                        </span>
+                        <motion.span
+                          key={flowVideoTokenEstimate ?? 0}
+                          initial={{ opacity: 0.6 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ duration: 0.15 }}
+                          className="text-xs font-bold text-[#14532d] tabular-nums leading-none mt-0.5"
+                        >
+                          {flowVideoTokenEstimate ?? "—"}
+                        </motion.span>
+                      </div>
+
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => void handleSeriesGenerate()}
+                        disabled={
+                          isAnimatingCard ||
+                          activeSlideId === null ||
+                          Boolean(
+                            activeSlideId !== null &&
+                              slides.find((s) => s.id === activeSlideId)?.pendingVideoTaskId
+                          )
+                        }
+                        className="flex-shrink-0 rounded-xl bg-[#4ADE80] flex items-center justify-center shadow-lg hover:shadow-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                        style={{ minHeight: "48px", minWidth: "48px" }}
+                      >
+                        {isAnimatingCard ? (
+                          <Loader2 className="w-5 h-5 animate-spin text-white" />
+                        ) : (
+                          <Video className="w-5 h-5 text-white" strokeWidth={2.2} />
+                        )}
+                      </motion.button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                </motion.div>
+              </motion.div>
               </div>
             </div>
             

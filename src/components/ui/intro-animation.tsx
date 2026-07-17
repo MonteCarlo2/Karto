@@ -9,6 +9,7 @@ import { ArrowLeft } from "lucide-react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { KartoServicesExplainer } from "@/components/ui/karto-services-explainer";
 import { availableFlowStarts } from "@/lib/subscription";
+import { clearFlowSessionClient } from "@/lib/flow/clear-flow-session-client";
 
 interface IntroAnimationProps {
   onComplete: () => void;
@@ -172,11 +173,7 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
 
       // Новый запуск Потока должен начинаться с чистой сессии.
       // Иначе могут подтягиваться старые этапы/описания и пропускаться экран 1.
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("karto_session_id");
-        localStorage.removeItem("karto_session_is_demo");
-        localStorage.removeItem("understandingPageState");
-      }
+      clearFlowSessionClient();
       router.push("/studio/understanding");
     } catch {
       setFlowError(<>Не удалось проверить подписку. Попробуйте ещё раз.</>);

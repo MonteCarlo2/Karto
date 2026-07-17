@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
-import { FLOW_VOLUMES, CREATIVE_VOLUMES } from "@/lib/subscription";
+import { FLOW_VOLUMES } from "@/lib/subscription";
 import { creditSubscription } from "@/lib/payment-credit";
-import { VIDEO_TOKEN_PACKAGES } from "@/lib/video-token-pricing";
-import { addVideoTokens } from "@/lib/video-tokens";
+import { CREDIT_PACKAGES } from "@/lib/credits-pricing";
+import { addCredits } from "@/lib/credits";
 import { creditAutoReplyFromPayment, parseAutoRenewFromMetadata } from "@/lib/auto-reply-payment-credit";
 import { capturePayment } from "@/lib/yookassa-capture";
 import { parsePromoFromPaymentMetadata, recordPromoRedemption } from "@/lib/promo/record-redemption";
@@ -124,12 +124,13 @@ export async function POST(request: NextRequest) {
     }
     console.log("[PAYMENT CONFIRM] payment_processed ok, crediting...");
     let result: { ok: boolean; error?: string } = { ok: true };
-    if (paymentKind === "video_tokens") {
-      const idx = Math.min(
-        VIDEO_TOKEN_PACKAGES.length - 1,
-        Math.max(0, tariffIndex)
-      );
-      result = await addVideoTokens(supabase, userId, VIDEO_TOKEN_PACKAGES[idx].tokens);
+    if (
+      paymentKind === "credits" ||
+      paymentKind === "video_tokens" ||
+      paymentKind === "creative"
+    ) {
+      const idx = Math.min(CREDIT_PACKAGES.length - 1, Math.max(0, tariffIndex));
+      result = await addCredits(supabase, userId, CREDIT_PACKAGES[idx].credits);
     } else if (paymentKind === "auto_replies") {
       const autoRenew = parseAutoRenewFromMetadata(meta);
       const paymentMethodId = payment.payment_method?.id ?? null;
@@ -142,8 +143,8 @@ export async function POST(request: NextRequest) {
       const idx = Math.min(2, Math.max(0, tariffIndex));
       result = await creditSubscription(supabase, userId, "flow", FLOW_VOLUMES[idx]);
     } else {
-      const idx = Math.min(2, Math.max(0, tariffIndex));
-      result = await creditSubscription(supabase, userId, "creative", CREATIVE_VOLUMES[idx]);
+      console.warn("[PAYMENT CONFIRM] unknown payment_kind:", paymentKind);
+      result = { ok: false, error: "unknown_payment_kind" };
     }
     if (!result.ok) {
       console.error("[PAYMENT CONFIRM] credit:", result.error);

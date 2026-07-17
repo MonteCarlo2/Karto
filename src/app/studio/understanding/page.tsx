@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useNotification } from "@/components/ui/notification";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { saveFlowSessionPhoto, resolveFlowPhoto } from "@/lib/flow/flow-photo-cache";
+import { requestSubscriptionRefresh } from "@/lib/subscription-refresh";
 import { DemoFlowBadge } from "@/components/studio/DemoFlowBadge";
 import { useDemoFlowSession } from "@/lib/hooks/use-demo-flow-session";
 
@@ -395,6 +396,9 @@ export default function UnderstandingPage() {
             (data as { is_demo?: boolean }).is_demo ? "1" : "0"
           );
         }
+        if ((data as { flow_charged?: boolean }).flow_charged) {
+          requestSubscriptionRefresh();
+        }
       }
     } catch {
       /* фоновая синхронизация — не блокируем UI */
@@ -458,6 +462,9 @@ export default function UnderstandingPage() {
             "karto_session_is_demo",
             (data as { is_demo?: boolean }).is_demo ? "1" : "0"
           );
+        }
+        if ((data as { flow_charged?: boolean }).flow_charged) {
+          requestSubscriptionRefresh();
         }
         if (photoDataUrl) saveFlowSessionPhoto(data.session_id, photoDataUrl);
         router.push("/studio/description");

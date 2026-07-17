@@ -2,13 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { generateWithKieAi } from "@/lib/services/kie-ai";
 import { kieErrorToClient } from "@/lib/services/kie-ai-errors";
-import { getSubscriptionByUserId, getSubscriptionRowsByUserId } from "@/lib/subscription";
 import { getPublicUrl, saveBase64Image } from "@/lib/services/image-processing";
+import { CREDIT_PHOTO_4K } from "@/lib/credits-pricing";
+import { addCredits, consumeCredits, getCreditBalance, migrateLegacyCreativeToCredits } from "@/lib/credits";
 
 /**
- * Генерация изображения для режима "Для товара" в свободной генерации.
- * Модель KIE: см. `getDefaultKieImageModel()` (по умолчанию nano-banana-2; переопределение через `KIE_IMAGE_MODEL`).
- * Требуется подписка «Свободное творчество» и лимит генераций.
+ * Генерация «Для товара» — списание CREDIT_PHOTO_4K кредитов.
  */
 export async function POST(request: NextRequest) {
   if (!process.env.KIE_AI_API_KEY && !process.env.KIE_API_KEY) {
@@ -35,29 +34,36 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
-    const sub = await getSubscriptionByUserId(supabase as any, user.id);
-    if (!sub) {
-      return NextResponse.json(
-        { success: false, error: "Выберите тариф «Свободное творчество» на главной" },
-        { status: 403 }
-      );
-    }
-    if (sub.creativeLimit <= 0) {
+
+    await migrateLegacyCreativeToCredits(supabase as any, user.id);
+    const balance = await getCreditBalance(supabase as any, user.id);
+    if (balance < CREDIT_PHOTO_4K) {
       return NextResponse.json(
         {
           success: false,
-          error: "У вас не куплено «Свободное творчество». Выберите тариф на главной странице.",
-          code: "NO_CREATIVE_PLAN",
+          error: `Недостаточно кредитов. Нужно ${CREDIT_PHOTO_4K}, доступно: ${balance}. Купите пакет на главной.`,
+          code: "INSUFFICIENT_CREDITS",
+          creditBalance: balance,
+          creditsRequired: CREDIT_PHOTO_4K,
         },
         { status: 403 }
       );
     }
-    if (sub.creativeUsed >= sub.creativeLimit) {
+
+    const { ok: debited, error: debitErr } = await consumeCredits(
+      supabase as any,
+      user.id,
+      CREDIT_PHOTO_4K
+    );
+    if (!debited) {
       return NextResponse.json(
         {
           success: false,
-          error: "У вас не осталось генераций. Доступно: 0. Выберите тариф «Свободное творчество» на главной странице.",
-          code: "NO_GENERATIONS_LEFT",
+          error:
+            debitErr === "insufficient_balance"
+              ? "Недостаточно кредитов. Купите пакет на главной."
+              : "Не удалось списать кредиты. Попробуйте ещё раз.",
+          code: "INSUFFICIENT_CREDITS",
         },
         { status: 403 }
       );
@@ -78,6 +84,7 @@ export async function POST(request: NextRequest) {
 
     // Промпт обязателен только если не выбран сценарий
     if (!scenario && (!prompt || !prompt.trim())) {
+      await addCredits(supabase as any, user.id, CREDIT_PHOTO_4K);
       return NextResponse.json(
         { success: false, error: "Выберите сценарий или введите описание для генерации" },
         { status: 400 }
@@ -154,28 +161,28 @@ export async function POST(request: NextRequest) {
 
 Сцена: ${sceneDescription}.${userPromptPart}`;
 
-    const { imageUrl } = await generateWithKieAi(
-      finalPrompt,
-      imageForApi,
-      aspectRatio,
-      "png",
-      "4K"
-    );
-
-    const creativeRows = await getSubscriptionRowsByUserId(supabase as any, user.id);
-    const creativeRow = creativeRows.find((r) => r.plan_type === "creative");
-    if (creativeRow) {
-      const { error: updErr } = await supabase
-        .from("user_subscriptions")
-        .update({ creative_used: creativeRow.creative_used + 1 })
-        .eq("user_id", user.id)
-        .eq("plan_type", "creative");
-      if (updErr) console.error("Ошибка учёта генерации:", updErr);
+    let imageUrl: string;
+    try {
+      const out = await generateWithKieAi(
+        finalPrompt,
+        imageForApi,
+        aspectRatio,
+        "png",
+        "4K"
+      );
+      imageUrl = out.imageUrl;
+    } catch (genErr) {
+      await addCredits(supabase as any, user.id, CREDIT_PHOTO_4K);
+      throw genErr;
     }
+
+    const newBalance = await getCreditBalance(supabase as any, user.id);
 
     return NextResponse.json({
       success: true,
       imageUrl,
+      creditsCharged: CREDIT_PHOTO_4K,
+      creditBalance: newBalance,
     });
   } catch (error: any) {
     console.error("[generate-for-product] Ошибка:", error);

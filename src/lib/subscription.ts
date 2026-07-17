@@ -1,19 +1,21 @@
 /**
- * Константы тарифов: Поток (1, 5, 15) и Свободное творчество (10, 30, 100)
- * Новым пользователям при первом запросе подписки: 3 бесплатные фото-генерации + 100 видео-токенов + 1 демо-поток.
+ * Тарифы: Поток (1 / 5 / 15) и Креатив — единые «Кредиты».
+ * Новым пользователям: FREE_WELCOME_CREDITS + 1 демо-поток.
  */
 export const FLOW_VOLUMES = [1, 5, 15] as const;
-export const CREATIVE_VOLUMES = [10, 30, 100] as const;
-/** Цены в рублях: Поток (1/5/15), Свободное творчество (10/30/100 ген.). */
+/** @deprecated Остаток совместимости; покупки идут через CREDIT_PACKAGES. */
+export const CREATIVE_VOLUMES = [800, 2000, 5000, 10000] as const;
+/** Цены: Поток (1/5/15), Креатив (кредиты 800/2k/5k/10k). */
 export const FLOW_PRICES = [299, 1190, 2990] as const;
-export const CREATIVE_PRICES = [249, 590, 1490] as const;
-/** Количество бесплатных генераций «Свободное творчество» для новых пользователей после регистрации */
-export const FREE_WELCOME_CREATIVE_LIMIT = 3;
-/** Бесплатные видео-токены при первом запросе подписки (вместе с приветственными фото) */
-export const FREE_WELCOME_VIDEO_TOKENS = 100;
+export const CREATIVE_PRICES = [249, 590, 1490, 2990] as const;
+/** @deprecated Используйте FREE_WELCOME_CREDITS из credits-pricing. */
+export const FREE_WELCOME_CREATIVE_LIMIT = 0;
+/** @deprecated */
+export const FREE_WELCOME_VIDEO_TOKENS = 0;
+export { FREE_WELCOME_CREDITS } from "@/lib/credits-pricing";
 export const SUBSCRIPTION_PERIOD_DAYS = 30;
 
-export type PlanType = "flow" | "creative" | "video_tokens" | "demo_flow" | "auto_replies";
+export type PlanType = "flow" | "creative" | "credits" | "video_tokens" | "demo_flow" | "auto_replies";
 
 export interface SubscriptionRow {
   id: string;
@@ -40,11 +42,16 @@ export interface SubscriptionState {
   demoFlowsLimit: number;
   creativeUsed: number;
   creativeLimit: number;
-  /** Кредиты только на видео (пополнение отдельными пакетами). */
+  /**
+   * Единые кредиты (фото+видео) в Свободном творчестве.
+   * В БД — plan_type=video_tokens (историческое имя).
+   */
   videoTokenBalance: number;
-  /** Всего списано видео-токенов (из строки user_subscriptions plan_type=video_tokens). */
+  /** Алиас для UI: то же, что videoTokenBalance. */
+  creditBalance?: number;
+  /** Всего списано кредитов. */
   videoTokensSpent: number;
-  /** Всего начислено покупками (lifetime) для video_tokens. */
+  /** Всего начислено покупками (lifetime). */
   videoTokensLifetimePurchased: number;
   periodStart?: string;
   expiresAt?: string;
@@ -98,7 +105,8 @@ export interface SubscriptionState {
 }
 
 export function subscriptionToState(row: SubscriptionRow): SubscriptionState {
-  if (row.plan_type === "video_tokens") {
+  if (row.plan_type === "credits" || row.plan_type === "video_tokens") {
+    const balance = Math.max(0, Number(row.plan_volume) || 0);
     return {
       planType: "creative",
       planVolume: 0,
@@ -108,7 +116,8 @@ export function subscriptionToState(row: SubscriptionRow): SubscriptionState {
       demoFlowsLimit: 0,
       creativeUsed: 0,
       creativeLimit: 0,
-      videoTokenBalance: Math.max(0, Number(row.plan_volume) || 0),
+      videoTokenBalance: balance,
+      creditBalance: balance,
       videoTokensSpent: Math.max(0, Number(row.video_tokens_spent) || 0),
       videoTokensLifetimePurchased: Math.max(
         0,
@@ -178,7 +187,9 @@ export function mergeSubscriptionRows(rows: SubscriptionRow[]): SubscriptionStat
   const flowRow = rows.find((r) => r.plan_type === "flow");
   const demoFlowRow = rows.find((r) => r.plan_type === "demo_flow");
   const creativeRow = rows.find((r) => r.plan_type === "creative");
-  const videoRow = rows.find((r) => r.plan_type === "video_tokens");
+  const videoRow =
+    rows.find((r) => r.plan_type === "credits") ??
+    rows.find((r) => r.plan_type === "video_tokens");
   const flowsLimit = flowRow ? flowRow.plan_volume : 0;
   const demoFlowsLimit = demoFlowRow ? demoFlowRow.plan_volume : 0;
   const creativeLimit = creativeRow ? creativeRow.plan_volume : 0;
@@ -206,6 +217,7 @@ export function mergeSubscriptionRows(rows: SubscriptionRow[]): SubscriptionStat
     creativeUsed,
     creativeLimit,
     videoTokenBalance,
+    creditBalance: videoTokenBalance,
     videoTokensSpent,
     videoTokensLifetimePurchased,
     periodStart,
@@ -257,7 +269,9 @@ function enrichWithServicePeriods(
   const flowRow = rows.find((r) => r.plan_type === "flow");
   const demoFlowRow = rows.find((r) => r.plan_type === "demo_flow");
   const creativeRow = rows.find((r) => r.plan_type === "creative");
-  const videoRow = rows.find((r) => r.plan_type === "video_tokens");
+  const videoRow =
+    rows.find((r) => r.plan_type === "credits") ??
+    rows.find((r) => r.plan_type === "video_tokens");
 
   if (flowRow?.period_start && flowRow.plan_volume > 0) {
     state.flowPeriodStart = flowRow.period_start;
@@ -328,7 +342,9 @@ export function buildSubscriptionStateFromRows(
   const flowRow = rows.find((r) => r.plan_type === "flow");
   const demoFlowRow = rows.find((r) => r.plan_type === "demo_flow");
   const creativeRow = rows.find((r) => r.plan_type === "creative");
-  const videoRow = rows.find((r) => r.plan_type === "video_tokens");
+  const videoRow =
+    rows.find((r) => r.plan_type === "credits") ??
+    rows.find((r) => r.plan_type === "video_tokens");
 
   const state: SubscriptionState = {
     planType: flowRow && flowRow.plan_volume > 0 ? "flow" : "creative",

@@ -3,6 +3,7 @@ import {
   getNormalizedOpenRouterApiKey,
   getOpenRouterRequestHeaders,
 } from "@/lib/openrouter-headers";
+import { openRouterFetch } from "@/lib/openrouter-fetch";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -164,7 +165,7 @@ ${descriptionTrim}
     const temperature = attempt === 0 ? 0.82 : 0.72;
     const user = attempt === 0 ? userBase : userRepair;
 
-    const response = await fetch(OPENROUTER_API_URL, {
+    const response = await openRouterFetch(OPENROUTER_API_URL, {
       method: "POST",
       headers: getOpenRouterRequestHeaders("Karto brand names"),
       body: JSON.stringify({
