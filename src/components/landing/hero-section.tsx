@@ -13,6 +13,8 @@ const fontManrope = "var(--font-manrope), var(--font-sans), system-ui, sans-seri
 /** Ветер в видео — примерно со 2-й секунды */
 const WIND_REVEAL_AT = 2;
 
+const windEase = [0.16, 1, 0.3, 1] as [number, number, number, number];
+
 const windFlow = {
   hidden: { opacity: 0, x: 110 },
   visible: {
@@ -20,7 +22,7 @@ const windFlow = {
     x: 0,
     transition: {
       duration: 0.95,
-      ease: [0.16, 1, 0.3, 1],
+      ease: windEase,
     },
   },
 };
