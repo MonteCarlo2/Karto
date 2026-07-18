@@ -131,6 +131,7 @@ export function Navbar() {
   const pathname = usePathname()
   const router = useRouter()
   const isHome = pathname === "/"
+  const [homeNavSolid, setHomeNavSolid] = React.useState(false)
   const hideImmersiveStudio =
     pathname === "/studio/free" ||
     pathname.startsWith("/studio/descriptions") ||
@@ -142,6 +143,20 @@ export function Navbar() {
   React.useEffect(() => {
     setMounted(true)
   }, [])
+
+  // На главной шапка прозрачная поверх hero-видео; после прокрутки — лёгкий фон для читаемости
+  React.useEffect(() => {
+    if (!isHome) {
+      setHomeNavSolid(false)
+      return
+    }
+    const onScroll = () => {
+      setHomeNavSolid(window.scrollY > window.innerHeight * 0.45)
+    }
+    onScroll()
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [isHome])
 
   // Проверка авторизации
   React.useEffect(() => {
@@ -305,8 +320,15 @@ export function Navbar() {
     return null;
   }
 
+  const headerClassName = cn(
+    "fixed top-0 left-0 right-0 z-50 w-full transition-[background-color,backdrop-filter,border-color] duration-300",
+    isHome && !homeNavSolid
+      ? "bg-transparent border-b border-transparent"
+      : "border-b border-border/40 bg-background/90 backdrop-blur-xl supports-[backdrop-filter]:bg-background/75"
+  )
+
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 w-full" style={{ backgroundImage: 'url(/hero-image.png)', backgroundSize: 'cover', backgroundPosition: 'center top', backgroundRepeat: 'no-repeat' }}>
+    <header className={headerClassName}>
       <div className="container mx-auto px-6 lg:px-8">
         <div className="flex h-20 items-center justify-between">
           <Link href="/" className="flex items-center gap-2 group">

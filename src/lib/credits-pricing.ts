@@ -57,7 +57,7 @@ export const CREDIT_PACKAGES = [
 export type CreditPackageId = (typeof CREDIT_PACKAGES)[number]["id"];
 
 /** Приветственные кредиты новому аккаунту (вместо 3 ген. + 100 видео-токенов). */
-export const FREE_WELCOME_CREDITS = 400;
+export const FREE_WELCOME_CREDITS = 300;
 
 /** Миграция: 1 старая creative-генерация → кредиты. */
 export const LEGACY_CREATIVE_GEN_TO_CREDITS = 100;

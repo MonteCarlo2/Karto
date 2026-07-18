@@ -2,12 +2,10 @@
 
 import { useState, useEffect, Suspense } from "react"
 import dynamic from "next/dynamic"
-import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
-import { ArrowRight, Wrench } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { VideoBackground } from "@/components/ui/video-background"
+import { Wrench } from "lucide-react"
+import { HeroSection } from "@/components/landing/hero-section"
 import { createBrowserClient } from "@/lib/supabase/client"
 import { useToast } from "@/components/ui/toast"
 
@@ -157,59 +155,8 @@ function HomeContent() {
         onClose={() => setIsBugReportOpen(false)}
         user={user}
       />
-      {/* SECTION 1: HERO - Изображение на весь экран с рельефностью */}
-      <section id="hero" className="relative w-full overflow-hidden" style={{ maxWidth: '100vw', margin: 0, padding: 0, height: '100vh', minHeight: '100vh', maxHeight: '100vh', paddingTop: '0' }} suppressHydrationWarning>
-        {/* Фоновое видео - точно по границам viewport с эффектом полотна */}
-        <div className="absolute inset-0 w-full h-full" style={{ overflow: 'hidden', maxWidth: '100%', width: '100%', height: '100vh', maxHeight: '100vh' }} suppressHydrationWarning>
-          <VideoBackground
-            src="/hero-video.mp4"
-            className="absolute inset-0 w-full h-full"
-          />
-          {/* Эффект рельефности - полотно */}
-          <div className="absolute inset-0" suppressHydrationWarning style={{
-            boxShadow: 'inset 0 0 80px rgba(0,0,0,0.08), inset 0 2px 4px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.12)',
-            border: '1px solid rgba(0,0,0,0.05)',
-            background: 'linear-gradient(to bottom, rgba(255,255,255,0.02) 0%, transparent 50%, rgba(0,0,0,0.02) 100%)'
-          }}></div>
-        </div>
-        
-        {/* Контент поверх изображения - выровнен по левому краю, по центру вертикально */}
-        <div className="absolute inset-0 flex items-center" suppressHydrationWarning>
-          <div className="w-full px-8 lg:px-16 xl:px-24" suppressHydrationWarning>
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.3 }}
-              className="max-w-4xl space-y-6 text-left"
-            >
-              <p className="text-sm font-semibold tracking-widest uppercase" style={{ color: '#1F4E3D' }} aria-hidden="true">
-                KARTO
-              </p>
-              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold leading-tight tracking-tight" style={{ fontFamily: 'var(--font-serif)', color: '#000000', fontWeight: 700 }}>
-                От замысла<br/>
-                к ясной форме.
-          </h1>
-              
-              <p className="text-xl md:text-2xl leading-relaxed" style={{ color: '#666666', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>
-                Карточки, креатив и автоответы на отзывы — полный помощник продавца на маркетплейсе.
-              </p>
-              
-              <div className="flex flex-col sm:flex-row gap-4 pt-6">
-                <Button size="lg" asChild className="h-12 px-8 text-base">
-                  <Link href="/studio?intro=true">
-                    Создать карточку
-                    <ArrowRight className="ml-2 h-5 w-5" />
-                  </Link>
-                </Button>
-                <Button size="lg" variant="outline" asChild className="h-12 px-8 text-base">
-                  <Link href="#pricing">Посмотреть тарифы</Link>
-                </Button>
-              </div>
-            </motion.div>
-          </div>
-        </div>
-
-      </section>
+      {/* SECTION 1: HERO — видео + контент по ветру (~2 с) */}
+      <HeroSection />
 
       {/* Sticky Scroll Reveal — как у Framer: слева текст по шагам, справа «запись экрана» с курсором */}
       <StickyScrollReveal />

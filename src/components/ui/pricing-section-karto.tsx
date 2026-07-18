@@ -27,6 +27,7 @@ import {
   autoReplyPricePerUnit,
   formatAutoReplyVolume,
 } from "@/lib/auto-replies-pricing"
+import { welcomePerksPricingNoteRu } from "@/lib/welcome-perks"
 import NumberFlow from "@number-flow/react"
 import { CheckCheck, Loader2, Check, X } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
@@ -494,6 +495,20 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
           Пакеты ответов действуют один месяц.
         </TimelineContent>
 
+        {!user ? (
+          <TimelineContent
+            animationNum={1}
+            timelineRef={pricingRef}
+            customVariants={revealVariants}
+            className="mb-10 flex justify-center px-2"
+          >
+            <p className="max-w-2xl rounded-2xl border border-[#84CC16]/35 bg-gradient-to-r from-[#84CC16]/12 via-white/70 to-[#2E5A43]/8 px-5 py-4 text-center text-sm leading-relaxed text-neutral-700 shadow-sm backdrop-blur-sm md:text-[15px]">
+              <span className="font-semibold text-[#2E5A43]">Старт бесплатно:</span>{" "}
+              {welcomePerksPricingNoteRu()}
+            </p>
+          </TimelineContent>
+        ) : null}
+
         <div className="grid gap-14 overflow-visible md:grid-cols-[1fr_1.2fr] md:gap-16 lg:gap-20">
           {/* Левая колонка: особенности левее, анимация только при первом появлении в viewport */}
           <div className="md:max-w-sm md:justify-self-start pl-0">
@@ -654,12 +669,17 @@ export default function PricingSectionKarto({ user }: PricingSectionKartoProps) 
                     )}
                   </RainbowButton>
                 ) : (
-                  <RainbowButton
-                    href="/login?returnUrl=/#pricing"
-                    className="w-full min-w-0 inline-flex items-center justify-center"
-                  >
-                    Войти, чтобы выбрать тариф
-                  </RainbowButton>
+                  <>
+                    <RainbowButton
+                      href="/login?returnUrl=/#pricing"
+                      className="w-full min-w-0 inline-flex items-center justify-center"
+                    >
+                      Войти, чтобы выбрать тариф
+                    </RainbowButton>
+                    <p className="mt-3 text-xs leading-relaxed text-neutral-500">
+                      {welcomePerksPricingNoteRu()}
+                    </p>
+                  </>
                 )}
               </div>
               <p className="text-sm text-neutral-500">

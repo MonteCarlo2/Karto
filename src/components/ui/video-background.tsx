@@ -1,52 +1,61 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import * as React from "react";
 
 interface VideoBackgroundProps {
   src: string;
+  poster?: string;
   className?: string;
 }
 
-export function VideoBackground({ src, className = "" }: VideoBackgroundProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+export const VideoBackground = React.forwardRef<HTMLVideoElement, VideoBackgroundProps>(
+  function VideoBackground({ src, poster, className = "" }, ref) {
+    const videoRef = React.useRef<HTMLVideoElement>(null);
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    React.useImperativeHandle(ref, () => videoRef.current as HTMLVideoElement);
 
-    // Когда видео заканчивается, останавливаем его на последнем кадре
-    const handleEnded = () => {
-      video.pause();
-      // Устанавливаем время на самый последний кадр
-      if (video.duration && !isNaN(video.duration)) {
-        video.currentTime = video.duration;
-      }
-    };
+    React.useEffect(() => {
+      const video = videoRef.current;
+      if (!video) return;
 
-    video.addEventListener("ended", handleEnded);
+      const handleEnded = () => {
+        video.pause();
+        if (video.duration && !isNaN(video.duration)) {
+          video.currentTime = video.duration;
+        }
+      };
 
-    return () => {
-      video.removeEventListener("ended", handleEnded);
-    };
-  }, []);
+      video.addEventListener("ended", handleEnded);
 
-  return (
-    <video
-      ref={videoRef}
-      autoPlay
-      muted
-      playsInline
-      className={className}
-      style={{
-        objectFit: "cover",
-        objectPosition: "center",
-        width: "100%",
-        height: "100%",
-        maxWidth: "100%",
-        maxHeight: "100%",
-      }}
-    >
-      <source src={src} type="video/mp4" />
-    </video>
-  );
-}
+      return () => {
+        video.removeEventListener("ended", handleEnded);
+      };
+    }, []);
+
+    return (
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        preload="auto"
+        poster={poster}
+        className={className}
+        style={{
+          objectFit: "cover",
+          objectPosition: "center",
+          width: "100%",
+          height: "100%",
+          maxWidth: "100%",
+          maxHeight: "100%",
+          transform: "translateZ(0)",
+          backfaceVisibility: "hidden",
+        }}
+      >
+        <source src={src} type="video/mp4" />
+      </video>
+    );
+  }
+);
+
+VideoBackground.displayName = "VideoBackground";
