@@ -9,6 +9,9 @@ out
 build
 dist
 
+# Данные тарифов (в рантайме используются JSON в src/lib)
+data
+
 # Git и env (не нужны в образе)
 .git
 .gitignore
