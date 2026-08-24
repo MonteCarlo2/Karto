@@ -27,8 +27,7 @@ export function calculateOzonLogistics(params: {
     params.priceRub
   );
 
-  const routeLogisticsRub =
-    params.model === "fbo" ? forward.rate : local.rate;
+  const routeLogisticsRub = forward.rate;
   const deliveryToPickupRub = ozonTariffMeta.deliveryToPickupMaxRub ?? 25;
   const reversePerReturnRub = local.rate + deliveryToPickupRub;
   const expectedReverseRub = (1 - buyoutFactor) * reversePerReturnRub;

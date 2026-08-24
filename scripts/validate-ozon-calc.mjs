@@ -56,6 +56,27 @@ assertEq(Math.abs(pickup.child(pickup.fbs, "fbs-shipment-processing").amountRub)
 assertEq(pickup.fbo.payoutRub, 36, "FBO payout");
 assertEq(pickup.fbs.payoutRub, 6, "FBS payout");
 
+const crossBorder = calculateOzonUnitEconomics({
+  ...baseInput,
+  priceRub: 500,
+  lengthCm: 20,
+  widthCm: 25,
+  heightCm: 10,
+  weightKg: 0.5,
+  buyoutPercent: 100,
+  shipClusterId: "Оренбург",
+  deliveryClusterId: "Астана",
+  shipmentHandoff: "pickup_point",
+});
+const crossFbo = crossBorder.results.find((x) => x.model === "fbo");
+const crossFbs = crossBorder.results.find((x) => x.model === "fbs");
+const crossRoute = (model) => {
+  const parent = model.lines.find((l) => l.id === "logistics");
+  return Math.abs(parent?.children?.find((c) => c.id === "logistics-route")?.amountRub ?? 0);
+};
+assertEq(crossRoute(crossFbo), 155, "FBO logistics Orenburg->Astana");
+assertEq(crossRoute(crossFbs), 155, "FBS logistics Orenburg->Astana");
+
 const courier = run("courier");
 assertEq(Math.abs(courier.line(courier.fbs, "logistics").amountRub), 167, "FBS processing courier");
 assertEq(Math.abs(courier.child(courier.fbs, "fbs-shipment-processing").amountRub), 20, "FBS shipment fee courier");
