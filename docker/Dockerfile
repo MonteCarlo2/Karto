@@ -1,6 +1,6 @@
-# KARTO — Next.js standalone для Timeweb App Platform.
-# Без apt-get/curl: на сборке Timeweb deb.debian.org часто недоступен (IPv6/timeout).
-# Полный node:24-bookworm уже содержит ca-certificates; slim + apt ломает деплой.
+# Сборка из корня репозитория: docker build -f docker/Dockerfile .
+# Использовать только если в Timeweb явно выбран тип «Dockerfile» (не Nest).
+# Без apt-get — Timeweb build network часто не достаёт до deb.debian.org.
 
 FROM node:24-bookworm AS deps
 WORKDIR /app
