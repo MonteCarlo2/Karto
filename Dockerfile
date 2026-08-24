@@ -1,37 +1,31 @@
 # KARTO — Next.js standalone для Timeweb App Platform.
-# ca-certificates ставим в образе; в панели поле «Зависимости» держите пустым.
+# Без apt-get/curl: на сборке Timeweb deb.debian.org часто недоступен (IPv6/timeout).
+# Полный node:24-bookworm уже содержит ca-certificates; slim + apt ломает деплой.
 
-FROM node:24-bookworm-slim AS base
+FROM node:24-bookworm AS deps
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
-
-# На сборке Timeweb IPv6 до deb.debian.org часто недоступен — без ForceIPv4 падает apt-get.
-RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4 \
-  && DEBIAN_FRONTEND=noninteractive apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
-
-FROM base AS deps
 COPY package.json package-lock.json ./
 RUN npm ci
 
-FROM base AS builder
+FROM node:24-bookworm AS builder
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-FROM base AS runner
+FROM node:24-bookworm AS runner
+WORKDIR /app
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
 ENV NEXT_CACHE_DIR=/tmp
 ENV PORT=3000
+ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN groupadd --system --gid 1001 nodejs \
-  && useradd --system --uid 1001 --gid nodejs nextjs
+COPY --from=builder --chown=node:node /app/.next/standalone ./
 
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-
-USER nextjs
+USER node
 EXPOSE 3000 8080
 
 CMD ["node", "start.js"]
