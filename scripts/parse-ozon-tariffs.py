@@ -146,7 +146,7 @@ def parse_logistics(path: Path) -> dict:
     if len(vb2) != len(vb):
         print("warn: default volume bands count differs", len(vb2), len(vb), file=sys.stderr)
     return {
-        "effectiveFrom": "2026-05-01",
+        "effectiveFrom": "2026-08-28",
         "sourceFile": path.name,
         "volumeBands": vb,
         "shipClusters": ships,
@@ -159,7 +159,8 @@ def parse_logistics(path: Path) -> dict:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     cat_path = next(SRC.glob("categories-*.xlsx"), None)
-    log_path = next(SRC.glob("logistika-*.xlsx"), None)
+    log_paths = sorted(SRC.glob("logistika-*.xlsx"), key=lambda p: p.name, reverse=True)
+    log_path = log_paths[0] if log_paths else None
     if not cat_path or not log_path:
         raise SystemExit(f"Missing xlsx in {SRC}")
 
@@ -182,12 +183,14 @@ def main() -> None:
         "defaultDeliveryCluster": msk,
         "acquiringPercentDefault": 1.5,
         "fbsProcessing": {
-            "effectiveFrom": "2026-06-01",
+            "effectiveFrom": "2026-08-25",
             "pickupPerShipment": 20,
-            "dropoffScTrust": 10,
-            "dropoffScPiece": 20,
-            "dropoffPvz": 30,
-            "dropoffScTable": 20,
+            "dropoffScTrust": 0,
+            "dropoffScPiece": 0,
+            "dropoffPvz": 10,
+            "dropoffScTable": 0,
+            "dropoffPvzUtkMoscow": 17,
+            "dropoffPvzGorbushka": 2,
         },
         "fbsCargoUnit": {
             "effectiveFrom": "2026-04-16",

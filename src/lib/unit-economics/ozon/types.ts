@@ -38,6 +38,8 @@ export type OzonFbsProcessingFees = {
   dropoffScPiece: number;
   dropoffPvz: number;
   dropoffScTable: number;
+  dropoffPvzUtkMoscow?: number;
+  dropoffPvzGorbushka?: number;
 };
 
 export type OzonFbsCargoUnitFees = {

@@ -48,14 +48,17 @@ const pickup = run("pickup_point");
 assertEq(Math.abs(pickup.line(pickup.fbo, "commission").amountRub), 134, "FBO commission");
 assertEq(Math.abs(pickup.line(pickup.fbs, "commission").amountRub), 154, "FBS commission");
 assertEq(Math.abs(pickup.line(pickup.fbo, "acquiring").amountRub), 3, "acquiring");
-assertEq(Math.abs(pickup.line(pickup.fbo, "logistics").amountRub), 144, "FBO processing");
-assertEq(Math.abs(pickup.line(pickup.fbs, "logistics").amountRub), 174, "FBS processing pickup");
-assertEq(Math.abs(pickup.child(pickup.fbo, "logistics-route").amountRub), 119, "FBO logistics");
+assertEq(Math.abs(pickup.line(pickup.fbo, "logistics").amountRub), 147, "FBO processing");
+assertEq(Math.abs(pickup.line(pickup.fbs, "logistics").amountRub), 157, "FBS processing pickup");
+assertEq(Math.abs(pickup.child(pickup.fbo, "logistics-route").amountRub), 122, "FBO logistics");
 assertEq(Math.abs(pickup.child(pickup.fbo, "logistics-delivery-pickup").amountRub), 25, "FBO delivery");
-assertEq(pickup.fbo.payoutRub, 39, "FBO payout");
-assertEq(pickup.fbs.payoutRub, -11, "FBS payout");
+assertEq(Math.abs(pickup.child(pickup.fbs, "fbs-shipment-processing").amountRub), 10, "FBS shipment fee PVZ");
+assertEq(pickup.fbo.payoutRub, 36, "FBO payout");
+assertEq(pickup.fbs.payoutRub, 6, "FBS payout");
 
 const courier = run("courier");
-assertEq(Math.abs(courier.line(courier.fbs, "logistics").amountRub), 164, "FBS processing courier");
+assertEq(Math.abs(courier.line(courier.fbs, "logistics").amountRub), 167, "FBS processing courier");
+assertEq(Math.abs(courier.child(courier.fbs, "fbs-shipment-processing").amountRub), 20, "FBS shipment fee courier");
+assertEq(courier.fbs.payoutRub, -4, "FBS payout courier");
 
 console.log("OK — Ozon tariff logic matches reference");

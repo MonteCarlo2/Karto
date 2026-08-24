@@ -1,8 +1,8 @@
 {
   "commissionsEffectiveFrom": "2026-06-01",
-  "logisticsEffectiveFrom": "2026-05-01",
+  "logisticsEffectiveFrom": "2026-08-28",
   "commissionSource": "categories-commission-01062026.xlsx",
-  "logisticsSource": "logistika-fbo-fbs-01052026.xlsx",
+  "logisticsSource": "logistika-fbo-fbs-28082026.xlsx",
   "categoryCount": 9308,
   "shipClusters": [
     "Алматы",
@@ -70,16 +70,16 @@
   "defaultCategoryId": "строительство-и-ремонт|инструменты-для-ремонта-и-строительства|маркер-строительный",
   "defaultShipCluster": "Москва, МО и Дальние регионы",
   "defaultDeliveryCluster": "Москва, МО и Дальние регионы",
-  "acquiringPercentDefault": 1,
-  "deliveryToPickupMaxRub": 25,
-  "deliveryToPickupEffectiveFrom": "2025-06-01",
+  "acquiringPercentDefault": 1.5,
   "fbsProcessing": {
-    "effectiveFrom": "2026-06-01",
+    "effectiveFrom": "2026-08-25",
     "pickupPerShipment": 20,
-    "dropoffScTrust": 10,
-    "dropoffScPiece": 20,
-    "dropoffPvz": 30,
-    "dropoffScTable": 20
+    "dropoffScTrust": 0,
+    "dropoffScPiece": 0,
+    "dropoffPvz": 10,
+    "dropoffScTable": 0,
+    "dropoffPvzUtkMoscow": 17,
+    "dropoffPvzGorbushka": 2
   },
   "fbsCargoUnit": {
     "effectiveFrom": "2026-04-16",
