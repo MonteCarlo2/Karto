@@ -10,6 +10,7 @@ import {
   reviewMentionsDelivery,
   reviewMentionsPhotos,
 } from "./reply-postprocess";
+import { extractBuyerGreetingName, sanitizeProductNameForReply } from "./reply-text-normalize";
 
 export type MockReplyInput = {
   reviewText: string;
@@ -55,7 +56,7 @@ function greeting(
   buyerName?: string | null
 ): string {
   const vy = style.addressForm === "vy";
-  const name = buyerName?.trim();
+  const name = extractBuyerGreetingName(buyerName);
   const useName = style.useBuyerName && name && name.length >= 2;
 
   if (useName) {
@@ -155,8 +156,7 @@ function bodyForSentiment(
   if (delivery) body = `${body} ${delivery}`;
 
   if (style.mentionProduct && productName?.trim()) {
-    const shortName =
-      productName.trim().length > 60 ? `${productName.trim().slice(0, 57)}…` : productName.trim();
+    const shortName = sanitizeProductNameForReply(productName.trim());
     body = `По товару «${shortName}»: ${body.charAt(0).toLowerCase()}${body.slice(1)}`;
   }
 
@@ -188,7 +188,7 @@ export function buildMockAutoReply(input: MockReplyInput): string {
         ? "Спасибо за высокую оценку!"
         : "Спасибо за вашу оценку!";
     const parts = appendSignature([body], shop, starRating, brandName);
-    return finalizeReplyText(parts.join("\n\n"), shop, { buyerName });
+    return finalizeReplyText(parts.join("\n\n"), shop, { buyerName, starRating, brandName });
   }
 
   const sentiment = reviewSentiment(review, starRating);
@@ -213,7 +213,7 @@ export function buildMockAutoReply(input: MockReplyInput): string {
   body = lengthBody(body, style.length, review);
 
   const parts = appendSignature([opener, body], shop, starRating, brandName);
-  return finalizeReplyText(parts.join("\n\n"), shop, { buyerName });
+  return finalizeReplyText(parts.join("\n\n"), shop, { buyerName, starRating, brandName });
 }
 
 export function settingsCompletionScore(

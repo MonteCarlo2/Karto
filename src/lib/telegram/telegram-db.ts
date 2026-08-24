@@ -506,7 +506,7 @@ export async function resolveTelegramReviewMessageRowId(
     .eq("review_id", input.reviewId)
     .maybeSingle();
 
-  if (data?.id && data.status === "pending") {
+  if (data?.id) {
     return data.id as string;
   }
   return randomUUID();
@@ -518,6 +518,20 @@ export async function upsertTelegramReviewMessage(
     status?: TelegramReviewMessageRow["status"];
   }
 ): Promise<TelegramReviewMessageRow | null> {
+  const { data: existing } = await supabase
+    .from("auto_reply_telegram_review_messages")
+    .select("status")
+    .eq("user_id", row.user_id)
+    .eq("shop_id", row.shop_id)
+    .eq("marketplace_id", row.marketplace_id)
+    .eq("review_id", row.review_id)
+    .maybeSingle();
+
+  if (existing?.status === "sent") {
+    console.warn("[telegram] skip upsert: review already confirmed", row.review_id);
+    return null;
+  }
+
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("auto_reply_telegram_review_messages")

@@ -43,21 +43,21 @@ export async function notifyTelegramSemiPendingReviews(
 
   const { data: existing } = await supabase
     .from("auto_reply_telegram_review_messages")
-    .select("review_id")
+    .select("review_id, status")
     .eq("user_id", input.userId)
     .eq("shop_id", input.shopId)
     .eq("marketplace_id", input.marketplaceId)
-    .eq("status", "pending")
+    .in("status", ["pending", "sent"])
     .in(
       "review_id",
       pending.map((p) => p.id)
     );
 
-  const already = new Set((existing ?? []).map((r) => r.review_id as string));
+  const alreadyNotified = new Set((existing ?? []).map((r) => r.review_id as string));
   let sent = 0;
 
   for (const item of pending) {
-    if (already.has(item.id)) continue;
+    if (alreadyNotified.has(item.id)) continue;
 
     const rowId = await resolveTelegramReviewMessageRowId(supabase, {
       userId: input.userId,

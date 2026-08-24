@@ -13,6 +13,10 @@ import { pickSignatureForStar, resolveSignatureText } from "./signature-settings
 import { buildMockAutoReply, resolveReviewSentiment } from "./mock-reply";
 import { buildSettingsSnapshotForPrompt } from "./reply-history-store";
 import { reviewMentionsDelivery, reviewMentionsPhotos } from "./reply-postprocess";
+import {
+  extractBuyerGreetingName,
+  sanitizeProductNameForReply,
+} from "./reply-text-normalize";
 
 export type GenerateReplyRequest = {
   reviewText: string;
@@ -239,17 +243,27 @@ export function buildAutoReplyPrompt(input: GenerateReplyRequest): {
   if (isManual) {
     rules.push(...buildManualModeRules(review, style, hasReviewPhotos));
   } else {
-    if (style.useBuyerName && buyerName?.trim()) {
+    const greetingName = extractBuyerGreetingName(buyerName);
+    if (style.useBuyerName && greetingName) {
       rules.push(
-        `Имя покупателя: «${buyerName.trim()}». Обратись по имени один раз в начале, не повторяй в каждом предложении.`
+        `Имя для обращения: «${greetingName}» — только имя, без фамилии и инициалов.`,
+        `Обратись по имени РОВНО ОДИН РАЗ в начале ответа (например: «Здравствуйте, ${greetingName}!»). Не повторяй имя в середине или конце.`,
+        buyerName?.trim() && buyerName.trim() !== greetingName
+          ? `Запрещено использовать полное имя «${buyerName.trim()}» или инициалы — только «${greetingName}».`
+          : ""
       );
     } else if (style.useBuyerName) {
       rules.push("Имя покупателя неизвестно — не выдумывай имя.");
     } else {
       rules.push("Не обращайся по имени.");
     }
-    if (style.mentionProduct && productName?.trim()) {
-      rules.push(`Товар: «${productName.trim()}». Упомяни его один раз, если уместно.`);
+    const productForReply = productName?.trim() ? sanitizeProductNameForReply(productName.trim()) : null;
+    if (style.mentionProduct && productForReply) {
+      rules.push(
+        `Товар для упоминания: «${productForReply}» — кратко и естественно, один раз.`,
+        "Не используй объёмы (л, мл), количество (шт), артикулы и технические характеристики из карточки товара.",
+        "Говори о товаре естественно («строительные ведра», «наш товар»), а не дословным названием из карточки."
+      );
     } else if (style.mentionProduct) {
       rules.push("При уместности упомяни товар или заказ.");
     }
@@ -322,12 +336,29 @@ export function buildAutoReplyReviewPrompt(
   const review = reviewText.trim();
   const snapshot = buildSettingsSnapshotForPrompt({ shop, mp, brandName, starRating, reviewText });
   const draft = draftReply.trim();
+  const greetingName = extractBuyerGreetingName(buyerName);
+  const productForReply = productName?.trim() ? sanitizeProductNameForReply(productName.trim()) : null;
+
+  const { text: signatureRaw } = pickSignatureForStar(shop.templates, starRating, brandName);
+  const signatureLine =
+    shop.templates.signaturesEnabled && signatureRaw
+      ? resolveSignatureText(signatureRaw, brandName)
+      : null;
 
   const system = [
     "Ты — редактор качества ответов продавца на отзыв покупателя на маркетплейсе.",
     "Ответ должен соответствовать тексту отзыва и оценке в звёздах вместе. Язык — только русский, без китайского и других языков.",
     "Тебе передан черновик ответа от другой модели, текст отзыва и полный JSON настроек магазина.",
     "Проверь черновик на соответствие ВСЕМ настройкам: тон, длина, обращение, подпись, минус-слова, контекст доставки, упоминание товара/имени, эмодзи.",
+    shop.style.useBuyerName && greetingName
+      ? `Имя: обращение только «${greetingName}» (без фамилии и инициалов), не более одного раза в тексте.`
+      : "",
+    shop.style.mentionProduct && productForReply
+      ? `Товар: упоминать естественно («${productForReply}»), без объёмов, количества в шт и технических характеристик.`
+      : "",
+    shop.templates.signaturesEnabled && signatureLine
+      ? `Подпись обязательна в конце ответа: «${signatureLine}».`
+      : "",
     "Если черновик уже корректен — верни его БЕЗ ИЗМЕНЕНИЙ.",
     "Если есть нарушения — исправь ТОЛЬКО проблемные места. Сохраняй формулировки, структуру и тон черновика.",
     shop.style.length === "short" || shop.style.length === "auto"
@@ -339,8 +370,8 @@ export function buildAutoReplyReviewPrompt(
 
   const userParts = [
     `Оценка: ${starRating} из 5.`,
-    buyerName?.trim() ? `Имя покупателя: ${buyerName.trim()}.` : "",
-    productName?.trim() ? `Товар: ${productName.trim()}.` : "",
+    greetingName ? `Имя для обращения: ${greetingName}.` : "",
+    productForReply ? `Товар (кратко): ${productForReply}.` : "",
     `Длина ответа: ${lengthGuidance(shop.style.length, review)}.`,
     `\nТекст отзыва:\n${review || "Покупатель не оставил текста — только оценка."}`,
     `\nЧерновик ответа (от первой модели):\n${draft}`,

@@ -1,4 +1,14 @@
-import type { AutoRepliesShopSettings } from "./settings-types";
+import type { AutoRepliesShopSettings, StarKey } from "./settings-types";
+import { pickSignatureForStar } from "./signature-settings";
+import {
+  deduplicateBuyerNameInReply,
+  enforceReplySignature,
+  extractBuyerGreetingName,
+  repairBuyerNameGreeting,
+  stripTechnicalProductSpecsInReply,
+} from "./reply-text-normalize";
+
+export { extractBuyerGreetingName } from "./reply-text-normalize";
 
 const EMOJI_RE = /\p{Extended_Pictographic}/gu;
 
@@ -71,41 +81,6 @@ export function sanitizeAddressFormLeaks(text: string): string {
     .replace(/^,\s*/u, "");
 }
 
-/** Имя для обращения: «Татьяна С.» → «Татьяна». */
-export function extractBuyerGreetingName(buyerName?: string | null): string | null {
-  const raw = buyerName?.trim();
-  if (!raw || raw.length < 2) return null;
-  const first = raw.split(/\s+/)[0]?.replace(/[.,]+$/g, "").trim();
-  if (first && first.length >= 2) return first;
-  return raw;
-}
-
-function repairBrokenGreeting(
-  text: string,
-  shop: AutoRepliesShopSettings,
-  buyerName?: string | null
-): string {
-  let out = text.trim();
-  out = out.replace(/^,\s*/u, "");
-
-  if (!shop.style.useBuyerName) return out;
-
-  const name = extractBuyerGreetingName(buyerName);
-  if (!name) return out;
-
-  const opener = out.split(/\n\n/)[0] ?? out;
-  if (new RegExp(`\\b${escapeRegExp(name)}\\b`, "iu").test(opener.slice(0, 100))) {
-    return out;
-  }
-
-  if (/^(?:спасибо|благодар)/iu.test(out)) {
-    const vy = shop.style.addressForm === "vy";
-    const greeting = vy ? `Здравствуйте, ${name}!` : `Привет, ${name}!`;
-    return `${greeting} ${out.charAt(0).toLowerCase()}${out.slice(1)}`;
-  }
-
-  return out;
-}
 
 /** Разбивает длинный сплошной текст на абзацы — только когда это улучшает читаемость. */
 export function beautifyReplyLayout(text: string): string {
@@ -138,6 +113,8 @@ export function containsForeignScript(text: string): boolean {
 
 export type FinalizeReplyContext = {
   buyerName?: string | null;
+  starRating?: StarKey;
+  brandName?: string | null;
 };
 
 export function finalizeReplyText(
@@ -147,10 +124,21 @@ export function finalizeReplyText(
 ): string {
   let out = text.trim();
   out = sanitizeAddressFormLeaks(out);
-  out = repairBrokenGreeting(out, shop, context?.buyerName);
+  out = repairBuyerNameGreeting(out, shop.style, context?.buyerName);
+  out = deduplicateBuyerNameInReply(out, context?.buyerName, shop.style.useBuyerName);
+  if (shop.style.mentionProduct) {
+    out = stripTechnicalProductSpecsInReply(out);
+  }
   if (!shop.style.emojis) out = stripEmojis(out);
   out = applyMinusWords(out, shop);
   out = applySignaturePolicy(out, shop);
+
+  const { text: signatureRaw } =
+    context?.starRating != null
+      ? pickSignatureForStar(shop.templates, context.starRating, context.brandName)
+      : { text: null as string | null };
+  out = enforceReplySignature(out, signatureRaw, shop.templates.signaturesEnabled);
+
   out = beautifyReplyLayout(out);
   if (containsForeignScript(out)) {
     throw new Error("Ответ содержит текст не на русском языке");

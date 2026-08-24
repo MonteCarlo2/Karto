@@ -122,7 +122,11 @@ export async function generateAutoReply(input: GenerateReplyRequest): Promise<Au
 
       const { reply, stage } = await generateAutoReplyViaOpenRouter(attemptInput);
 
-      const finalized = finalizeReplyText(reply, input.shop, { buyerName: input.buyerName });
+      const finalized = finalizeReplyText(reply, input.shop, {
+        buyerName: input.buyerName,
+        starRating: input.starRating,
+        brandName: input.brandName,
+      });
 
       return {
 

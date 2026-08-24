@@ -18,6 +18,8 @@ import { completeTelegramLink } from "./link-flow";
 import { TELEGRAM_WELCOME_GUEST } from "./bot-profile";
 import { confirmSemiReviewReply } from "./semi-confirm-server";
 import { regenerateTelegramReviewDraft } from "./regenerate-server";
+import { applyTelegramEditedDraft } from "./edit-draft-server";
+import { deleteTelegramReviewCard } from "./send-review-card";
 import type { InboxReviewItem } from "@/lib/auto-replies/inbox-demo-data";
 import type { AutoRepliesMarketplaceId } from "@/lib/auto-replies/types";
 
@@ -189,6 +191,8 @@ async function handleEditTextStep(
   payload: Record<string, unknown>
 ): Promise<void> {
   const messageRowId = String(payload.messageRowId ?? "");
+  const promptMessageId = Number(payload.promptMessageId ?? 0);
+
   const { data: fullRow } = await supabase
     .from("auto_reply_telegram_review_messages")
     .select("*")
@@ -207,21 +211,45 @@ async function handleEditTextStep(
     return;
   }
 
+  const item = await loadInboxItem(
+    supabase,
+    fullRow.user_id,
+    fullRow.shop_id,
+    fullRow.marketplace_id,
+    fullRow.review_id
+  );
+  if (!item) {
+    await clearTelegramSession(supabase, from.id);
+    await telegramSendMessage({ chatId: chat.id, text: "Отзыв не найден в ленте. Обновите inbox на сайте." });
+    return;
+  }
+
   await clearTelegramSession(supabase, from.id);
 
-  const result = await confirmSemiReviewReply(supabase, {
+  const result = await applyTelegramEditedDraft(supabase, {
     userId: fullRow.user_id,
     shopId: fullRow.shop_id,
     marketplaceId: fullRow.marketplace_id as AutoRepliesMarketplaceId,
     reviewId: fullRow.review_id,
-    replyText: reply,
-    source: "telegram",
+    messageRowId: fullRow.id,
+    chatId: chat.id,
+    replyDraft: reply,
+    item,
   });
+
+  if (promptMessageId > 0) {
+    try {
+      const { telegramDeleteMessage } = await import("./bot-api");
+      await telegramDeleteMessage({ chatId: chat.id, messageId: promptMessageId });
+    } catch {
+      // non-fatal
+    }
+  }
 
   if (!result.ok) {
     await telegramSendMessage({
       chatId: chat.id,
-      text: `❌ ${result.error ?? "Не удалось отправить ответ"}`,
+      text: `❌ ${result.error ?? "Не удалось сохранить черновик"}`,
     });
   }
 }
@@ -322,6 +350,17 @@ async function handleCallback(
     }
 
     const chatId = cb.message?.chat.id ?? row.chat_id;
+
+    try {
+      await deleteTelegramReviewCard({
+        chatId,
+        messageId: row.telegram_message_id,
+        extraMessageIds: row.extra_message_ids ?? [],
+      });
+    } catch (e) {
+      console.warn("[telegram] delete card before edit failed", e);
+    }
+
     await setTelegramSession(supabase, {
       telegramUserId: cb.from.id,
       chatId,
@@ -329,7 +368,7 @@ async function handleCallback(
       payload: { messageRowId: row.id },
     });
     await telegramAnswerCallbackQuery({ callbackQueryId: cb.id });
-    await telegramSendMessage({
+    const prompt = await telegramSendMessage({
       chatId,
       text: draft,
       parseMode: null,
@@ -338,6 +377,17 @@ async function handleCallback(
         selective: true,
         input_field_placeholder: "Отредактируйте ответ и отправьте",
       },
+    });
+    await setTelegramSession(supabase, {
+      telegramUserId: cb.from.id,
+      chatId,
+      state: "awaiting_edit_text",
+      payload: { messageRowId: row.id, promptMessageId: prompt.message_id },
+    });
+    await telegramSendMessage({
+      chatId,
+      text: "✏️ Отредактируйте черновик выше и отправьте одним сообщением. Затем появится карточка с кнопками подтверждения.",
+      parseMode: null,
     });
     return;
   }
