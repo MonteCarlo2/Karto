@@ -14,6 +14,7 @@ import {
   supabaseAuthNetworkErrorMessage,
   withSupabaseRetry,
 } from "@/lib/supabase/supabase-retry";
+import { redirectWithSupabaseSession } from "@/lib/auth/establish-supabase-session";
 
 const YANDEX_TOKEN_URL = "https://oauth.yandex.ru/token";
 const YANDEX_USER_INFO_URL = "https://login.yandex.ru/info?format=json";
@@ -24,7 +25,7 @@ function loginRedirect(baseUrl: string, message: string): NextResponse {
 
 /**
  * Callback после авторизации в Яндексе.
- * Обменивает code на токен, получает данные пользователя, создаёт/находит пользователя в Supabase и выдаёт сессию через magic link.
+ * Обменивает code на токен, создаёт/находит пользователя в Supabase, выдаёт сессию (cookies на сервере).
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -194,32 +195,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const redirectTo = isExistingUser ? `${baseUrl}/?welcome_back=1` : `${baseUrl}/`;
+    const redirectPath = isExistingUser ? "/?welcome_back=1" : "/";
 
-    const { data: linkData, error: linkError } = await withSupabaseRetry("generateLink", async () => {
-      const result = await supabase.auth.admin.generateLink({
-        type: "magiclink",
-        email,
-        options: { redirectTo },
-      });
-      if (result.error && isSupabaseNetworkError(result.error)) {
-        throw result.error;
-      }
-      return result;
-    });
-
-    const actionLink = (linkData as { properties?: { action_link?: string } } | null)?.properties
-      ?.action_link;
-
-    if (linkError || !actionLink) {
-      console.error("generateLink error:", linkError);
-      if (linkError && isSupabaseNetworkError(linkError)) {
-        return loginRedirect(baseUrl, supabaseAuthNetworkErrorMessage());
-      }
-      return loginRedirect(baseUrl, "Не удалось создать сессию");
-    }
-
-    return NextResponse.redirect(actionLink);
+    return await redirectWithSupabaseSession(request, baseUrl, email, redirectPath);
   } catch (e) {
     console.error("Yandex callback error:", e);
     if (isSupabaseNetworkError(e)) {
