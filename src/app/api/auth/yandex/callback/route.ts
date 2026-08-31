@@ -5,8 +5,13 @@ import { markDemoFlowEligibleOnRegistration } from "@/lib/demo-flow-server";
 import {
   parseRegistrationDeviceId,
   recordWelcomePerkRegistration,
+  welcomePerksBlockedMessageRu,
 } from "@/lib/welcome-perks/registration-server";
-import { WELCOME_REGISTRATION_DEVICE_COOKIE } from "@/lib/welcome-perks/constants";
+import {
+  WELCOME_REGISTRATION_DEVICE_COOKIE,
+  WELCOME_PERKS_NOTICE_COOKIE,
+  WELCOME_PERKS_NOTICE_COOKIE_MAX_AGE_SEC,
+} from "@/lib/welcome-perks/constants";
 import { getYandexRedirectUri } from "@/lib/auth/yandex-redirect-uri";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { resilientFetch } from "@/lib/supabase/resilient-fetch";
@@ -175,6 +180,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    let welcomePerksNotice: string | null = null;
+
     if (!isExistingUser && newUserId) {
       const cookieRaw = request.cookies.get(WELCOME_REGISTRATION_DEVICE_COOKIE)?.value;
       let deviceId: string | null = null;
@@ -192,12 +199,23 @@ export async function GET(request: NextRequest) {
         await withSupabaseRetry("markDemoFlowEligibleOnRegistration", () =>
           markDemoFlowEligibleOnRegistration(supabase, newUserId!)
         );
+      } else {
+        welcomePerksNotice = welcomePerksBlockedMessageRu(welcomeResult.retryAfterDays);
       }
     }
 
     const redirectPath = isExistingUser ? "/?welcome_back=1" : "/";
 
-    return await redirectWithSupabaseSession(request, baseUrl, email, redirectPath);
+    const response = await redirectWithSupabaseSession(request, baseUrl, email, redirectPath);
+    if (welcomePerksNotice) {
+      response.cookies.set(WELCOME_PERKS_NOTICE_COOKIE, encodeURIComponent(welcomePerksNotice), {
+        path: "/",
+        maxAge: WELCOME_PERKS_NOTICE_COOKIE_MAX_AGE_SEC,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
+    }
+    return response;
   } catch (e) {
     console.error("Yandex callback error:", e);
     if (isSupabaseNetworkError(e)) {

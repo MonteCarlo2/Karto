@@ -8,6 +8,11 @@ import { Wrench } from "lucide-react"
 import { HeroSection } from "@/components/landing/hero-section"
 import { createBrowserClient } from "@/lib/supabase/client"
 import { useToast } from "@/components/ui/toast"
+import {
+  WELCOME_PERKS_NOTICE_COOKIE,
+  WELCOME_PERKS_NOTICE_STORAGE_KEY,
+  WELCOME_PERKS_NOTICE_TOAST_SHOWN_KEY,
+} from "@/lib/welcome-perks/constants"
 
 const BugReportModal = dynamic(
   () => import("@/components/ui/bug-report-modal").then((m) => ({ default: m.BugReportModal })),
@@ -88,6 +93,34 @@ function HomeContent() {
           const u = new URL(window.location.href);
           u.searchParams.delete("welcome_back");
           window.history.replaceState({}, "", u.pathname + u.search + u.hash);
+        }
+
+        if (session && typeof window !== "undefined") {
+          let notice = sessionStorage.getItem(WELCOME_PERKS_NOTICE_STORAGE_KEY);
+          if (!notice) {
+            const cookieMatch = document.cookie.match(
+              new RegExp(`(?:^|; )${WELCOME_PERKS_NOTICE_COOKIE}=([^;]*)`)
+            );
+            if (cookieMatch?.[1]) {
+              try {
+                notice = decodeURIComponent(cookieMatch[1]);
+              } catch {
+                notice = cookieMatch[1];
+              }
+              document.cookie = `${WELCOME_PERKS_NOTICE_COOKIE}=; Max-Age=0; path=/`;
+              if (notice) {
+                sessionStorage.setItem(WELCOME_PERKS_NOTICE_STORAGE_KEY, notice);
+              }
+            }
+          }
+          if (notice?.trim() && !sessionStorage.getItem(WELCOME_PERKS_NOTICE_TOAST_SHOWN_KEY)) {
+            showToast({
+              type: "info",
+              message: notice.trim(),
+              durationMs: 7000,
+            });
+            sessionStorage.setItem(WELCOME_PERKS_NOTICE_TOAST_SHOWN_KEY, "1");
+          }
         }
       } catch (error) {
         console.warn("Ошибка проверки сессии:", error);

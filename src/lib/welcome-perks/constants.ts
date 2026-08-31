@@ -7,3 +7,9 @@ export const WELCOME_PERKS_WINDOW_MS =
 /** Cookie для OAuth (Yandex): fingerprint до редиректа на провайдера. */
 export const WELCOME_REGISTRATION_DEVICE_COOKIE = "karto_reg_device";
 export const WELCOME_REGISTRATION_DEVICE_COOKIE_MAX_AGE_SEC = 600;
+
+/** Cookie / sessionStorage: toast и баннер после регистрации (лимит welcome-пакета). */
+export const WELCOME_PERKS_NOTICE_STORAGE_KEY = "karto_welcome_perks_notice";
+export const WELCOME_PERKS_NOTICE_TOAST_SHOWN_KEY = "karto_welcome_perks_toast_shown";
+export const WELCOME_PERKS_NOTICE_COOKIE = "karto_welcome_perks_notice";
+export const WELCOME_PERKS_NOTICE_COOKIE_MAX_AGE_SEC = 300;

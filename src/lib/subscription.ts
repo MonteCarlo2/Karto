@@ -399,6 +399,28 @@ export function availableFlowStarts(sub: Pick<SubscriptionState, "flowsLimit" | 
   return { paidLeft, demoLeft, totalLeft: paidLeft + demoLeft };
 }
 
+/** Пустое состояние для нового аккаунта без строк в user_subscriptions. */
+export function createEmptySubscriptionState(): SubscriptionState {
+  return {
+    planType: "creative",
+    planVolume: 0,
+    flowsUsed: 0,
+    flowsLimit: 0,
+    demoFlowsUsed: 0,
+    demoFlowsLimit: 0,
+    creativeUsed: 0,
+    creativeLimit: 0,
+    videoTokenBalance: 0,
+    creditBalance: 0,
+    videoTokensSpent: 0,
+    videoTokensLifetimePurchased: 0,
+    servicesPeriodExpired: false,
+    autoReplyBalance: 0,
+    autoReplyWelcomeRemaining: 0,
+    autoReplyPaidRemaining: 0,
+  };
+}
+
 /** Получить подписку по user_id. Не удаляем строки по сроку — только выборка и объединение. */
 export async function getSubscriptionByUserId(supabase: any, userId: string): Promise<SubscriptionState | null> {
   const { data, error } = await supabase
@@ -407,7 +429,7 @@ export async function getSubscriptionByUserId(supabase: any, userId: string): Pr
     .eq("user_id", userId);
   if (error) return null;
   const rows = (data ?? []) as SubscriptionRow[];
-  if (rows.length === 0) return null;
+  if (rows.length === 0) return createEmptySubscriptionState();
   const active = filterActiveSubscriptionRows(rows);
   return buildSubscriptionStateFromRows(rows, active);
 }

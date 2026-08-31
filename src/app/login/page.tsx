@@ -13,6 +13,7 @@ import {
   getRegistrationDeviceId,
   setRegistrationDeviceCookie,
 } from "@/lib/welcome-perks/client-fingerprint";
+import { WELCOME_PERKS_NOTICE_STORAGE_KEY } from "@/lib/welcome-perks/constants";
 
 const AUTH_API_TIMEOUT_MS = 90_000;
 
@@ -424,7 +425,7 @@ function LoginContent() {
         typeof data.welcomePerksMessage === "string" &&
         data.welcomePerksMessage.trim()
       ) {
-        sessionStorage.setItem("karto_welcome_perks_notice", data.welcomePerksMessage.trim());
+        sessionStorage.setItem(WELCOME_PERKS_NOTICE_STORAGE_KEY, data.welcomePerksMessage.trim());
       }
       showNotification("Добро пожаловать в KARTO!", "success");
       router.push(redirectAfterAuth);

@@ -57,6 +57,10 @@ import { resolveEffectiveBrandPaletteColors } from "@/lib/brand/brand-preset-pal
 import { RainbowButton } from "@/components/ui/rainbow-button";
 import { triggerDownloadFromRemoteUrl } from "@/lib/client/media-download";
 import { acknowledgeProfileUpdate } from "@/hooks/use-profile-update-badge";
+import {
+  WELCOME_PERKS_NOTICE_STORAGE_KEY,
+  WELCOME_PERKS_NOTICE_TOAST_SHOWN_KEY,
+} from "@/lib/welcome-perks/constants";
 const brandNameDisplayFont = Unbounded({
   subsets: ["latin", "cyrillic"],
   weight: ["600", "700"],
@@ -236,10 +240,11 @@ function ProfileContent() {
     (async () => {
       const storedNotice =
         typeof sessionStorage !== "undefined"
-          ? sessionStorage.getItem("karto_welcome_perks_notice")
+          ? sessionStorage.getItem(WELCOME_PERKS_NOTICE_STORAGE_KEY)
           : null;
       if (storedNotice) {
-        sessionStorage.removeItem("karto_welcome_perks_notice");
+        sessionStorage.removeItem(WELCOME_PERKS_NOTICE_STORAGE_KEY);
+        sessionStorage.removeItem(WELCOME_PERKS_NOTICE_TOAST_SHOWN_KEY);
       }
       const { subscription: sub, welcomePerksMessage } = await fetchSubscription();
       if (!mounted) return;

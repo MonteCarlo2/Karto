@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
-import { getSubscriptionByUserId, FREE_WELCOME_CREDITS } from "@/lib/subscription";
+import { getSubscriptionByUserId, FREE_WELCOME_CREDITS, createEmptySubscriptionState } from "@/lib/subscription";
 import { addCredits, migrateLegacyCreativeToCredits } from "@/lib/credits";
 import { sendWelcomeEmail } from "@/lib/send-welcome-email";
 import { fetchAutoReplySubscriptionInfo } from "@/lib/auto-replies-subscription-info";
+import { grantAutoReplyWelcomeIfEligible } from "@/lib/auto-replies-welcome";
 import { grantDemoFlowOnWelcome, clearDemoFlowIfHasPaid } from "@/lib/demo-flow-server";
 import {
   fetchWelcomePerksStatus,
@@ -104,6 +105,10 @@ export async function GET(request: NextRequest) {
     await grantDemoFlowOnWelcome(supabase, user.id);
     row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? row;
 
+    // 30 бесплатных автоответов — при первом запросе подписки (как кредиты), не только в мастере.
+    await grantAutoReplyWelcomeIfEligible(supabase as any, user.id);
+    row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? row;
+
     // Платный Поток заменяет демо (демо больше не показываем и не списываем)
     if (row) {
       await clearDemoFlowIfHasPaid(supabase, user.id);
@@ -116,13 +121,31 @@ export async function GET(request: NextRequest) {
 
     if (!row) {
       const welcomePerks = await fetchWelcomePerksStatus(supabase as any, user.id);
+      const autoReply = await fetchAutoReplySubscriptionInfo(supabase as any, user.id);
+      const empty = createEmptySubscriptionState();
       return NextResponse.json({
         success: true,
-        subscription: null,
+        subscription: {
+          ...empty,
+          autoReplyBalance: autoReply.balance,
+          autoReplyWelcomeRemaining: autoReply.welcomeRemaining,
+          autoReplyPaidRemaining: autoReply.paidRemaining,
+          autoReplyPeriodStart: autoReply.periodStart,
+          autoReplyPeriodEnd: autoReply.periodEnd,
+          autoReplyPackExpired: autoReply.packExpired,
+          autoReplyAutoRenew: autoReply.autoRenew,
+          autoReplyHasSavedCard: autoReply.hasSavedCard,
+          autoReplyCardLast4: autoReply.cardLast4,
+          autoReplyCardBrand: autoReply.cardBrand,
+          autoReplyNextRenewAt: autoReply.nextRenewAt,
+          autoReplyTariffIndex: autoReply.tariffIndex,
+          autoReplyMonthlyPriceRub: autoReply.monthlyPriceRub,
+        },
         creditBalance: 0,
         videoTokenBalance: 0,
         videoTokensSpent: 0,
         videoTokensLifetimePurchased: 0,
+        autoReply,
         welcomePerks: {
           eligible: welcomePerks.eligible,
           retryAfterDays: welcomePerks.retryAfterDays,
