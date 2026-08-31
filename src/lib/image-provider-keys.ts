@@ -20,11 +20,6 @@ export function isImageGenerationConfigured(): boolean {
   return hasWaveSpeedApiKey() || hasEvolinkApiKey() || hasKieAiApiKey();
 }
 
-function flowPreferKie(): boolean {
-  const v = process.env.FLOW_IMAGE_PREFER_KIE?.trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
-}
-
 /** Провайдер для Потока (карточки, слайды). FLOW_IMAGE_PROVIDER=kie|wavespeed|evolink|auto */
 export function getFlowImageProvider(): FlowImageProvider {
   const raw = (process.env.FLOW_IMAGE_PROVIDER?.trim().toLowerCase() || "auto") as
@@ -49,8 +44,7 @@ export function getFlowImageProvider(): FlowImageProvider {
     return "wavespeed";
   }
 
-  // auto: при FLOW_IMAGE_PREFER_KIE=1 — KIE (стабильнее edit, см. A/B с WaveSpeed)
-  if (flowPreferKie() && hasKieAiApiKey()) return "kie";
+  // auto: WaveSpeed при наличии ключа; KIE только при явном FLOW_IMAGE_PROVIDER=kie
   if (hasWaveSpeedApiKey()) return "wavespeed";
   if (hasKieAiApiKey()) return "kie";
   return "evolink";

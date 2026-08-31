@@ -1,6 +1,6 @@
 /**
  * Генерация изображений для Потока (карточки, слайды, правки).
- * Провайдер: FLOW_IMAGE_PROVIDER / FLOW_IMAGE_PREFER_KIE (см. image-provider-keys).
+ * Провайдер: FLOW_IMAGE_PROVIDER (см. image-provider-keys). По умолчанию WaveSpeed.
  */
 import { KieAiContentFilteredError, isKieContentPolicyError } from "@/lib/services/kie-ai-errors";
 import { generateWithKieAi } from "@/lib/services/kie-ai";

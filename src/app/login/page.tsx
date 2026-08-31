@@ -9,6 +9,10 @@ import { createBrowserClient } from "@/lib/supabase/client";
 import Image from "next/image";
 import { useNotification } from "@/components/ui/notification";
 import { validateDisplayName, validatePasswordForAuth } from "@/lib/auth/password-policy";
+import {
+  getRegistrationDeviceId,
+  setRegistrationDeviceCookie,
+} from "@/lib/welcome-perks/client-fingerprint";
 
 const AUTH_API_TIMEOUT_MS = 90_000;
 
@@ -389,10 +393,12 @@ function LoginContent() {
     setVerifyBusy(true);
     setVerifyModalError(null);
     try {
+      const registrationDeviceId = await getRegistrationDeviceId();
       const res = await fetchAuthApi("/api/auth/verify-signup-code", {
         email: pendingEmail,
         password: pendingPassword,
         code: digits,
+        ...(registrationDeviceId ? { registrationDeviceId } : {}),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -413,6 +419,13 @@ function LoginContent() {
       setShowVerifyModal(false);
       setPendingPassword("");
       setVerifyCode("");
+      if (
+        data.welcomePerksEligible === false &&
+        typeof data.welcomePerksMessage === "string" &&
+        data.welcomePerksMessage.trim()
+      ) {
+        sessionStorage.setItem("karto_welcome_perks_notice", data.welcomePerksMessage.trim());
+      }
       showNotification("Добро пожаловать в KARTO!", "success");
       router.push(redirectAfterAuth);
     } catch (err: unknown) {
@@ -474,8 +487,12 @@ function LoginContent() {
     setIsLogin(true);
   };
 
-  const handleYandexLogin = () => {
-    // Вход через наш API: редирект на Яндекс → callback на /api/auth/yandex/callback → Supabase сессия
+  const handleYandexLogin = async () => {
+    try {
+      await setRegistrationDeviceCookie();
+    } catch {
+      /* fail-open: OAuth без cookie */
+    }
     window.location.href = "/api/auth/yandex";
   };
 

@@ -1,11 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { isWelcomePerksEligible } from "@/lib/welcome-perks/registration-server";
+
 export const AUTO_REPLY_WELCOME_CREDITS = 30;
 
 export async function grantAutoReplyWelcomeIfEligible(
   supabase: SupabaseClient,
   userId: string
 ): Promise<{ ok: boolean; granted: boolean; balance?: number; error?: string }> {
+  if (!(await isWelcomePerksEligible(supabase, userId))) {
+    return { ok: true, granted: false };
+  }
+
   const { data: existingGrant } = await supabase
     .from("auto_reply_welcome_grants")
     .select("user_id")

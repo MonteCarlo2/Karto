@@ -2,15 +2,37 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { generateWithKieAi } from "@/lib/services/kie-ai";
 import { kieErrorToClient } from "@/lib/services/kie-ai-errors";
+import { getFreeGenImageProvider } from "@/lib/services/free-gen-provider";
+import { generateWithEvolinkGemini } from "@/lib/services/evolink-images";
+import { generateWithWaveSpeedNanoBanana2 } from "@/lib/services/wavespeed-images";
 import { getPublicUrl, saveBase64Image } from "@/lib/services/image-processing";
 import { CREDIT_PHOTO_4K } from "@/lib/credits-pricing";
 import { addCredits, consumeCredits, getCreditBalance, migrateLegacyCreativeToCredits } from "@/lib/credits";
 
 /**
- * Генерация «Для товара» — списание CREDIT_PHOTO_4K кредитов.
+ * Генерация «Для товара» в Креативе — списание CREDIT_PHOTO_4K кредитов.
+ * Провайдер фото: WaveSpeed (как /api/generate-free). KIE — только логотип и видео.
  */
 export async function POST(request: NextRequest) {
-  if (!process.env.KIE_AI_API_KEY && !process.env.KIE_API_KEY) {
+  const provider = getFreeGenImageProvider();
+
+  if (provider === "wavespeed") {
+    if (!process.env.WAVESPEED_API_KEY?.trim()) {
+      return NextResponse.json(
+        { success: false, error: "WAVESPEED_API_KEY не настроен" },
+        { status: 500 }
+      );
+    }
+  } else if (provider === "evolink") {
+    const evoKey =
+      process.env.EVOLINK_API_KEY?.trim() || process.env.WAVESPEED_API_KEY?.trim();
+    if (!evoKey) {
+      return NextResponse.json(
+        { success: false, error: "EVOLINK_API_KEY не настроен" },
+        { status: 500 }
+      );
+    }
+  } else if (!process.env.KIE_AI_API_KEY && !process.env.KIE_API_KEY) {
     return NextResponse.json(
       { success: false, error: "KIE_AI_API_KEY не настроен" },
       { status: 500 }
@@ -102,8 +124,6 @@ export async function POST(request: NextRequest) {
         !appUrl.includes("127.0.0.1");
 
       if (productImage.startsWith("data:image")) {
-        // Предпочтительно конвертируем data URL в публичный URL файла.
-        // Если домен не публичный, оставляем data URL — сервис KIE сделает безопасный fallback без референса.
         if (productImage.length <= maxSize) {
           try {
             if (appUrlIsPublic) {
@@ -147,8 +167,8 @@ export async function POST(request: NextRequest) {
         sceneDescription = "в профессиональной сцене для маркетплейса";
     }
 
-    const userPromptPart = prompt && prompt.trim() 
-      ? `\nОписание пользователя: ${prompt.trim()}` 
+    const userPromptPart = prompt && prompt.trim()
+      ? `\nОписание пользователя: ${prompt.trim()}`
       : "";
 
     const finalPrompt = `Создай реалистичную ФОТОГРАФИЮ ТОВАРА для маркетплейса.
@@ -161,16 +181,41 @@ export async function POST(request: NextRequest) {
 
 Сцена: ${sceneDescription}.${userPromptPart}`;
 
+    const providerLabel =
+      provider === "evolink"
+        ? "EvoLink"
+        : provider === "wavespeed"
+          ? "WaveSpeed"
+          : "KIE";
+    console.log(`🎨 [FOR-PRODUCT] Старт (провайдер: ${providerLabel})`);
+
     let imageUrl: string;
     try {
-      const out = await generateWithKieAi(
-        finalPrompt,
-        imageForApi,
-        aspectRatio,
-        "png",
-        "4K"
-      );
-      imageUrl = out.imageUrl;
+      if (provider === "evolink") {
+        const out = await generateWithEvolinkGemini(
+          finalPrompt,
+          imageForApi ? [imageForApi] : undefined,
+          aspectRatio
+        );
+        imageUrl = out.imageUrl;
+      } else if (provider === "wavespeed") {
+        const out = await generateWithWaveSpeedNanoBanana2(
+          finalPrompt,
+          imageForApi ? [imageForApi] : undefined,
+          aspectRatio,
+          "4k"
+        );
+        imageUrl = out.imageUrl;
+      } else {
+        const out = await generateWithKieAi(
+          finalPrompt,
+          imageForApi,
+          aspectRatio,
+          "png",
+          "4K"
+        );
+        imageUrl = out.imageUrl;
+      }
     } catch (genErr) {
       await addCredits(supabase as any, user.id, CREDIT_PHOTO_4K);
       throw genErr;
@@ -184,8 +229,19 @@ export async function POST(request: NextRequest) {
       creditsCharged: CREDIT_PHOTO_4K,
       creditBalance: newBalance,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[generate-for-product] Ошибка:", error);
+    if (provider === "evolink" || provider === "wavespeed") {
+      const msg = error instanceof Error ? error.message : String(error);
+      const providerName = provider === "wavespeed" ? "WaveSpeed" : "EvoLink";
+      return NextResponse.json(
+        {
+          success: false,
+          error: msg || `Ошибка генерации (${providerName})`,
+        },
+        { status: 500 }
+      );
+    }
     const { message, code } = kieErrorToClient(error);
     const status = code === "CONTENT_FILTER" ? 422 : 500;
     return NextResponse.json(

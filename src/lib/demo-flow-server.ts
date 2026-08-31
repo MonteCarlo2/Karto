@@ -10,6 +10,7 @@ import {
   visualLimitForSession,
 } from "@/lib/demo-flow";
 import { SUBSCRIPTION_PERIOD_DAYS } from "@/lib/subscription";
+import { isWelcomePerksEligible } from "@/lib/welcome-perks/registration-server";
 
 export async function isDemoProductSession(
   supabase: SupabaseClient,
@@ -122,6 +123,10 @@ export async function grantDemoFlowOnWelcome(
   supabase: SupabaseClient,
   userId: string
 ): Promise<void> {
+  if (!(await isWelcomePerksEligible(supabase, userId))) {
+    return;
+  }
+
   const { data: grant, error: grantSelectErr } = await supabase
     .from("demo_flow_grants")
     .select("granted_at")

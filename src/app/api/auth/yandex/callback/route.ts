@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { markDemoFlowEligibleOnRegistration } from "@/lib/demo-flow-server";
+import {
+  parseRegistrationDeviceId,
+  recordWelcomePerkRegistration,
+} from "@/lib/welcome-perks/registration-server";
+import { WELCOME_REGISTRATION_DEVICE_COOKIE } from "@/lib/welcome-perks/constants";
 import { getYandexRedirectUri } from "@/lib/auth/yandex-redirect-uri";
 
 const YANDEX_TOKEN_URL = "https://oauth.yandex.ru/token";
@@ -136,10 +141,23 @@ export async function GET(request: NextRequest) {
     }
 
     if (!isExistingUser && createdData?.user?.id) {
-      await markDemoFlowEligibleOnRegistration(
+      const cookieRaw = request.cookies.get(WELCOME_REGISTRATION_DEVICE_COOKIE)?.value;
+      let deviceId: string | null = null;
+      if (cookieRaw) {
+        try {
+          deviceId = parseRegistrationDeviceId(decodeURIComponent(cookieRaw));
+        } catch {
+          deviceId = parseRegistrationDeviceId(cookieRaw);
+        }
+      }
+      const welcomeResult = await recordWelcomePerkRegistration(
         supabase,
-        createdData.user.id
+        createdData.user.id,
+        deviceId
       );
+      if (welcomeResult.eligible) {
+        await markDemoFlowEligibleOnRegistration(supabase, createdData.user.id);
+      }
     }
 
     // Для уже зарегистрированного — редирект на главную с параметром «С возвращением»

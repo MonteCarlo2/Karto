@@ -6,6 +6,11 @@ import { addCredits, migrateLegacyCreativeToCredits } from "@/lib/credits";
 import { sendWelcomeEmail } from "@/lib/send-welcome-email";
 import { fetchAutoReplySubscriptionInfo } from "@/lib/auto-replies-subscription-info";
 import { grantDemoFlowOnWelcome, clearDemoFlowIfHasPaid } from "@/lib/demo-flow-server";
+import {
+  fetchWelcomePerksStatus,
+  isWelcomePerksEligible,
+  welcomePerksBlockedMessageRu,
+} from "@/lib/welcome-perks/registration-server";
 
 /**
  * GET: текущая подписка пользователя (по Authorization: Bearer <token>).
@@ -69,7 +74,8 @@ export async function GET(request: NextRequest) {
         .limit(1);
 
       const isNewAccount = !existingRows?.length;
-      if (isNewAccount) {
+      const welcomeEligible = await isWelcomePerksEligible(supabase as any, user.id);
+      if (isNewAccount && welcomeEligible) {
         const { ok: creditsOk, error: creditsErr } = await addCredits(
           supabase as any,
           user.id,
@@ -86,6 +92,10 @@ export async function GET(request: NextRequest) {
             name: (user.user_metadata?.name as string) || undefined,
           }).catch(() => {});
         }
+      } else if (isNewAccount && !welcomeEligible) {
+        console.info(
+          `[SUBSCRIPTION] Welcome credits skipped (not eligible), user=${user.id.slice(0, 8)}…`
+        );
       }
       row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? null;
     }
@@ -105,6 +115,7 @@ export async function GET(request: NextRequest) {
     row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? row;
 
     if (!row) {
+      const welcomePerks = await fetchWelcomePerksStatus(supabase as any, user.id);
       return NextResponse.json({
         success: true,
         subscription: null,
@@ -112,10 +123,18 @@ export async function GET(request: NextRequest) {
         videoTokenBalance: 0,
         videoTokensSpent: 0,
         videoTokensLifetimePurchased: 0,
+        welcomePerks: {
+          eligible: welcomePerks.eligible,
+          retryAfterDays: welcomePerks.retryAfterDays,
+          message: welcomePerks.eligible
+            ? null
+            : welcomePerksBlockedMessageRu(welcomePerks.retryAfterDays),
+        },
       });
     }
 
     const autoReply = await fetchAutoReplySubscriptionInfo(supabase as any, user.id);
+    const welcomePerks = await fetchWelcomePerksStatus(supabase as any, user.id);
     const creditBalance = row.videoTokenBalance;
     const subscription = {
       ...row,
@@ -144,6 +163,13 @@ export async function GET(request: NextRequest) {
         videoTokensSpent: row.videoTokensSpent,
         videoTokensLifetimePurchased: row.videoTokensLifetimePurchased,
         autoReply,
+        welcomePerks: {
+          eligible: welcomePerks.eligible,
+          retryAfterDays: welcomePerks.retryAfterDays,
+          message: welcomePerks.eligible
+            ? null
+            : welcomePerksBlockedMessageRu(welcomePerks.retryAfterDays),
+        },
       },
       { headers: { "Cache-Control": "no-store, max-age=0" } }
     );

@@ -7,6 +7,7 @@ import {
   MAX_SIGNUP_CODE_ATTEMPTS,
 } from "@/lib/auth/signup-verification";
 import { markDemoFlowEligibleOnRegistration } from "@/lib/demo-flow-server";
+import { recordWelcomePerkRegistration, welcomePerksBlockedMessageRu } from "@/lib/welcome-perks/registration-server";
 
 function isUnconfirmedLoginError(err: { message?: string } | null): boolean {
   const m = (err?.message || "").toLowerCase();
@@ -130,7 +131,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await markDemoFlowEligibleOnRegistration(supabase, user.id);
+    const welcomeResult = await recordWelcomePerkRegistration(
+      supabase,
+      user.id,
+      body.registrationDeviceId
+    );
+    if (welcomeResult.eligible) {
+      await markDemoFlowEligibleOnRegistration(supabase, user.id);
+    }
     await supabase.from("signup_email_verification").delete().eq("user_id", user.id);
 
     try {
@@ -154,7 +162,13 @@ export async function POST(request: NextRequest) {
       console.warn("[verify-signup-code] consent upsert:", e);
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      welcomePerksEligible: welcomeResult.eligible,
+      welcomePerksMessage: welcomeResult.eligible
+        ? undefined
+        : welcomePerksBlockedMessageRu(welcomeResult.retryAfterDays),
+    });
   } catch (e) {
     console.error("[verify-signup-code]", e);
     return NextResponse.json(

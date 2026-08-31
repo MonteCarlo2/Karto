@@ -195,22 +195,34 @@ function ProfileContent() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionState | null>(null);
+  const [welcomePerksNotice, setWelcomePerksNotice] = useState<string | null>(null);
   const [subscriptionReady, setSubscriptionReady] = useState(false);
   const [paymentSuccessPolling, setPaymentSuccessPolling] = useState(false);
   const [showDeleteAccountConfirm, setShowDeleteAccountConfirm] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
 
-  const fetchSubscription = async (): Promise<SubscriptionState | null> => {
+  const fetchSubscription = async (): Promise<{
+    subscription: SubscriptionState | null;
+    welcomePerksMessage: string | null;
+  }> => {
     const supabase = createBrowserClient();
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) return null;
+    if (!session?.access_token) return { subscription: null, welcomePerksMessage: null };
     const res = await fetch("/api/subscription", {
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { subscription: null, welcomePerksMessage: null };
     const data = await res.json();
-    return data.subscription || null;
+    const perks = data.welcomePerks as { message?: string | null; eligible?: boolean } | undefined;
+    const welcomePerksMessage =
+      perks && perks.eligible === false && typeof perks.message === "string"
+        ? perks.message
+        : null;
+    return {
+      subscription: data.subscription || null,
+      welcomePerksMessage,
+    };
   };
 
   useEffect(() => {
@@ -222,9 +234,17 @@ function ProfileContent() {
     let mounted = true;
     setSubscriptionReady(false);
     (async () => {
-      const sub = await fetchSubscription();
+      const storedNotice =
+        typeof sessionStorage !== "undefined"
+          ? sessionStorage.getItem("karto_welcome_perks_notice")
+          : null;
+      if (storedNotice) {
+        sessionStorage.removeItem("karto_welcome_perks_notice");
+      }
+      const { subscription: sub, welcomePerksMessage } = await fetchSubscription();
       if (!mounted) return;
       setSubscription(sub);
+      setWelcomePerksNotice(storedNotice ?? welcomePerksMessage);
       setSubscriptionReady(true);
     })();
     return () => {
@@ -255,7 +275,7 @@ function ProfileContent() {
         });
         const data = await res.json().catch(() => ({}));
         if (data?.success) {
-          const sub = await fetchSubscription();
+          const { subscription: sub } = await fetchSubscription();
           setSubscription(sub);
         }
       } catch {}
@@ -266,7 +286,7 @@ function ProfileContent() {
     let attempts = 0;
     const t = setInterval(async () => {
       attempts++;
-      const sub = await fetchSubscription();
+      const { subscription: sub } = await fetchSubscription();
       setSubscription(sub);
       if (attempts >= maxAttempts) {
         clearInterval(t);
@@ -1052,6 +1072,12 @@ function ProfileContent() {
                 </div>
               )}
 
+              {welcomePerksNotice ? (
+                <div className="mb-4 p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-sm leading-relaxed">
+                  {welcomePerksNotice}
+                </div>
+              ) : null}
+
               <YookassaTestModeStrip />
 
               {/* Ваши услуги: кредиты, поток, отзывы; демо — только пока доступен */}
@@ -1131,7 +1157,7 @@ function ProfileContent() {
                         <ProfileAutoReplyBillingPanel
                           subscription={subscription}
                           onUpdated={async () => {
-                            const sub = await fetchSubscription();
+                            const { subscription: sub } = await fetchSubscription();
                             setSubscription(sub);
                           }}
                         />

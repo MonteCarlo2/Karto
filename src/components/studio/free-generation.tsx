@@ -696,7 +696,7 @@ export default function FreeGeneration() {
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [slideAspectRatio, setSlideAspectRatio] = useState<"3:4" | "4:3" | "9:16" | "1:1">("3:4");
   const [isGeneratingSlide, setIsGeneratingSlide] = useState(false);
-  /** Метка времени непосредственно перед POST на /api/generate-free или generate-for-product (запрос к KIE) */
+  /** Метка времени непосредственно перед POST на /api/generate-free или generate-for-product */
   const [photoGenStartedAtMs, setPhotoGenStartedAtMs] = useState<number | null>(null);
   /** null — первые 4 с строка скрыта; затем 1, 2, 3… */
   const [photoGenTimerSeconds, setPhotoGenTimerSeconds] = useState<number | null>(null);
