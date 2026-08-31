@@ -12,8 +12,8 @@
     "validate:ozon-calc": "npm exec -- tsx scripts/validate-ozon-calc.mjs",
     "validate:wb-calc": "npm exec -- tsx scripts/validate-wb-calc.mjs",
     "build": "next build && node scripts/copy-standalone.js",
-    "start": "node .next/standalone/start.js",
-    "start:prod": "node .next/standalone/start.js",
+    "start": "node start.js",
+    "start:prod": "node start.js",
     "lint": "eslint"
   },
   "dependencies": {
