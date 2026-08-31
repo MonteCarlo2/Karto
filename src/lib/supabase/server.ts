@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
+import { resilientFetch } from "@/lib/supabase/resilient-fetch";
+
 /**
  * Создает серверный клиент Supabase с service_role ключом
  * ВАЖНО: Использовать только на сервере (API routes), никогда не отправлять клиенту
@@ -77,6 +79,9 @@ export function createServerClient() {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
+      },
+      global: {
+        fetch: resilientFetch,
       },
     });
     return client;

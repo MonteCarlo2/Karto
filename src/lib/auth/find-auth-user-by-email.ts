@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
+
 export type AuthUserLookup = {
   id: string;
   email?: string;
@@ -21,6 +23,9 @@ export async function findAuthUserByEmail(
 
   if (error) {
     console.error("[findAuthUserByEmail] rpc:", error.message);
+    if (isSupabaseNetworkError(error)) {
+      throw error;
+    }
     return null;
   }
 

@@ -39,6 +39,7 @@ export async function GET() {
     checkUrl("KIE AI", "https://api.kie.ai/api/v1/jobs/recordInfo?taskId=diagnostic"),
     checkUrl("KIE Upload", "https://kieai.redpandaai.co/"),
     checkUrl("OpenRouter API", "https://openrouter.ai/api/v1/models"),
+    checkUrl("Yandex OAuth", "https://oauth.yandex.ru/"),
   ];
 
   const results = await Promise.all(tasks);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { findAuthUserByEmail } from "@/lib/auth/find-auth-user-by-email";
 import { markDemoFlowEligibleOnRegistration } from "@/lib/demo-flow-server";
 import {
   parseRegistrationDeviceId,
@@ -7,9 +8,19 @@ import {
 } from "@/lib/welcome-perks/registration-server";
 import { WELCOME_REGISTRATION_DEVICE_COOKIE } from "@/lib/welcome-perks/constants";
 import { getYandexRedirectUri } from "@/lib/auth/yandex-redirect-uri";
+import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
+import { resilientFetch } from "@/lib/supabase/resilient-fetch";
+import {
+  supabaseAuthNetworkErrorMessage,
+  withSupabaseRetry,
+} from "@/lib/supabase/supabase-retry";
 
 const YANDEX_TOKEN_URL = "https://oauth.yandex.ru/token";
 const YANDEX_USER_INFO_URL = "https://login.yandex.ru/info?format=json";
+
+function loginRedirect(baseUrl: string, message: string): NextResponse {
+  return NextResponse.redirect(`${baseUrl}/login?error=${encodeURIComponent(message)}`);
+}
 
 /**
  * Callback после авторизации в Яндексе.
@@ -20,7 +31,6 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const error = searchParams.get("error");
 
-  // Базовый URL для редиректов: на сервере не должен быть localhost (иначе после входа уведёт на localhost)
   const baseUrl = (() => {
     const fromEnv = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
     const origin = request.nextUrl.origin;
@@ -29,11 +39,11 @@ export async function GET(request: NextRequest) {
     return origin;
   })();
 
-  // На проде редирект на localhost ломает вход — требуем явный URL
   if (process.env.NODE_ENV === "production" && baseUrl.includes("localhost")) {
     console.error("Yandex callback: baseUrl is localhost in production. Set NEXT_PUBLIC_APP_URL to https://karto.pro on the server.");
-    return NextResponse.redirect(
-      `${request.nextUrl.origin}/login?error=${encodeURIComponent("Ошибка настройки: на сервере задайте NEXT_PUBLIC_APP_URL=https://karto.pro")}`
+    return loginRedirect(
+      request.nextUrl.origin,
+      "Ошибка настройки: на сервере задайте NEXT_PUBLIC_APP_URL=https://karto.pro"
     );
   }
 
@@ -41,106 +51,130 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     const desc = searchParams.get("error_description") || error;
-    return NextResponse.redirect(
-      `${baseUrl}/login?error=${encodeURIComponent(desc)}`
-    );
+    return loginRedirect(baseUrl, desc);
   }
 
   if (!code) {
-    return NextResponse.redirect(
-      `${baseUrl}/login?error=${encodeURIComponent("Нет кода от Яндекса")}`
-    );
+    return loginRedirect(baseUrl, "Нет кода от Яндекса");
   }
 
   const clientId = process.env.YANDEX_CLIENT_ID;
   const clientSecret = process.env.YANDEX_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    return NextResponse.redirect(
-      `${baseUrl}/login?error=${encodeURIComponent("OAuth не настроен (YANDEX_CLIENT_ID/SECRET)")}`
-    );
+    return loginRedirect(baseUrl, "OAuth не настроен (YANDEX_CLIENT_ID/SECRET)");
   }
-
-  // 1) Обмен code на access_token
-  const tokenRes = await fetch(YANDEX_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: redirectUri,
-    }),
-  });
-
-  if (!tokenRes.ok) {
-    const errBody = await tokenRes.text();
-    console.error("Yandex token error:", tokenRes.status, errBody);
-    return NextResponse.redirect(
-      `${baseUrl}/login?error=${encodeURIComponent("Ошибка обмена кода на токен")}`
-    );
-  }
-
-  const tokenData = await tokenRes.json();
-  const accessToken = tokenData.access_token;
-  if (!accessToken) {
-    return NextResponse.redirect(
-      `${baseUrl}/login?error=${encodeURIComponent("Яндекс не вернул токен")}`
-    );
-  }
-
-  // 2) Данные пользователя
-  const userRes = await fetch(YANDEX_USER_INFO_URL, {
-    headers: { Authorization: `OAuth ${accessToken}` },
-  });
-
-  if (!userRes.ok) {
-    return NextResponse.redirect(
-      `${baseUrl}/login?error=${encodeURIComponent("Не удалось получить данные пользователя")}`
-    );
-  }
-
-  const yandexUser = await userRes.json();
-  const email = yandexUser.default_email || yandexUser.emails?.[0];
-  if (!email) {
-    return NextResponse.redirect(
-      `${baseUrl}/login?error=${encodeURIComponent("У аккаунта Яндекс нет email")}`
-    );
-  }
-
-  const fullName = [yandexUser.first_name, yandexUser.last_name]
-    .filter(Boolean)
-    .join(" ")
-    .trim() || yandexUser.display_name || yandexUser.login || "";
-
-  // 3) Supabase: создать пользователя (если нет), иначе просто войти — один аккаунт на один Яндекс
-  const supabase = createServerClient();
 
   try {
-    const { data: createdData, error: createError } = await supabase.auth.admin.createUser({
-      email,
-      email_confirm: true,
-      user_metadata: {
-        full_name: fullName || undefined,
-        avatar_url: yandexUser.default_avatar_id
-          ? `https://avatars.yandex.net/get-yapic/${yandexUser.default_avatar_id}/islands-200`
-          : undefined,
-        provider: "yandex",
-      },
+    const tokenRes = await resilientFetch(YANDEX_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+      }),
     });
 
-    const isExistingUser =
-      createError?.message && /already|already registered|already exists|duplicate/i.test(createError.message);
-
-    if (createError && !isExistingUser) {
-      console.error("Supabase createUser error:", createError);
-      return NextResponse.redirect(
-        `${baseUrl}/login?error=${encodeURIComponent(createError.message)}`
-      );
+    if (!tokenRes.ok) {
+      const errBody = await tokenRes.text();
+      console.error("Yandex token error:", tokenRes.status, errBody);
+      return loginRedirect(baseUrl, "Ошибка обмена кода на токен");
     }
 
-    if (!isExistingUser && createdData?.user?.id) {
+    const tokenData = (await tokenRes.json()) as { access_token?: string };
+    const accessToken = tokenData.access_token;
+    if (!accessToken) {
+      return loginRedirect(baseUrl, "Яндекс не вернул токен");
+    }
+
+    const userRes = await resilientFetch(YANDEX_USER_INFO_URL, {
+      headers: { Authorization: `OAuth ${accessToken}` },
+    });
+
+    if (!userRes.ok) {
+      return loginRedirect(baseUrl, "Не удалось получить данные пользователя");
+    }
+
+    const yandexUser = (await userRes.json()) as {
+      default_email?: string;
+      emails?: string[];
+      first_name?: string;
+      last_name?: string;
+      display_name?: string;
+      login?: string;
+      default_avatar_id?: string;
+    };
+
+    const emailRaw = yandexUser.default_email || yandexUser.emails?.[0];
+    if (!emailRaw) {
+      return loginRedirect(baseUrl, "У аккаунта Яндекс нет email");
+    }
+    const email = emailRaw.trim().toLowerCase();
+
+    const fullName = [yandexUser.first_name, yandexUser.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim() || yandexUser.display_name || yandexUser.login || "";
+
+    const supabase = createServerClient();
+
+    const existingUser = await withSupabaseRetry("findAuthUserByEmail", async () => {
+      const user = await findAuthUserByEmail(supabase, email);
+      return user;
+    });
+
+    let isExistingUser = Boolean(existingUser?.id);
+    let newUserId: string | null = existingUser?.id ?? null;
+
+    if (!existingUser) {
+      const { data: createdData, error: createError } = await withSupabaseRetry(
+        "createUser",
+        async () => {
+          const result = await supabase.auth.admin.createUser({
+            email,
+            email_confirm: true,
+            user_metadata: {
+              full_name: fullName || undefined,
+              avatar_url: yandexUser.default_avatar_id
+                ? `https://avatars.yandex.net/get-yapic/${yandexUser.default_avatar_id}/islands-200`
+                : undefined,
+              provider: "yandex",
+            },
+          });
+          if (result.error && isSupabaseNetworkError(result.error)) {
+            throw result.error;
+          }
+          return result;
+        }
+      );
+
+      const duplicate =
+        createError?.message &&
+        /already|already registered|already exists|duplicate/i.test(createError.message);
+
+      if (createError && !duplicate) {
+        console.error("Supabase createUser error:", createError);
+        if (isSupabaseNetworkError(createError)) {
+          return loginRedirect(baseUrl, supabaseAuthNetworkErrorMessage());
+        }
+        return loginRedirect(baseUrl, createError.message);
+      }
+
+      if (duplicate) {
+        isExistingUser = true;
+        const again = await withSupabaseRetry("findAuthUserByEmail-after-duplicate", () =>
+          findAuthUserByEmail(supabase, email)
+        );
+        newUserId = again?.id ?? null;
+      } else {
+        newUserId = createdData?.user?.id ?? null;
+      }
+    }
+
+    if (!isExistingUser && newUserId) {
       const cookieRaw = request.cookies.get(WELCOME_REGISTRATION_DEVICE_COOKIE)?.value;
       let deviceId: string | null = null;
       if (cookieRaw) {
@@ -150,38 +184,47 @@ export async function GET(request: NextRequest) {
           deviceId = parseRegistrationDeviceId(cookieRaw);
         }
       }
-      const welcomeResult = await recordWelcomePerkRegistration(
-        supabase,
-        createdData.user.id,
-        deviceId
+      const welcomeResult = await withSupabaseRetry("recordWelcomePerkRegistration", () =>
+        recordWelcomePerkRegistration(supabase, newUserId!, deviceId)
       );
       if (welcomeResult.eligible) {
-        await markDemoFlowEligibleOnRegistration(supabase, createdData.user.id);
+        await withSupabaseRetry("markDemoFlowEligibleOnRegistration", () =>
+          markDemoFlowEligibleOnRegistration(supabase, newUserId!)
+        );
       }
     }
 
-    // Для уже зарегистрированного — редирект на главную с параметром «С возвращением»
     const redirectTo = isExistingUser ? `${baseUrl}/?welcome_back=1` : `${baseUrl}/`;
 
-    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-      type: "magiclink",
-      email,
-      options: { redirectTo },
+    const { data: linkData, error: linkError } = await withSupabaseRetry("generateLink", async () => {
+      const result = await supabase.auth.admin.generateLink({
+        type: "magiclink",
+        email,
+        options: { redirectTo },
+      });
+      if (result.error && isSupabaseNetworkError(result.error)) {
+        throw result.error;
+      }
+      return result;
     });
 
-    const actionLink = (linkData as { properties?: { action_link?: string } } | null)?.properties?.action_link;
+    const actionLink = (linkData as { properties?: { action_link?: string } } | null)?.properties
+      ?.action_link;
+
     if (linkError || !actionLink) {
       console.error("generateLink error:", linkError);
-      return NextResponse.redirect(
-        `${baseUrl}/login?error=${encodeURIComponent("Не удалось создать сессию")}`
-      );
+      if (linkError && isSupabaseNetworkError(linkError)) {
+        return loginRedirect(baseUrl, supabaseAuthNetworkErrorMessage());
+      }
+      return loginRedirect(baseUrl, "Не удалось создать сессию");
     }
 
     return NextResponse.redirect(actionLink);
   } catch (e) {
     console.error("Yandex callback error:", e);
-    return NextResponse.redirect(
-      `${baseUrl}/login?error=${encodeURIComponent("Ошибка входа")}`
-    );
+    if (isSupabaseNetworkError(e)) {
+      return loginRedirect(baseUrl, supabaseAuthNetworkErrorMessage());
+    }
+    return loginRedirect(baseUrl, "Ошибка входа через Яндекс");
   }
 }
