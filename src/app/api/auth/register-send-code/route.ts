@@ -10,6 +10,7 @@ import {
   SIGNUP_CODE_TTL_MS,
 } from "@/lib/auth/signup-verification";
 import { sendSignupVerificationEmail } from "@/lib/send-signup-verification-email";
+import { rollbackPendingSignup } from "@/lib/auth/signup-rollback";
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
     const supabase = createServerClient();
 
     let userId: string;
+    let wasNewlyCreated = false;
 
     const { data: created, error: createErr } = await supabase.auth.admin.createUser({
       email,
@@ -113,6 +115,7 @@ export async function POST(request: NextRequest) {
       await supabase.from("signup_email_verification").delete().eq("user_id", userId);
     } else {
       userId = created.user.id;
+      wasNewlyCreated = true;
     }
 
     const plainCode = generateFourDigitCode();
@@ -121,6 +124,9 @@ export async function POST(request: NextRequest) {
       codeHash = hashSignupCode(email, plainCode);
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
+      if (wasNewlyCreated) {
+        await rollbackPendingSignup(supabase, userId, true);
+      }
       return NextResponse.json({ success: false, error: m }, { status: 500 });
     }
 
@@ -142,11 +148,19 @@ export async function POST(request: NextRequest) {
 
     if (insErr) {
       console.error("[register-send-code] insert verification:", insErr);
+      if (wasNewlyCreated) {
+        await rollbackPendingSignup(supabase, userId, true);
+      }
       return NextResponse.json({ success: false, error: "Ошибка сохранения кода" }, { status: 500 });
     }
 
     const sent = await sendSignupVerificationEmail({ to: email, code: plainCode, name });
     if (!sent.ok) {
+      if (wasNewlyCreated) {
+        await rollbackPendingSignup(supabase, userId, true);
+      } else {
+        await rollbackPendingSignup(supabase, userId, false);
+      }
       return NextResponse.json(
         {
           success: false,

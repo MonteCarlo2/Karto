@@ -65,41 +65,41 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let row = await getSubscriptionByUserId(supabase as any, user.id);
+    const welcomeEligible = await isWelcomePerksEligible(supabase as any, user.id);
 
-    if (!row) {
-      const { data: existingRows } = await supabase
-        .from("user_subscriptions")
-        .select("id")
-        .eq("user_id", user.id)
-        .limit(1);
+    const { data: subscriptionRows } = await supabase
+      .from("user_subscriptions")
+      .select("id, plan_type")
+      .eq("user_id", user.id);
 
-      const isNewAccount = !existingRows?.length;
-      const welcomeEligible = await isWelcomePerksEligible(supabase as any, user.id);
-      if (isNewAccount && welcomeEligible) {
-        const { ok: creditsOk, error: creditsErr } = await addCredits(
-          supabase as any,
-          user.id,
-          FREE_WELCOME_CREDITS
+    const hasCreditWallet = (subscriptionRows ?? []).some(
+      (r) => r.plan_type === "credits" || r.plan_type === "video_tokens"
+    );
+
+    if (!hasCreditWallet && welcomeEligible) {
+      const { ok: creditsOk, error: creditsErr } = await addCredits(
+        supabase as any,
+        user.id,
+        FREE_WELCOME_CREDITS
+      );
+      if (!creditsOk) {
+        console.error(
+          "❌ [SUBSCRIPTION] Не удалось начислить приветственные кредиты:",
+          creditsErr
         );
-        if (!creditsOk) {
-          console.error(
-            "❌ [SUBSCRIPTION] Не удалось начислить приветственные кредиты:",
-            creditsErr
-          );
-        } else {
-          sendWelcomeEmail({
-            to: user.email ?? "",
-            name: (user.user_metadata?.name as string) || undefined,
-          }).catch(() => {});
-        }
-      } else if (isNewAccount && !welcomeEligible) {
-        console.info(
-          `[SUBSCRIPTION] Welcome credits skipped (not eligible), user=${user.id.slice(0, 8)}…`
-        );
+      } else {
+        sendWelcomeEmail({
+          to: user.email ?? "",
+          name: (user.user_metadata?.name as string) || undefined,
+        }).catch(() => {});
       }
-      row = (await getSubscriptionByUserId(supabase as any, user.id)) ?? null;
+    } else if (!hasCreditWallet && !welcomeEligible) {
+      console.info(
+        `[SUBSCRIPTION] Welcome credits skipped (not eligible), user=${user.id.slice(0, 8)}…`
+      );
     }
+
+    let row = await getSubscriptionByUserId(supabase as any, user.id);
 
     // Демо получает только аккаунт с маркером новой регистрации и только один раз.
     await grantDemoFlowOnWelcome(supabase, user.id);

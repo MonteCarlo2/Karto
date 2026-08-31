@@ -117,7 +117,7 @@ function HomeContent() {
             showToast({
               type: "info",
               message: notice.trim(),
-              durationMs: 7000,
+              durationMs: 9000,
             });
             sessionStorage.setItem(WELCOME_PERKS_NOTICE_TOAST_SHOWN_KEY, "1");
           }

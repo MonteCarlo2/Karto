@@ -218,9 +218,11 @@ export function Navbar() {
               creativeUsed?: number;
               creditBalance?: number;
               videoTokenBalance?: number;
+              autoReplyBalance?: number;
             }
           | null
           | undefined;
+        const autoReplyFromPayload = data.autoReply as { balance?: number } | undefined;
         const labels: string[] = [];
         if (s && s.demoFlowsLimit && s.demoFlowsLimit > 0) {
           const left = Math.max(0, s.demoFlowsLimit - (s.demoFlowsUsed ?? 0));
@@ -241,6 +243,10 @@ export function Navbar() {
               ? `${(credits / 1000).toFixed(credits % 1000 === 0 ? 0 : 1)}k кр.`
               : `${credits} кр.`
           );
+        }
+        const autoReplies = Number(s?.autoReplyBalance ?? autoReplyFromPayload?.balance ?? 0);
+        if (autoReplies > 0) {
+          labels.push(`${autoReplies} отз.`);
         }
         setSubscriptionLabels(labels);
       } catch {
