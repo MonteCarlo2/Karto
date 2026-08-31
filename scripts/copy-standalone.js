@@ -9,7 +9,7 @@ const { getStandaloneAppDir } = require("./standalone-paths");
 const root = path.join(__dirname, "..");
 const info = getStandaloneAppDir(root);
 
-  if (!info) {
+if (!info) {
   console.error("copy-standalone: server.js не найден в .next/standalone — сборка standalone неполная.");
   process.exit(1);
 }
