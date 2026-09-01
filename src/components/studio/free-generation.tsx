@@ -2150,7 +2150,10 @@ export default function FreeGeneration() {
       suppressHydrationWarning
     >
       {/* Левая панель */}
-      <div className="fixed left-0 top-0 bottom-0 w-72 bg-[#f5f3ef] z-[100] flex flex-col border-r border-gray-200">
+      <div
+        data-tour="creative-sidebar"
+        className="fixed left-0 top-0 bottom-0 w-72 bg-[#f5f3ef] z-[100] flex flex-col border-r border-gray-200"
+      >
         {/* Логотип вверху */}
         <Link
           href="/"
@@ -2817,6 +2820,7 @@ export default function FreeGeneration() {
       <div className="fixed bottom-8 left-80 right-0 px-8 flex flex-col items-center justify-end gap-3 z-20">
 
         <motion.div
+          data-tour="creative-workspace"
           layout
           transition={{ type: "spring", stiffness: 260, damping: 26 }}
           className={`bg-white rounded-[24px] shadow-2xl border border-gray-200 flex items-center gap-4 relative w-full ${

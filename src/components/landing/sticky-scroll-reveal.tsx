@@ -249,7 +249,10 @@ export function StickyScrollReveal() {
           </div>
 
           {/* Правая колонка: РАМКА ПО РАЗМЕРУ КАРТИНКИ */}
-          <div className="rounded-xl border border-black/10 bg-white shadow-2xl overflow-hidden w-full h-auto">
+          <div
+            data-tour="flow-demo"
+            className="rounded-xl border border-black/10 bg-white shadow-2xl overflow-hidden w-full h-auto"
+          >
             
             {/* Шапка браузера */}
             <div className="h-8 bg-gray-50/80 backdrop-blur border-b border-black/5 flex items-center px-4 gap-2 shrink-0">

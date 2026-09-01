@@ -208,7 +208,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const redirectPath = isExistingUser ? "/?welcome_back=1" : "/";
+    const redirectPath = isExistingUser ? "/?welcome_back=1" : "/?tour=pending";
 
     const response = await redirectWithSupabaseSession(request, baseUrl, email, redirectPath);
     if (welcomePerksNotice) {

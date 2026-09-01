@@ -117,6 +117,11 @@ export function generateLandingDemoReply(reviewText: string, starRating: StarKey
 export function WorkspacePreview({ large = false }: { large?: boolean }) {
   const [index, setIndex] = useState(0);
   const [phase, setPhase] = useState<"review" | "typing" | "checking" | "reply">("review");
+  const [skipEnter] = useState(
+    () =>
+      typeof document !== "undefined" &&
+      document.documentElement.classList.contains("karto-tour-active")
+  );
 
   useEffect(() => {
     const t1 = setTimeout(() => setPhase("typing"), 1200);
@@ -146,10 +151,12 @@ export function WorkspacePreview({ large = false }: { large?: boolean }) {
       />
 
       <motion.div
-        initial={{ opacity: 0, y: 28 }}
-        whileInView={{ opacity: 1, y: 0 }}
+        data-tour="auto-replies-preview"
+        initial={skipEnter ? false : { opacity: 0, y: 28 }}
+        animate={skipEnter ? { opacity: 1, y: 0 } : undefined}
+        whileInView={skipEnter ? undefined : { opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.25 }}
-        transition={{ duration: 0.7, ease: "easeOut" }}
+        transition={{ duration: skipEnter ? 0 : 0.7, ease: "easeOut" }}
         className={`relative overflow-hidden ring-1 ring-[#1F4E3D]/12 ${
           large ? "rounded-[2rem] lg:rounded-[2.25rem]" : "rounded-[1.75rem]"
         }`}

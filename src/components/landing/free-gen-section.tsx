@@ -24,7 +24,10 @@ const GALLERY_ITEMS = [
 
 export function FreeGenSection() {
   return (
-    <section className="relative min-h-[900px] w-full bg-[#F5F5F0] overflow-hidden pt-10 pb-14 sm:pb-16">
+    <section
+      id="creative"
+      className="relative min-h-[900px] w-full bg-[#F5F5F0] overflow-hidden pt-10 pb-14 sm:pb-16"
+    >
       {/* Soft Green Glow - Magic MCP Style */}
       <div
         className="absolute inset-0 z-0"
@@ -37,7 +40,8 @@ export function FreeGenSection() {
         }}
       />
       
-      <ArcGalleryHero 
+      <div data-tour="creative-showcase" className="relative">
+      <ArcGalleryHero
         images={GALLERY_ITEMS}
         className="bg-transparent"
         radiusLg={650} 
@@ -120,6 +124,7 @@ export function FreeGenSection() {
           </div>
         </div>
       </ArcGalleryHero>
+      </div>
 
       {/* Сноска к * у «ВИДЕО» — левый нижний угол секции, вплотную к карусели маркетплейсов ниже */}
       <div className="pointer-events-none absolute bottom-2 left-4 z-30 max-w-[min(100vw-2rem,26rem)] sm:bottom-3 sm:left-6 lg:left-8">

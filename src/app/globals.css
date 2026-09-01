@@ -837,57 +837,643 @@ video {
   outline: none;
 }
 
-/* Product tour (driver.js) — бренд KARTO */
-.driver-active .driver-overlay {
-  backdrop-filter: blur(1px);
+/* ── Product tour (driver.js spotlight) — KARTO ── */
+html.karto-tour-locked {
+  overflow: hidden;
 }
 
-.karto-product-tour-popover.driver-popover {
-  background: #ffffff;
-  border: 1px solid rgba(46, 90, 67, 0.22);
-  border-radius: 16px;
-  box-shadow: 0 20px 48px -16px rgba(15, 23, 42, 0.28);
-  color: #0f172a;
-  max-width: min(calc(100vw - 2rem), 360px);
+html.karto-tour-creative [data-tour="creative-sidebar"] {
+  z-index: 1000000001 !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  pointer-events: auto !important;
+  opacity: 0;
+  transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.karto-product-tour-popover .driver-popover-title {
-  font-size: 1.05rem;
-  font-weight: 700;
+.driver-active [data-tour="creative-sidebar"],
+.driver-active [data-tour="creative-sidebar"] *,
+.driver-active [data-tour="studio-menu"],
+.driver-active [data-tour="studio-menu"] * {
+  pointer-events: auto !important;
+}
+
+html.karto-tour-active [data-tour="auto-replies-preview"],
+html.karto-tour-active [data-tour="flow-demo"] {
+  transform: none !important;
+}
+
+.karto-tour-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 1000000000;
+  background: #0b100e;
+  opacity: 0;
+  pointer-events: auto !important;
+  transition: opacity 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html.karto-tour-revealing .karto-tour-veil,
+html.karto-tour-holding .karto-tour-veil {
+  opacity: 0.7;
+}
+
+.karto-tour-spot {
+  z-index: 1000000001 !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  outline: none !important;
+  opacity: 0;
+  transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html.karto-tour-pending .driver-popover.karto-spotlight-tour,
+html.karto-tour-pending .karto-tour-spot,
+html.karto-tour-pending [data-tour="creative-sidebar"] {
+  opacity: 0 !important;
+}
+
+html.karto-tour-revealing .driver-popover.karto-spotlight-tour,
+html.karto-tour-revealing .karto-tour-spot,
+html.karto-tour-revealing [data-tour="creative-sidebar"] {
+  opacity: 1 !important;
+}
+
+.driver-active .karto-tour-veil,
+.driver-active .karto-tour-skip-btn,
+.driver-active .karto-tour-spot,
+.driver-active .karto-tour-spot *,
+.driver-active .driver-popover,
+.driver-active .driver-popover * {
+  pointer-events: auto !important;
+}
+
+.karto-tour-lift {
+  pointer-events: none !important;
+}
+
+.driver-active .karto-tour-lift .karto-tour-spot,
+.driver-active .karto-tour-lift .karto-tour-spot * {
+  pointer-events: auto !important;
+}
+
+svg.driver-overlay {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.driver-active-element {
+  outline: none !important;
+}
+
+.karto-tour-skip-btn {
+  position: fixed;
+  top: max(1.1rem, env(safe-area-inset-top, 0px));
+  right: max(1.1rem, env(safe-area-inset-right, 0px));
+  z-index: 10000000010;
+  pointer-events: auto !important;
+  border: 1px solid rgba(31, 78, 61, 0.14);
+  border-radius: 14px;
+  background: #f7f6f1;
+  color: #1f4e3d;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  padding: 0.7rem 1.25rem;
+  cursor: pointer;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 16px 40px -22px rgba(15, 23, 18, 0.45);
+  transition: background 0.2s ease, transform 0.15s ease, color 0.2s ease;
+}
+
+.karto-tour-skip-btn:hover {
+  background: #eceae3;
+  color: #16382c;
+}
+
+.karto-tour-skip-btn:active {
+  transform: scale(0.98);
+}
+
+.karto-tour-skip-btn:focus,
+.karto-tour-skip-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 16px 40px -22px rgba(15, 23, 18, 0.45),
+    0 0 0 3px rgba(132, 204, 22, 0.28);
+}
+
+.driver-popover.karto-spotlight-tour {
+  all: unset;
+  box-sizing: border-box;
+  position: fixed;
+  z-index: 1000000002;
+  display: block;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  background: #f7f6f1;
+  border: 1px solid rgba(31, 78, 61, 0.12);
+  border-radius: 20px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 22px 56px -24px rgba(15, 23, 18, 0.45);
+  color: #1a1a1a;
+  max-width: min(calc(100vw - 1.25rem), 400px);
+  min-width: min(calc(100vw - 1.25rem), 260px);
+  padding: 0;
+  overflow: visible;
+  opacity: 0;
+  animation: none;
+  transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.karto-spotlight-tour .driver-popover-arrow {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 11px;
+  filter: drop-shadow(0 1px 1px rgba(15, 23, 18, 0.08));
+}
+
+.karto-spotlight-tour .driver-popover-arrow-side-left {
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  border-right-color: transparent;
+  border-left-color: #f7f6f1;
+}
+
+.karto-spotlight-tour .driver-popover-arrow-side-right {
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+  border-right-color: #f7f6f1;
+}
+
+.karto-spotlight-tour .driver-popover-arrow-side-top {
+  border-left-color: transparent;
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  border-top-color: #f7f6f1;
+}
+
+.karto-spotlight-tour .driver-popover-arrow-side-bottom {
+  border-left-color: transparent;
+  border-right-color: transparent;
+  border-top-color: transparent;
+  border-bottom-color: #f7f6f1;
+}
+
+.karto-spotlight-tour .driver-popover-title {
+  display: block;
+  font-family: var(--font-playfair), var(--font-serif), Georgia, serif;
+  font-size: 1.55rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.18;
+  text-wrap: balance;
+  color: #1f4e3d;
+  padding: 1.35rem 1.5rem 0.1rem;
+}
+
+.karto-spotlight-tour .driver-popover-description {
+  display: block;
+  font-size: 0.975rem;
+  font-weight: 400;
+  line-height: 1.55;
+  text-wrap: pretty;
+  color: #4f4d48;
+  padding: 0.5rem 1.5rem 0;
+}
+
+.karto-spotlight-tour .driver-popover-description p {
+  margin: 0;
+}
+
+.karto-spotlight-tour .driver-popover-description p + p {
+  margin-top: 0.7em;
+}
+
+.karto-spotlight-tour .driver-popover-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.3rem 1.15rem;
+  margin-top: 0.4rem;
+}
+
+.karto-spotlight-tour .karto-tour-index {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #84cc16;
+  font-variant-numeric: tabular-nums;
+}
+
+.karto-spotlight-tour .driver-popover-close-btn {
+  display: none !important;
+}
+
+.karto-spotlight-tour .driver-popover-navigation-btns {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  flex-shrink: 0;
+}
+
+.karto-spotlight-tour .driver-popover-navigation-btns button + button {
+  margin-left: 0;
+}
+
+.karto-spotlight-tour .driver-popover-footer-btn,
+.karto-spotlight-tour .karto-tour-arrow-btn {
+  all: unset;
+  box-sizing: border-box;
+  width: 3.5rem;
+  height: 3.5rem;
+  padding: 0;
+  margin: 0;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  color: #1f4e3d;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+
+.karto-spotlight-tour .karto-tour-arrow-btn svg {
+  display: block;
+  width: 56px;
+  height: 56px;
+}
+
+.karto-spotlight-tour .driver-popover-footer-btn:hover,
+.karto-spotlight-tour .driver-popover-footer-btn:focus,
+.karto-spotlight-tour .driver-popover-footer-btn:focus-visible,
+.karto-spotlight-tour .karto-tour-arrow-btn:hover,
+.karto-spotlight-tour .karto-tour-arrow-btn:focus,
+.karto-spotlight-tour .karto-tour-arrow-btn:focus-visible {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.karto-spotlight-tour .karto-tour-arrow-btn::-moz-focus-inner {
+  border: 0;
+}
+
+.karto-spotlight-tour .karto-tour-arrow-btn--prev {
+  color: rgba(31, 78, 61, 0.38);
+}
+
+.karto-spotlight-tour .karto-tour-arrow-btn--prev:hover {
   color: #1f4e3d;
 }
 
-.karto-product-tour-popover .driver-popover-description {
-  font-size: 0.875rem;
-  line-height: 1.55;
-  color: #475569;
+.karto-spotlight-tour .karto-tour-arrow-btn--next:hover {
+  color: #16382c;
 }
 
-.karto-product-tour-popover .driver-popover-progress-text {
-  font-size: 0.75rem;
-  color: #64748b;
+.karto-spotlight-tour .karto-tour-arrow-btn:active {
+  transform: translateX(2px);
 }
 
-.karto-product-tour-popover button {
-  border-radius: 10px;
-  font-size: 0.8125rem;
+.karto-spotlight-tour .karto-tour-arrow-btn--prev:active {
+  transform: translateX(-2px);
+}
+
+.karto-spotlight-tour .driver-popover-btn-disabled {
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.karto-spotlight-tour.karto-spotlight-tour--final {
+  width: min(calc(100vw - 1.25rem), 540px);
+  max-width: min(calc(100vw - 1.25rem), 540px);
+  min-width: min(calc(100vw - 1.25rem), 280px);
+  max-height: min(calc(100dvh - 4.75rem), 44rem);
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: #f7f6f1;
+  border: 1px solid rgba(31, 78, 61, 0.12);
+  border-radius: 24px;
+  box-shadow:
+    0 1px 1px rgba(31, 78, 61, 0.08),
+    0 2px 2px rgba(31, 78, 61, 0.08),
+    0 8px 8px rgba(31, 78, 61, 0.06),
+    0 24px 48px -20px rgba(15, 23, 18, 0.5),
+    0 0 0 1px rgba(132, 204, 22, 0.28);
+}
+
+.karto-spotlight-tour.karto-spotlight-tour--final::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 8px;
+  background: #84cc16;
+  pointer-events: none;
+}
+
+.karto-spotlight-tour.karto-spotlight-tour--final::after {
+  display: none;
+}
+
+.karto-spotlight-tour.karto-spotlight-tour--final .driver-popover-title {
+  font-size: 2.35rem;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  padding: 2.1rem 2rem 0.35rem;
+  color: #16382c;
+}
+
+.karto-spotlight-tour.karto-spotlight-tour--final .driver-popover-description {
+  font-size: 1.0625rem;
+  line-height: 1.58;
+  color: #3f3d38;
+  padding: 0.55rem 2rem 0;
+}
+
+.karto-spotlight-tour.karto-spotlight-tour--final .karto-tour-final-perks {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0.9rem 1rem;
+  background: #ecf7db;
+  border: 1px solid rgba(31, 78, 61, 0.1);
+  border-radius: 14px;
+}
+
+.karto-spotlight-tour.karto-spotlight-tour--final .karto-tour-final-perks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin: 0;
+  font-size: 1.02rem;
   font-weight: 600;
-  text-shadow: none;
+  line-height: 1.4;
+  color: #1f4e3d;
 }
 
-.karto-product-tour-popover .driver-popover-next-btn,
-.karto-product-tour-popover .driver-popover-done-btn {
-  background: #1f4e3d;
-  color: #fff;
-  border: none;
+.karto-spotlight-tour.karto-spotlight-tour--final .karto-tour-final-perks li + li {
+  margin-top: 0.55rem;
 }
 
-.karto-product-tour-popover .driver-popover-prev-btn {
-  background: #f8fafc;
-  color: #334155;
-  border: 1px solid #e2e8f0;
+.karto-spotlight-tour.karto-spotlight-tour--final .karto-tour-final-arrow {
+  flex-shrink: 0;
+  width: 1.15em;
+  color: #1f4e3d;
+  font-weight: 700;
 }
 
-.karto-product-tour-popover .driver-popover-close-btn {
-  color: #64748b;
+.karto-spotlight-tour.karto-spotlight-tour--final .karto-tour-final-punch {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 1.1rem;
+  padding: 0.28em 0.5em;
+  font-size: 1.28rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.35;
+  color: #16382c;
+  background: #b9ff4b;
+  border-radius: 8px;
 }
+
+.karto-spotlight-tour.karto-spotlight-tour--final .driver-popover-footer {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 1.45rem 1.5rem 1.55rem;
+  margin-top: 0.55rem;
+}
+
+.karto-spotlight-tour.karto-spotlight-tour--final .karto-tour-index {
+  display: none;
+}
+
+.karto-spotlight-tour.karto-spotlight-tour--final .driver-popover-navigation-btns {
+  width: 100%;
+}
+
+.karto-spotlight-tour .karto-tour-cta-btn {
+  width: 100%;
+  min-height: 3.85rem;
+  padding: 1.05rem 1.5rem;
+  border-radius: 14px;
+  border: none !important;
+  outline: none !important;
+  background: #1f4e3d !important;
+  color: #fff !important;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 14px 32px -16px rgba(31, 78, 61, 0.85) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.karto-spotlight-tour.karto-spotlight-tour--final .karto-tour-cta-btn {
+  --speed: 2s;
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+  min-height: 3.65rem;
+  padding: 1rem 1.25rem;
+  border-radius: 14px;
+  border: 1.3px solid transparent !important;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #fff !important;
+  background:
+    linear-gradient(#121213, #121213) padding-box,
+    linear-gradient(#121213 50%, rgba(18, 18, 19, 0.6) 80%, transparent) border-box,
+    linear-gradient(
+      90deg,
+      hsl(var(--color-1)),
+      hsl(var(--color-5)),
+      hsl(var(--color-3)),
+      hsl(var(--color-4)),
+      hsl(var(--color-2))
+    ) border-box !important;
+  background-origin: border-box;
+  background-clip: padding-box, border-box, border-box;
+  background-size: 200% 100%;
+  box-shadow: none !important;
+  animation: rainbow var(--speed, 2s) linear infinite;
+}
+
+.karto-spotlight-tour.karto-spotlight-tour--final .karto-tour-cta-btn::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  bottom: -22%;
+  width: 64%;
+  height: 28%;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--color-1)),
+    hsl(var(--color-5)),
+    hsl(var(--color-3)),
+    hsl(var(--color-4)),
+    hsl(var(--color-2)),
+    hsl(var(--color-1))
+  );
+  background-size: 200% 100%;
+  filter: blur(0.85rem);
+  animation: rainbow var(--speed, 2s) linear infinite;
+  pointer-events: none;
+}
+
+.karto-spotlight-tour .karto-tour-cta-btn:hover {
+  background: #16382c;
+}
+
+.karto-spotlight-tour.karto-spotlight-tour--final .karto-tour-cta-btn:hover {
+  filter: brightness(1.07);
+  background:
+    linear-gradient(#1a1b1c, #1a1b1c) padding-box,
+    linear-gradient(#1a1b1c 50%, rgba(18, 18, 19, 0.6) 80%, transparent) border-box,
+    linear-gradient(
+      90deg,
+      hsl(var(--color-1)),
+      hsl(var(--color-5)),
+      hsl(var(--color-3)),
+      hsl(var(--color-4)),
+      hsl(var(--color-2))
+    ) border-box !important;
+}
+
+.karto-spotlight-tour .karto-tour-cta-btn:active {
+  transform: scale(0.98);
+}
+
+@media (max-width: 1099px) {
+  .driver-popover.karto-spotlight-tour {
+    max-width: calc(100vw - 1.25rem);
+    min-width: min(16.25rem, calc(100vw - 1.25rem));
+  }
+
+  .karto-spotlight-tour.karto-spotlight-tour--final {
+    width: min(calc(100vw - 1.25rem), 540px);
+    max-width: min(calc(100vw - 1.25rem), 540px);
+    min-width: 0;
+  }
+}
+
+@media (max-width: 767px), (max-height: 700px) {
+  .karto-tour-skip-btn {
+    top: max(0.5rem, env(safe-area-inset-top, 0px));
+    right: max(0.5rem, env(safe-area-inset-right, 0px));
+    padding: 0.48rem 0.85rem;
+    font-size: 0.8125rem;
+    border-radius: 12px;
+  }
+
+  .karto-spotlight-tour .driver-popover-title {
+    font-size: 1.28rem;
+    padding: 1.05rem 1.1rem 0.05rem;
+  }
+
+  .karto-spotlight-tour .driver-popover-description {
+    font-size: 0.9rem;
+    padding: 0.4rem 1.1rem 0;
+  }
+
+  .karto-spotlight-tour .driver-popover-footer {
+    padding: 0.75rem 1rem 0.95rem;
+  }
+
+  .karto-spotlight-tour.karto-spotlight-tour--final {
+    max-height: calc(100dvh - 4.25rem);
+    border-radius: 18px;
+  }
+
+  .karto-spotlight-tour.karto-spotlight-tour--final .driver-popover-title {
+    font-size: 1.7rem;
+    padding: 1.45rem 1.2rem 0.2rem;
+  }
+
+  .karto-spotlight-tour.karto-spotlight-tour--final .driver-popover-description {
+    font-size: 0.95rem;
+    padding: 0.4rem 1.2rem 0;
+  }
+
+  .karto-spotlight-tour.karto-spotlight-tour--final .karto-tour-final-perks {
+    padding: 0.7rem 0.75rem;
+  }
+
+  .karto-spotlight-tour.karto-spotlight-tour--final .karto-tour-final-perks li {
+    font-size: 0.92rem;
+  }
+
+  .karto-spotlight-tour.karto-spotlight-tour--final .karto-tour-final-punch {
+    font-size: 1.08rem;
+    margin-top: 0.85rem;
+  }
+
+  .karto-spotlight-tour.karto-spotlight-tour--final .driver-popover-footer {
+    padding: 1rem 1.05rem 1.15rem;
+  }
+
+  .karto-spotlight-tour.karto-spotlight-tour--final .karto-tour-cta-btn {
+    min-height: 3.25rem;
+  }
+}
+
+@media (max-width: 479px) {
+  .karto-spotlight-tour.karto-spotlight-tour--final .driver-popover-title {
+    font-size: 1.45rem;
+    padding-top: 1.25rem;
+  }
+
+  .karto-spotlight-tour.karto-spotlight-tour--final::before {
+    height: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .driver-active .driver-overlay,
+  .driver-popover.karto-spotlight-tour,
+  .karto-tour-veil,
+  .karto-tour-spot,
+  .karto-spotlight-tour .karto-tour-arrow-btn,
+  .karto-spotlight-tour .karto-tour-cta-btn,
+  .karto-tour-skip-btn,
+  html.karto-tour-revealing .driver-popover.karto-spotlight-tour,
+  html.karto-tour-revealing .karto-tour-spot,
+  html.karto-tour-revealing [data-tour="creative-sidebar"] {
+    animation: none;
+    transition: none;
+  }
+
+  html.karto-tour-pending .driver-popover.karto-spotlight-tour,
+  html.karto-tour-pending .karto-tour-spot,
+  html.karto-tour-pending [data-tour="creative-sidebar"] {
+    opacity: 1 !important;
+  }
+}
+

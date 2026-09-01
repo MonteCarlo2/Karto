@@ -14,7 +14,7 @@ import {
   setRegistrationDeviceCookie,
 } from "@/lib/welcome-perks/client-fingerprint";
 import { WELCOME_PERKS_NOTICE_STORAGE_KEY } from "@/lib/welcome-perks/constants";
-import { PRODUCT_TOUR_PENDING_STORAGE_KEY } from "@/lib/onboarding/product-tour-constants";
+import { armProductTourPending } from "@/lib/onboarding/product-tour-storage";
 
 const AUTH_API_TIMEOUT_MS = 90_000;
 
@@ -428,9 +428,13 @@ function LoginContent() {
       ) {
         sessionStorage.setItem(WELCOME_PERKS_NOTICE_STORAGE_KEY, data.welcomePerksMessage.trim());
       }
-      sessionStorage.setItem(PRODUCT_TOUR_PENDING_STORAGE_KEY, "1");
+      armProductTourPending();
       showNotification("Добро пожаловать в KARTO!", "success");
-      router.push(redirectAfterAuth);
+      const tourRedirect =
+        redirectAfterAuth === "/"
+          ? "/?tour=pending"
+          : `${redirectAfterAuth}${redirectAfterAuth.includes("?") ? "&" : "?"}tour=pending`;
+      router.push(tourRedirect);
     } catch (err: unknown) {
       const isAbort =
         (err instanceof DOMException && err.name === "AbortError") ||

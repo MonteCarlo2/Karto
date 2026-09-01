@@ -6,12 +6,29 @@ import { motion, useReducedMotion } from "framer-motion";
 import { ArrowDown, ArrowUpRight, Gift } from "lucide-react";
 import { VideoBackground } from "@/components/ui/video-background";
 import { welcomePerksHeroNoteRu } from "@/lib/welcome-perks";
+import { isProductTourLikelyToRun } from "@/lib/onboarding/product-tour-storage";
 import { cn } from "@/lib/utils";
 
 const fontManrope = "var(--font-manrope), var(--font-sans), system-ui, sans-serif";
 
 /** Ветер в видео — примерно со 2-й секунды */
 const WIND_REVEAL_AT = 2;
+
+/** Совпадает с текущей загрузкой документа; после refresh — новый origin. */
+const HERO_INTRO_DOC_KEY = "karto_hero_intro_doc";
+
+function thisDocumentOrigin(): string {
+  return String(performance.timeOrigin);
+}
+
+function heroIntroAlreadyPlayed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return sessionStorage.getItem(HERO_INTRO_DOC_KEY) === thisDocumentOrigin();
+  } catch {
+    return false;
+  }
+}
 
 const windEase = [0.16, 1, 0.3, 1] as [number, number, number, number];
 
@@ -39,14 +56,52 @@ const windStagger = {
 
 export function HeroSection() {
   const reduceMotion = useReducedMotion();
+  const skipIntro = React.useRef(
+    heroIntroAlreadyPlayed() || reduceMotion === true || isProductTourLikelyToRun()
+  );
   const videoRef = React.useRef<HTMLVideoElement>(null);
-  const revealedRef = React.useRef(false);
-  const [revealed, setRevealed] = React.useState(false);
+  const revealedRef = React.useRef(skipIntro.current);
+  const [revealed, setRevealed] = React.useState(revealedRef.current);
+
+  const freezeHeroIntro = React.useCallback(() => {
+    revealedRef.current = true;
+    setRevealed(true);
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.duration && !Number.isNaN(video.duration)) {
+      video.currentTime = video.duration;
+    }
+    video.pause();
+  }, []);
 
   React.useEffect(() => {
-    if (reduceMotion) {
-      revealedRef.current = true;
-      setRevealed(true);
+    const started = Date.now();
+    if (skipIntro.current) {
+      try {
+        sessionStorage.setItem(HERO_INTRO_DOC_KEY, thisDocumentOrigin());
+      } catch {
+        /* private mode */
+      }
+    }
+    return () => {
+      if (Date.now() - started < 400) return;
+      try {
+        sessionStorage.setItem(HERO_INTRO_DOC_KEY, thisDocumentOrigin());
+      } catch {
+        /* private mode */
+      }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (skipIntro.current || reduceMotion) {
+      freezeHeroIntro();
+      return;
+    }
+
+    const html = document.documentElement;
+    if (html.classList.contains("karto-tour-active")) {
+      freezeHeroIntro();
       return;
     }
 
@@ -70,6 +125,14 @@ export function HeroSection() {
       raf = requestAnimationFrame(checkReveal);
     };
 
+    const onTourClass = () => {
+      if (!html.classList.contains("karto-tour-active")) return;
+      cancelAnimationFrame(raf);
+      freezeHeroIntro();
+    };
+
+    const obs = new MutationObserver(onTourClass);
+
     if (video.currentTime >= WIND_REVEAL_AT) {
       revealedRef.current = true;
       setRevealed(true);
@@ -79,12 +142,15 @@ export function HeroSection() {
       if (!video.paused) onPlaying();
     }
 
+    obs.observe(html, { attributes: true, attributeFilter: ["class"] });
+
     return () => {
       cancelAnimationFrame(raf);
+      obs.disconnect();
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("seeked", onPlaying);
     };
-  }, [reduceMotion]);
+  }, [freezeHeroIntro, reduceMotion]);
 
   const animateState = revealed ? "visible" : "hidden";
 
@@ -108,6 +174,7 @@ export function HeroSection() {
           src="/hero-video.mp4"
           poster="/hero-video-poster.webp"
           className="absolute inset-0 h-full w-full"
+          startAtEnd={skipIntro.current}
         />
       </div>
 
@@ -115,7 +182,7 @@ export function HeroSection() {
         <div className="w-full px-8 lg:px-14 xl:px-20 md:-translate-y-6 lg:-translate-y-8">
           <motion.div
             className="max-w-3xl text-left"
-            initial="hidden"
+            initial={skipIntro.current || reduceMotion ? false : "hidden"}
             animate={animateState}
             variants={windStagger}
           >

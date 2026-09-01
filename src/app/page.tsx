@@ -135,7 +135,7 @@ function HomeContent() {
   // Обновление URL при прокрутке по секциям (как это работает, цена, вопросы), чтобы при повторном клике «Цена» происходил переход
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const sectionIds = ["hero", "how-it-works", "auto-replies", "pricing", "faq"];
+    const sectionIds = ["hero", "how-it-works", "creative", "auto-replies", "pricing", "faq"];
     let ticking = false;
     const updateHash = () => {
       if (urlHasPendingSupabaseAuth()) return;
@@ -153,7 +153,9 @@ function HomeContent() {
       }
       const want = current ? `#${current}` : "";
       if (window.location.hash !== want) {
-        window.history.replaceState({}, "", window.location.pathname + want);
+        const u = new URL(window.location.href);
+        u.hash = want;
+        window.history.replaceState({}, "", u.pathname + u.search + u.hash);
       }
       ticking = false;
     };
