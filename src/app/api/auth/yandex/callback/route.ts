@@ -12,6 +12,10 @@ import {
   WELCOME_PERKS_NOTICE_COOKIE,
   WELCOME_PERKS_NOTICE_COOKIE_MAX_AGE_SEC,
 } from "@/lib/welcome-perks/constants";
+import {
+  PRODUCT_TOUR_PENDING_COOKIE,
+  PRODUCT_TOUR_PENDING_COOKIE_MAX_AGE_SEC,
+} from "@/lib/onboarding/product-tour-constants";
 import { getYandexRedirectUri } from "@/lib/auth/yandex-redirect-uri";
 import { isSupabaseNetworkError } from "@/lib/supabase/network-error";
 import { resilientFetch } from "@/lib/supabase/resilient-fetch";
@@ -211,6 +215,14 @@ export async function GET(request: NextRequest) {
       response.cookies.set(WELCOME_PERKS_NOTICE_COOKIE, encodeURIComponent(welcomePerksNotice), {
         path: "/",
         maxAge: WELCOME_PERKS_NOTICE_COOKIE_MAX_AGE_SEC,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
+    }
+    if (!isExistingUser) {
+      response.cookies.set(PRODUCT_TOUR_PENDING_COOKIE, "1", {
+        path: "/",
+        maxAge: PRODUCT_TOUR_PENDING_COOKIE_MAX_AGE_SEC,
         sameSite: "lax",
         secure: process.env.NODE_ENV === "production",
       });

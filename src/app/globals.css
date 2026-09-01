@@ -836,3 +836,58 @@ video {
 .seo-desc-editor:focus {
   outline: none;
 }
+
+/* Product tour (driver.js) — бренд KARTO */
+.driver-active .driver-overlay {
+  backdrop-filter: blur(1px);
+}
+
+.karto-product-tour-popover.driver-popover {
+  background: #ffffff;
+  border: 1px solid rgba(46, 90, 67, 0.22);
+  border-radius: 16px;
+  box-shadow: 0 20px 48px -16px rgba(15, 23, 42, 0.28);
+  color: #0f172a;
+  max-width: min(calc(100vw - 2rem), 360px);
+}
+
+.karto-product-tour-popover .driver-popover-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1f4e3d;
+}
+
+.karto-product-tour-popover .driver-popover-description {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: #475569;
+}
+
+.karto-product-tour-popover .driver-popover-progress-text {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.karto-product-tour-popover button {
+  border-radius: 10px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-shadow: none;
+}
+
+.karto-product-tour-popover .driver-popover-next-btn,
+.karto-product-tour-popover .driver-popover-done-btn {
+  background: #1f4e3d;
+  color: #fff;
+  border: none;
+}
+
+.karto-product-tour-popover .driver-popover-prev-btn {
+  background: #f8fafc;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+}
+
+.karto-product-tour-popover .driver-popover-close-btn {
+  color: #64748b;
+}

@@ -3,6 +3,7 @@ import { Dancing_Script, Geist, Geist_Mono, Great_Vibes, Manrope, Playfair_Displ
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { ToastProvider } from "@/components/ui/toast";
+import { ProductTourRunner } from "@/components/onboarding/product-tour-runner";
 import { AbortErrorSuppressor } from "@/components/ui/abort-error-suppressor";
 import { PreconnectLinks } from "@/components/ui/preconnect-links";
 import { YandexMetrika } from "@/components/analytics/yandex-metrika";
@@ -140,6 +141,9 @@ export default function RootLayout({
         <CookieConsentBanner />
         <ToastProvider>
           <AbortErrorSuppressor />
+          <Suspense fallback={null}>
+            <ProductTourRunner />
+          </Suspense>
           <Navbar />
           <main
             className="flex min-h-0 flex-grow flex-col w-full overflow-x-hidden"

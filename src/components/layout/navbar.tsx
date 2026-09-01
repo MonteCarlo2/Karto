@@ -29,6 +29,10 @@ import {
 import { motion, AnimatePresence } from "framer-motion"
 import { createBrowserClient } from "@/lib/supabase/client"
 import { KARTO_SUBSCRIPTION_REFRESH_EVENT } from "@/lib/subscription-refresh"
+import {
+  KARTO_TOUR_CLOSE_STUDIO_EVENT,
+  KARTO_TOUR_OPEN_STUDIO_EVENT,
+} from "@/lib/onboarding/product-tour-constants"
 import { useProfileUpdateBadge } from "@/hooks/use-profile-update-badge"
 import { cn } from "@/lib/utils"
 import {
@@ -36,7 +40,13 @@ import {
   ProfileMenuUpdateCue,
 } from "@/components/layout/profile-update-cue"
 
-function StudioMenuGrid({ onNavigate }: { onNavigate?: () => void }) {
+function StudioMenuGrid({
+  onNavigate,
+  tourInstance,
+}: {
+  onNavigate?: () => void;
+  tourInstance: "desktop" | "mobile";
+}) {
   const handleClick = () => {
     onNavigate?.()
   }
@@ -44,7 +54,13 @@ function StudioMenuGrid({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex gap-1.5">
       <div className={NAV_STUDIO_MENU_COLUMN}>
-        <Link href="/studio?intro=true" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
+        <Link
+          href="/studio?intro=true"
+          className={NAV_MENU_ROW_STUDIO}
+          onClick={handleClick}
+          data-tour="nav-flow"
+          data-tour-instance={tourInstance}
+        >
           <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
             <svg className="h-[22px] w-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -55,7 +71,13 @@ function StudioMenuGrid({ onNavigate }: { onNavigate?: () => void }) {
             <div className={NAV_MENU_SUBTITLE}>{KARTO_FLOW_MODE.tagline}</div>
           </div>
         </Link>
-        <Link href="/studio/free" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
+        <Link
+          href="/studio/free"
+          className={NAV_MENU_ROW_STUDIO}
+          onClick={handleClick}
+          data-tour="nav-creative"
+          data-tour-instance={tourInstance}
+        >
           <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
             <svg className="h-[22px] w-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -66,7 +88,13 @@ function StudioMenuGrid({ onNavigate }: { onNavigate?: () => void }) {
             <div className={NAV_MENU_SUBTITLE}>{KARTO_CREATIVE_MODE.tagline}</div>
           </div>
         </Link>
-        <Link href="/studio/auto-replies" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
+        <Link
+          href="/studio/auto-replies"
+          className={NAV_MENU_ROW_STUDIO}
+          onClick={handleClick}
+          data-tour="nav-auto-replies"
+          data-tour-instance={tourInstance}
+        >
           <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
             <svg className="h-[22px] w-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -83,7 +111,11 @@ function StudioMenuGrid({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         </Link>
       </div>
-      <div className={NAV_STUDIO_MENU_COLUMN}>
+      <div
+        className={NAV_STUDIO_MENU_COLUMN}
+        data-tour="nav-free-tools"
+        data-tour-instance={tourInstance}
+      >
         <Link href="/studio/unit-economics" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
           <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
             <svg className="h-[22px] w-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -283,6 +315,27 @@ export function Navbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showProfileMenu, showStudioMenu]);
 
+  React.useEffect(() => {
+    const onOpenStudio = () => {
+      const isDesktop = window.matchMedia("(min-width: 768px)").matches;
+      if (isDesktop) {
+        setShowStudioMenu(true);
+      } else {
+        setIsOpen(true);
+        setShowStudioMenu(true);
+      }
+    };
+    const onCloseStudio = () => {
+      setShowStudioMenu(false);
+    };
+    window.addEventListener(KARTO_TOUR_OPEN_STUDIO_EVENT, onOpenStudio);
+    window.addEventListener(KARTO_TOUR_CLOSE_STUDIO_EVENT, onCloseStudio);
+    return () => {
+      window.removeEventListener(KARTO_TOUR_OPEN_STUDIO_EVENT, onOpenStudio);
+      window.removeEventListener(KARTO_TOUR_CLOSE_STUDIO_EVENT, onCloseStudio);
+    };
+  }, []);
+
   const handleLogout = async () => {
     try {
       const supabase = createBrowserClient();
@@ -349,6 +402,9 @@ export function Navbar() {
                 href={link.href}
                 onClick={(e) => handleNavClick(e, link.href)}
                 className="text-base font-medium text-foreground transition-colors hover:text-[#2E5A43]"
+                {...(link.name === "Цена"
+                  ? { "data-tour": "nav-pricing-desktop" as const }
+                  : {})}
               >
                 {link.name}
               </Link>
@@ -363,6 +419,7 @@ export function Navbar() {
                 size="default" 
                 className="text-base font-medium text-foreground hover:text-[#2E5A43] hover:bg-transparent border border-[#2E5A43]"
                 onClick={() => setShowStudioMenu(!showStudioMenu)}
+                data-tour="nav-studio-desktop"
               >
                 Мастерская
               </Button>
@@ -375,7 +432,7 @@ export function Navbar() {
                     transition={{ duration: 0.15, ease: "easeOut" }}
                     className={`absolute left-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),520px)] ${NAV_STUDIO_DROPDOWN_PANEL}`}
                   >
-                    <StudioMenuGrid onNavigate={() => setShowStudioMenu(false)} />
+                    <StudioMenuGrid onNavigate={() => setShowStudioMenu(false)} tourInstance="desktop" />
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -498,6 +555,9 @@ export function Navbar() {
                     setIsOpen(false)
                   }}
                   className="text-base font-medium text-muted-foreground transition-colors hover:text-foreground py-2 px-4 rounded-lg hover:bg-muted"
+                  {...(link.name === "Цена"
+                    ? { "data-tour": "nav-pricing-mobile" as const }
+                    : {})}
                 >
                   {link.name}
                 </Link>
@@ -506,6 +566,7 @@ export function Navbar() {
                 <Button 
                   variant="ghost" 
                   className="w-full"
+                  data-tour="nav-studio-mobile"
                   onClick={() => {
                     setShowStudioMenu(!showStudioMenu);
                   }}
@@ -519,6 +580,7 @@ export function Navbar() {
                         setIsOpen(false)
                         setShowStudioMenu(false)
                       }}
+                      tourInstance="mobile"
                     />
                   </div>
                 )}
