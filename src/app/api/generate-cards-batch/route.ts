@@ -350,7 +350,8 @@ export async function POST(request: NextRequest) {
     const consumed = await consumeFlowSessionCredits(
       supabase as any,
       sessionId,
-      batchCreditCost
+      batchCreditCost,
+      { generationUnits: successfulCards.length }
     );
     if (!consumed.ok) {
       console.warn("[BATCH] consume credits after success failed:", consumed.error);

@@ -72,7 +72,8 @@ import { DemoFlowBadge } from "@/components/studio/DemoFlowBadge";
 import { useDemoFlowSession } from "@/lib/hooks/use-demo-flow-session";
 import { isFlowDevSkipBatchEnabled, isFlowDevBypassClientEnabled } from "@/lib/flow/flow-dev-skip";
 import { estimateGrokImagine720TokenCost } from "@/lib/video-token-pricing";
-import { CREDIT_PHOTO_4K } from "@/lib/credits-pricing";
+import { CREDIT_PHOTO_2K, CREDIT_PHOTO_4K } from "@/lib/credits-pricing";
+import { demoFlowSessionCreditsTotal } from "@/lib/demo-flow";
 
 type FlowQuotaApiPayload = {
   generationUsed?: unknown;
@@ -81,6 +82,11 @@ type FlowQuotaApiPayload = {
   credits_remaining?: unknown;
   credits_total?: unknown;
 };
+
+function photoUnitCostFromCreditsTotal(total: number): number {
+  if (total > 0 && total === demoFlowSessionCreditsTotal()) return CREDIT_PHOTO_2K;
+  return CREDIT_PHOTO_4K;
+}
 
 function parseFlowQuotaUpdates(data: FlowQuotaApiPayload): {
   visualQuota?: { used: number; remaining: number; limit: number };
@@ -93,8 +99,13 @@ function parseFlowQuotaUpdates(data: FlowQuotaApiPayload): {
   if (typeof data.credits_remaining === "number" && Number.isFinite(data.credits_remaining)) {
     out.creditsRemaining = Math.max(0, Math.floor(data.credits_remaining));
   }
-  if (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number") {
-    const limit = Math.max(1, Number(data.generationLimit || 12));
+  if (
+    typeof data.generationLimit === "number" &&
+    Number.isFinite(data.generationLimit) &&
+    data.generationLimit > 0 &&
+    (typeof data.generationUsed === "number" || typeof data.generationRemaining === "number")
+  ) {
+    const limit = Math.max(1, Math.floor(Number(data.generationLimit)));
     const used = Math.max(0, Number(data.generationUsed || 0));
     out.visualQuota = {
       used,
@@ -107,8 +118,9 @@ function parseFlowQuotaUpdates(data: FlowQuotaApiPayload): {
     Number.isFinite(data.credits_total)
   ) {
     const total = Math.max(0, Math.floor(Number(data.credits_total)));
-    const limit = Math.max(1, Math.floor(total / CREDIT_PHOTO_4K));
-    const remaining = Math.floor(out.creditsRemaining / CREDIT_PHOTO_4K);
+    const unit = photoUnitCostFromCreditsTotal(total);
+    const limit = Math.max(1, Math.floor(total / unit));
+    const remaining = Math.floor(out.creditsRemaining / unit);
     out.visualQuota = {
       used: Math.max(0, limit - remaining),
       limit,
@@ -1048,8 +1060,8 @@ export default function VisualPage() {
   const cardHydrateAttemptRef = useRef("");
   const [visualQuota, setVisualQuota] = useState<{ used: number; remaining: number; limit: number }>({
     used: 0,
-    remaining: 12,
-    limit: 12,
+    remaining: 0,
+    limit: 0,
   });
   const [flowCreditsRemaining, setFlowCreditsRemaining] = useState<number | null>(null);
   const applyFlowQuota = (data: FlowQuotaApiPayload) => {
@@ -1058,7 +1070,11 @@ export default function VisualPage() {
     if (parsed.visualQuota) setVisualQuota(parsed.visualQuota);
   };
   const flowCreditsDisplay =
-    flowCreditsRemaining ?? Math.max(0, visualQuota.remaining * CREDIT_PHOTO_4K);
+    flowCreditsRemaining ??
+    Math.max(
+      0,
+      visualQuota.remaining * (demoSession.isDemo ? CREDIT_PHOTO_2K : CREDIT_PHOTO_4K)
+    );
   /** Ключ variantUrl при активном скачивании слайда (анти-спам + спиннер). */
   const [slideDownloadBusy, setSlideDownloadBusy] = useState<string | null>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false); // Открыта ли подсказка справа

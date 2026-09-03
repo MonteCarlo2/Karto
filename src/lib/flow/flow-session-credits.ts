@@ -91,7 +91,8 @@ export async function getFlowSessionCredits(
 export async function consumeFlowSessionCredits(
   supabase: SupabaseClient,
   sessionId: string,
-  amount: number
+  amount: number,
+  opts?: { generationUnits?: number }
 ): Promise<{ ok: boolean; state?: FlowCreditsState; error?: string }> {
   if (amount <= 0) {
     const cur = await getFlowSessionCredits(supabase, sessionId);
@@ -106,11 +107,13 @@ export async function consumeFlowSessionCredits(
     return { ok: false, error: "insufficient_flow_credits", state: current };
   }
 
+  const units = Math.max(1, opts?.generationUnits ?? 1);
+
   const next: FlowCreditsState = {
     ...current,
     credits_remaining: current.credits_remaining - amount,
     credits_spent: current.credits_spent + amount,
-    generation_used: (current.generation_used ?? 0) + 1,
+    generation_used: (current.generation_used ?? 0) + units,
   };
 
   const { error } = await supabase

@@ -1,6 +1,6 @@
-import { CREDIT_PHOTO_4K, FLOW_CREDITS_BASE } from "@/lib/credits-pricing";
+import { CREDIT_PHOTO_4K, FLOW_CREDITS_BASE, photoCreditCost } from "@/lib/credits-pricing";
 import { isDemoProductSession } from "@/lib/demo-flow-server";
-import { DEMO_FLOW_VISUAL_LIMIT } from "@/lib/demo-flow";
+import { DEMO_FLOW_VISUAL_LIMIT, demoFlowSessionCreditsTotal } from "@/lib/demo-flow";
 import {
   getFlowSessionCredits,
   parseFlowCreditsState,
@@ -34,9 +34,21 @@ function defaultQuota(limit: number): VisualQuota {
   };
 }
 
-function quotaFromCredits(creditsTotal: number, creditsRemaining: number): VisualQuota {
-  const limit = Math.max(1, Math.floor(creditsTotal / CREDIT_PHOTO_4K));
-  const remaining = Math.floor(creditsRemaining / CREDIT_PHOTO_4K);
+function photoUnitCostForCreditsTotal(creditsTotal: number): number {
+  if (creditsTotal > 0 && creditsTotal === demoFlowSessionCreditsTotal()) {
+    return photoCreditCost("2k");
+  }
+  return CREDIT_PHOTO_4K;
+}
+
+function quotaFromCredits(
+  creditsTotal: number,
+  creditsRemaining: number,
+  photoUnitCost = photoUnitCostForCreditsTotal(creditsTotal)
+): VisualQuota {
+  const unit = Math.max(1, photoUnitCost);
+  const limit = Math.max(1, Math.floor(creditsTotal / unit));
+  const remaining = Math.floor(creditsRemaining / unit);
   const used = Math.max(0, limit - remaining);
   return { used, remaining, limit };
 }
@@ -47,22 +59,26 @@ async function resolveSessionLimit(supabase: any, sessionId: string): Promise<nu
 }
 
 /**
- * Квота визуала для UI: читает flow session credits и мапит в «фото 4K эквивалент»
- * (remaining ≈ floor(credits_remaining / 100)).
+ * Квота визуала для UI: читает flow session credits и мапит в «сколько фото осталось»
+ * (демо: floor(credits / 75), платный Поток: floor(credits / 100)).
  */
 export async function getVisualQuota(
   supabase: any,
   sessionId: string
 ): Promise<VisualQuota> {
+  const sessionLimit = await resolveSessionLimit(supabase, sessionId);
   const creditsState = await getFlowSessionCredits(supabase, sessionId);
   if (creditsState && creditsState.credits_total > 0) {
+    const unit =
+      sessionLimit === DEMO_FLOW_VISUAL_LIMIT
+        ? photoCreditCost("2k")
+        : CREDIT_PHOTO_4K;
     return quotaFromCredits(
       creditsState.credits_total,
-      creditsState.credits_remaining
+      creditsState.credits_remaining,
+      unit
     );
   }
-
-  const sessionLimit = await resolveSessionLimit(supabase, sessionId);
   try {
     const { data, error } = await supabase
       .from("visual_data")
@@ -78,7 +94,11 @@ export async function getVisualQuota(
     const state = (data?.visual_state || {}) as VisualQuotaState;
     const parsed = parseFlowCreditsState(state as Record<string, unknown>);
     if (parsed.credits_total > 0) {
-      return quotaFromCredits(parsed.credits_total, parsed.credits_remaining);
+      const unit =
+        sessionLimit === DEMO_FLOW_VISUAL_LIMIT
+          ? photoCreditCost("2k")
+          : CREDIT_PHOTO_4K;
+      return quotaFromCredits(parsed.credits_total, parsed.credits_remaining, unit);
     }
 
     const used = toNonNegativeInt(state.generation_used);
