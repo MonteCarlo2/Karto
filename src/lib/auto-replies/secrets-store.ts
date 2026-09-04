@@ -69,6 +69,20 @@ export function persistSecretsFromSettingsRoot(
   });
 }
 
+/** Не затирает уже сохранённые токены пустыми значениями из settings. */
+export function mergeSecretsFromSettingsRoot(
+  userId: string,
+  tokensFromSettings: Record<string, string>
+) {
+  const existing = readAutoReplySecrets(userId).tokens;
+  const merged = { ...existing };
+  for (const [key, token] of Object.entries(tokensFromSettings)) {
+    const trimmed = token.trim();
+    if (trimmed) merged[key] = trimmed;
+  }
+  persistSecretsFromSettingsRoot(userId, merged);
+}
+
 export function removeAutoReplySecretToken(userId: string, mpKey: string) {
   const root = readAutoReplySecrets(userId);
   delete root.tokens[mpKey];

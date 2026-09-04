@@ -40,9 +40,18 @@ export async function processAutoReplyInboxCron(
   errors: number;
   zeroBalance: number;
   autoSent: number;
+  concurrentSkip?: boolean;
 }> {
   if (globalThis.__kartoInboxCronRunning) {
-    return { users: 0, synced: 0, skipped: 0, errors: 0, zeroBalance: 0, autoSent: 0 };
+    return {
+      users: 0,
+      synced: 0,
+      skipped: 0,
+      errors: 0,
+      zeroBalance: 0,
+      autoSent: 0,
+      concurrentSkip: true,
+    };
   }
   globalThis.__kartoInboxCronRunning = true;
   try {
@@ -64,7 +73,8 @@ async function processAutoReplyInboxCronInner(
   autoSent: number;
 }> {
   const userLimit = opts?.userLimit ?? 500;
-  const [{ data: stateRows }, { data: secretRows }] = await Promise.all([
+  const [{ data: stateRows, error: stateErr }, { data: secretRows, error: secretErr }] =
+    await Promise.all([
     supabase
       .from("auto_reply_user_state")
       .select("user_id, settings_json")
@@ -72,6 +82,13 @@ async function processAutoReplyInboxCronInner(
       .limit(userLimit),
     supabase.from("auto_reply_marketplace_secrets").select("user_id"),
   ]);
+
+  if (stateErr) {
+    console.error("[auto-reply] cron state query failed", stateErr.message);
+  }
+  if (secretErr) {
+    console.error("[auto-reply] cron secrets query failed", secretErr.message);
+  }
 
   const settingsByUser = new Map<string, AutoRepliesSettingsRoot>();
   for (const row of stateRows ?? []) {

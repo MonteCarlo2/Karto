@@ -52,6 +52,10 @@ export function startAutoReplyBackgroundScheduler() {
         processAutoReplyInboxCron(supabase),
         processDueAutoReplyRenewals(supabase),
       ]);
+      if (inbox.concurrentSkip) {
+        console.info("[auto-reply] background tick skipped (previous run still active)");
+        return;
+      }
       const payload = { inbox, renew, at: new Date().toISOString() };
       console.info("[auto-reply] background tick", payload);
       await recordCronHeartbeat(payload);

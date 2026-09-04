@@ -214,9 +214,15 @@ export function WorkspaceInbox({
 
     effectiveUsage !== "manual" && isMarketplaceLiveReady(marketplaceId, effectiveUsage, connection);
 
-  const showLiveUi = liveReady && credentialsReady;
-
   const showDemo = shouldShowInboxDemo(effectiveUsage);
+
+  const canLoadServerSnapshot =
+    !showDemo &&
+    effectiveUsage !== "manual" &&
+    Boolean(connection.verifiedAt) &&
+    connection.status === "active";
+
+  const showLiveUi = liveReady && credentialsReady;
 
   const needsVerify = credentialsReady && !connection.verifiedAt;
 
@@ -649,7 +655,7 @@ export function WorkspaceInbox({
   runPendingAutoSendRef.current = runPendingAutoSend;
 
   useEffect(() => {
-    if (!liveReady || showDemo) return;
+    if (!canLoadServerSnapshot) return;
     let cancel = false;
     void fetchAutoReplyInboxSnapshotFromApi({ shopId: _shopId, marketplaceId }).then((snapshot) => {
       if (cancel || !snapshot?.items?.length) return;
@@ -683,7 +689,7 @@ export function WorkspaceInbox({
     return () => {
       cancel = true;
     };
-  }, [liveReady, showDemo, marketplaceId, _shopId, sellerName]);
+  }, [canLoadServerSnapshot, marketplaceId, _shopId, sellerName]);
 
   useEffect(() => {
     setSelectedId(null);

@@ -13,6 +13,7 @@ import {
 } from "./settings-sanitize";
 import { autoRepliesAuthorizedFetch } from "@/lib/auto-replies/auto-replies-fetch";
 import {
+  mergeSecretsFromSettingsRoot,
   migrateLegacyGlobalSecretsToUser,
   persistSecretsFromSettingsRoot,
   readAutoReplySecrets,
@@ -217,6 +218,40 @@ export type BootstrapAutoRepliesResult = {
   brandName: string | null;
 };
 
+async function restoreServerSecretsToLocal(userId: string): Promise<void> {
+  try {
+    const res = await autoRepliesAuthorizedFetch("/api/auto-replies/secrets/load", {
+      timeoutMs: BOOTSTRAP_REMOTE_TIMEOUT_MS,
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      success?: boolean;
+      entries?: Array<{
+        shopId?: string;
+        marketplaceId?: string;
+        apiKey?: string;
+      }>;
+    };
+    if (!res.ok || !data.success || !Array.isArray(data.entries)) return;
+
+    const serverTokens: Record<string, string> = {};
+    for (const entry of data.entries) {
+      const shopId = String(entry.shopId ?? "main").trim() || "main";
+      const marketplaceId = String(entry.marketplaceId ?? "").trim();
+      const apiKey = String(entry.apiKey ?? "").trim();
+      if (!marketplaceId || !apiKey) continue;
+      serverTokens[`${shopId}:${marketplaceId}`] = apiKey;
+    }
+    if (Object.keys(serverTokens).length === 0) return;
+
+    persistSecretsFromSettingsRoot(userId, {
+      ...serverTokens,
+      ...readAutoReplySecrets(userId).tokens,
+    });
+  } catch (e) {
+    console.warn("[auto-replies] server secrets restore failed", e);
+  }
+}
+
 async function fetchBootstrapRemoteViaApi(): Promise<{
   remote: Awaited<ReturnType<typeof fetchAutoReplyUserState>>;
   remoteHistory: Awaited<ReturnType<typeof fetchAutoReplyHistory>>;
@@ -247,6 +282,8 @@ export async function bootstrapAutoRepliesFromSupabase(
 ): Promise<BootstrapAutoRepliesResult> {
   setAutoRepliesSyncContext(userId, email, shopName);
   bootstrapComplete = false;
+
+  await restoreServerSecretsToLocal(userId);
 
   let remote: Awaited<ReturnType<typeof fetchAutoReplyUserState>> = null;
   let remoteHistory: Awaited<ReturnType<typeof fetchAutoReplyHistory>> = [];
@@ -307,11 +344,7 @@ export async function bootstrapAutoRepliesFromSupabase(
       userId,
     });
 
-    const tokens = extractApiSecretsFromSettingsRoot(exportSettingsRoot());
-    persistSecretsFromSettingsRoot(userId, {
-      ...readAutoReplySecrets(userId).tokens,
-      ...tokens,
-    });
+    mergeSecretsFromSettingsRoot(userId, extractApiSecretsFromSettingsRoot(exportSettingsRoot()));
 
     if (legacyRoot && hasMeaningfulSettings(legacyRoot)) {
       await pushAutoRepliesStateToSupabase();
@@ -335,11 +368,7 @@ export async function bootstrapAutoRepliesFromSupabase(
       userId,
     });
 
-    const tokens = extractApiSecretsFromSettingsRoot(exportSettingsRoot());
-    persistSecretsFromSettingsRoot(userId, {
-      ...readAutoReplySecrets(userId).tokens,
-      ...tokens,
-    });
+    mergeSecretsFromSettingsRoot(userId, extractApiSecretsFromSettingsRoot(exportSettingsRoot()));
 
     await pushAutoRepliesStateToSupabase();
   } else {
@@ -434,8 +463,7 @@ export async function pushAutoRepliesStateToSupabase(): Promise<void> {
     if (!ctx) return;
 
     const settings = exportSettingsRoot();
-    const tokens = extractApiSecretsFromSettingsRoot(settings);
-    persistSecretsFromSettingsRoot(ctx.userId, tokens);
+    mergeSecretsFromSettingsRoot(ctx.userId, extractApiSecretsFromSettingsRoot(settings));
 
     const workspacePrefs = exportWorkspacePrefsSnapshot(ctx.userId);
     const composeDrafts = exportComposeDraftsMap();
@@ -496,7 +524,10 @@ export async function syncAutoReplyInboxSnapshot(payload: {
 
 export function syncApiKeyLocally(userId: string, mpKey: string, apiKey: string) {
   const root = exportSettingsRoot();
-  const tokens = extractApiSecretsFromSettingsRoot(root);
+  const tokens = {
+    ...readAutoReplySecrets(userId).tokens,
+    ...extractApiSecretsFromSettingsRoot(root),
+  };
   if (apiKey.trim()) tokens[mpKey] = apiKey.trim();
   else delete tokens[mpKey];
   persistSecretsFromSettingsRoot(userId, tokens);
