@@ -10,6 +10,11 @@ import {
 import { photoCreditCost } from "@/lib/credits-pricing";
 import { getSessionImageResolution } from "@/lib/demo-flow-server";
 import { logFlowSessionStart } from "@/lib/flow/flow-generation-log";
+import { requireApiUser, apiUnauthorizedResponse } from "@/lib/auth/require-api-user";
+import {
+  flowSessionAccessResponse,
+  requireFlowSessionAccess,
+} from "@/lib/flow/require-flow-session-access";
 
 /**
  * API endpoint для редактирования карточки товара
@@ -26,38 +31,51 @@ export async function POST(request: NextRequest) {
         error: "Требуется URL изображения и запрос на редактирование",
       }, { status: 400 });
     }
+    if (!sessionId) {
+      return NextResponse.json(
+        { success: false, error: "sessionId обязателен для редактирования в Потоке" },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createServerClient();
+    const auth = await requireApiUser(request);
+    if (!auth.user) {
+      return apiUnauthorizedResponse(auth);
+    }
+    const sessionAccess = await requireFlowSessionAccess(supabase as any, auth.user.id, sessionId);
+    if (!sessionAccess.ok) {
+      return NextResponse.json(flowSessionAccessResponse(sessionAccess), {
+        status: sessionAccess.status,
+      });
+    }
 
     console.log("🔄 [EDIT] Начало редактирования карточки");
     console.log("🔄 [EDIT] Запрос пользователя:", editRequest);
     console.log("🔄 [EDIT] Товар:", productName);
     console.log("🔄 [EDIT] Исходный imageUrl:", imageUrl);
 
-    let imageResolution: "2k" | "4k" | undefined;
-    let photoCost = 0;
-    if (sessionId) {
-      const supabase = createServerClient();
-      await logFlowSessionStart(supabase as any, "edit-card", sessionId, {
-        productName: typeof productName === "string" ? productName.slice(0, 80) : undefined,
-      });
-      imageResolution = await getSessionImageResolution(supabase as any, sessionId);
-      photoCost = photoCreditCost(imageResolution);
-      const credits = await getFlowSessionCredits(supabase as any, sessionId);
-      if (!credits || credits.credits_remaining < photoCost) {
-        const quota = await getVisualQuota(supabase as any, sessionId);
-        return NextResponse.json(
-          {
-            success: false,
-            error: `Недостаточно кредитов Потока (нужно ${photoCost}, осталось ${credits?.credits_remaining ?? 0}).`,
-            code: "insufficient_flow_credits",
-            credits_remaining: credits?.credits_remaining ?? 0,
-            credits_total: credits?.credits_total ?? 0,
-            generationUsed: quota.used,
-            generationRemaining: quota.remaining,
-            generationLimit: quota.limit,
-          },
-          { status: 403 }
-        );
-      }
+    const imageResolution = await getSessionImageResolution(supabase as any, sessionId);
+    const photoCost = photoCreditCost(imageResolution);
+    await logFlowSessionStart(supabase as any, "edit-card", sessionId, {
+      productName: typeof productName === "string" ? productName.slice(0, 80) : undefined,
+    });
+    const credits = await getFlowSessionCredits(supabase as any, sessionId);
+    if (!credits || credits.credits_remaining < photoCost) {
+      const quota = await getVisualQuota(supabase as any, sessionId);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Недостаточно кредитов Потока (нужно ${photoCost}, осталось ${credits?.credits_remaining ?? 0}).`,
+          code: "insufficient_flow_credits",
+          credits_remaining: credits?.credits_remaining ?? 0,
+          credits_total: credits?.credits_total ?? 0,
+          generationUsed: quota.used,
+          generationRemaining: quota.remaining,
+          generationLimit: quota.limit,
+        },
+        { status: 403 }
+      );
     }
 
     // Строим промпт для редактирования с строгими правилами
@@ -216,28 +234,18 @@ ${editRequest}
 
     console.log(`✅ [EDIT] Карточка отредактирована (CDN): ${editedImageUrl}`);
 
-    let quotaPayload: {
-      generationUsed?: number;
-      generationRemaining?: number;
-      generationLimit?: number;
-      credits_remaining?: number;
-      credits_total?: number;
-    } = {};
-    if (sessionId) {
-      const supabase = createServerClient();
-      const consumed = await consumeFlowSessionCredits(supabase as any, sessionId, photoCost);
-      if (!consumed.ok) {
-        console.warn("[EDIT] consume credits after success failed:", consumed.error);
-      }
-      const quotaAfter = await getVisualQuota(supabase as any, sessionId);
-      quotaPayload = {
-        generationUsed: quotaAfter.used,
-        generationRemaining: quotaAfter.remaining,
-        generationLimit: quotaAfter.limit,
-        credits_remaining: consumed.state?.credits_remaining,
-        credits_total: consumed.state?.credits_total,
-      };
+    const consumed = await consumeFlowSessionCredits(supabase as any, sessionId, photoCost);
+    if (!consumed.ok) {
+      console.warn("[EDIT] consume credits after success failed:", consumed.error);
     }
+    const quotaAfter = await getVisualQuota(supabase as any, sessionId);
+    const quotaPayload = {
+      generationUsed: quotaAfter.used,
+      generationRemaining: quotaAfter.remaining,
+      generationLimit: quotaAfter.limit,
+      credits_remaining: consumed.state?.credits_remaining,
+      credits_total: consumed.state?.credits_total,
+    };
 
     return NextResponse.json({
       success: true,

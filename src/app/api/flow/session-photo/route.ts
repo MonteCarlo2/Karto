@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@/lib/supabase/server";
 import { setFlowSessionPhoto } from "@/lib/flow/flow-session-photo-store";
+import { guardFlowApiSession } from "@/lib/flow/guard-flow-api-session";
 
 export const maxDuration = 60;
 
@@ -21,6 +23,12 @@ export async function POST(request: NextRequest) {
         { success: false, error: "photoUrl должен быть data URL" },
         { status: 400 }
       );
+    }
+
+    const supabase = createServerClient();
+    const guard = await guardFlowApiSession(request, supabase as any, sessionId);
+    if (!guard.ok) {
+      return guard.response;
     }
 
     setFlowSessionPhoto(sessionId, photoUrl);

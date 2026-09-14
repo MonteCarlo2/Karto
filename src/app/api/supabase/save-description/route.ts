@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { guardFlowApiSession } from "@/lib/flow/guard-flow-api-session";
 
 /**
  * Сохранение данных этапа "Описание" в Supabase
@@ -25,22 +26,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Обновляем user_id для сессии, если он был null
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user?.id) {
-      const { data: sessionData } = await supabase
-        .from("product_sessions")
-        .select("user_id")
-        .eq("id", session_id)
-        .single();
-      
-      if (sessionData && !sessionData.user_id) {
-        await supabase
-          .from("product_sessions")
-          .update({ user_id: user.id })
-          .eq("id", session_id);
-        console.log("✅ Обновлен user_id для сессии при сохранении описания:", session_id);
-      }
+    const guard = await guardFlowApiSession(request, supabase as any, session_id);
+    if (!guard.ok) {
+      return guard.response;
     }
 
     // Сохраняем или обновляем данные этапа "Описание"

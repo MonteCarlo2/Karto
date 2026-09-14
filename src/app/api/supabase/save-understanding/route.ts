@@ -11,6 +11,8 @@ import {
 import { DEMO_FLOW_PLAN_TYPE } from "@/lib/demo-flow";
 import { seedFlowSessionCredits } from "@/lib/flow/flow-session-credits";
 import { logFlowSessionStart } from "@/lib/flow/flow-generation-log";
+import { apiUnauthorizedResponse, requireApiUser } from "@/lib/auth/require-api-user";
+import { requireFlowSessionAccess } from "@/lib/flow/require-flow-session-access";
 
 /** Получить user id: сначала из Authorization, затем из cookies */
 async function getUserIdFromRequest(request: NextRequest, supabase: ReturnType<typeof createServerClient>): Promise<string | null> {
@@ -200,6 +202,11 @@ export async function POST(request: NextRequest) {
     const safePhotoUrl = sanitizePhotoUrlForDb(photo_url);
     const method = String(selected_method || "photo").trim() || "photo";
 
+    const auth = await requireApiUser(request);
+    if (!auth.user) {
+      return apiUnauthorizedResponse(auth);
+    }
+
     // Валидация входных данных
     if (!product_name || !method) {
       return NextResponse.json(
@@ -221,6 +228,15 @@ export async function POST(request: NextRequest) {
 
       if (sessionCheckError || !existingSession) {
         finalSessionId = null;
+      } else {
+        const access = await requireFlowSessionAccess(
+          supabase as any,
+          auth.user.id,
+          finalSessionId
+        );
+        if (access.ok === false) {
+          finalSessionId = null;
+        }
       }
     }
 
@@ -240,14 +256,7 @@ export async function POST(request: NextRequest) {
       // Если товар изменился (название отличается), создаем новую сессию
       if (existingData && existingData.product_name !== product_name.trim()) {
         console.log("🔄 Товар изменился, создаем новую сессию...");
-        const userId = await getUserIdFromRequest(request, supabase);
-        if (!userId) {
-          return NextResponse.json(
-            { error: "Войдите в аккаунт, чтобы начать Поток" },
-            { status: 403 }
-          );
-        }
-        const charged = await chargeFlowAndCreateSession(supabase, userId);
+        const charged = await chargeFlowAndCreateSession(supabase, auth.user.id);
         if ("error" in charged) {
           return NextResponse.json({ error: charged.error }, { status: charged.status });
         }
@@ -299,14 +308,7 @@ export async function POST(request: NextRequest) {
       }
       // Если товар тот же, не трогаем данные описания (они должны сохраниться при обновлении страницы)
     } else {
-      const userId = await getUserIdFromRequest(request, supabase);
-      if (!userId) {
-        return NextResponse.json(
-          { error: "Войдите в аккаунт, чтобы начать Поток" },
-          { status: 403 }
-        );
-      }
-      const charged = await chargeFlowAndCreateSession(supabase, userId);
+      const charged = await chargeFlowAndCreateSession(supabase, auth.user.id);
       if ("error" in charged) {
         return NextResponse.json({ error: charged.error }, { status: charged.status });
       }

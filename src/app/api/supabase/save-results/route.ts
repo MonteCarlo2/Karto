@@ -5,6 +5,7 @@ import {
   getFlowSessionCredits,
   mergeVisualStatePreservingCredits,
 } from "@/lib/flow/flow-session-credits";
+import { guardFlowApiSession } from "@/lib/flow/guard-flow-api-session";
 
 /**
  * Сохранение результатов потока (визуальные слайды и анализ цены)
@@ -37,6 +38,11 @@ export async function POST(request: NextRequest) {
         { error: "session_id обязателен" },
         { status: 400 }
       );
+    }
+
+    const guard = await guardFlowApiSession(request, supabase as any, session_id);
+    if (!guard.ok) {
+      return guard.response;
     }
 
     // Обновляем user_id для сессии, если он был null

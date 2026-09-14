@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { withTimeout } from "@/lib/supabase/with-timeout";
+import { guardFlowApiSession } from "@/lib/flow/guard-flow-api-session";
 
 const GET_UNDERSTANDING_TIMEOUT_MS = 12_000;
 
@@ -20,6 +21,11 @@ export async function POST(request: NextRequest) {
         { error: "session_id обязателен" },
         { status: 400 }
       );
+    }
+
+    const guard = await guardFlowApiSession(request, supabase as any, session_id);
+    if (!guard.ok) {
+      return guard.response;
     }
 
     // Если session_id не UUID, возвращаем "данных нет" без 500

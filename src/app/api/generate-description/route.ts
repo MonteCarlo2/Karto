@@ -10,6 +10,7 @@ import {
   DEMO_FLOW_DESCRIPTION_STYLE_NAMES,
   DEMO_FLOW_DESCRIPTION_STYLES,
 } from "@/lib/demo-flow";
+import { guardFlowApiSession } from "@/lib/flow/guard-flow-api-session";
 
 // Допускаем долгий ответ (4 параллельных запроса к OpenRouter), чтобы не обрывать по таймауту
 export const maxDuration = 120;
@@ -86,6 +87,14 @@ export async function POST(request: NextRequest) {
       mark_highlights = false,
       session_id,
     } = body;
+
+    if (typeof session_id === "string" && session_id.trim()) {
+      const supabase = createServerClient();
+      const guard = await guardFlowApiSession(request, supabase as any, session_id);
+      if (!guard.ok) {
+        return guard.response;
+      }
+    }
 
     const quotaGate = await gateDemoDescriptionPost(session_id);
     if (!quotaGate.ok) return quotaGate.response;

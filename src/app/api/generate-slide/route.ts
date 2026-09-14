@@ -16,6 +16,11 @@ import {
 } from "@/lib/flow/slide-generation-race";
 import { getSessionImageResolution } from "@/lib/demo-flow-server";
 import { logFlowSessionStart } from "@/lib/flow/flow-generation-log";
+import { requireApiUser, apiUnauthorizedResponse } from "@/lib/auth/require-api-user";
+import {
+  flowSessionAccessResponse,
+  requireFlowSessionAccess,
+} from "@/lib/flow/require-flow-session-access";
 
 export const maxDuration = 600;
 
@@ -69,6 +74,16 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createServerClient();
+    const auth = await requireApiUser(request);
+    if (!auth.user) {
+      return apiUnauthorizedResponse(auth);
+    }
+    const sessionAccess = await requireFlowSessionAccess(supabase as any, auth.user.id, sessionId);
+    if (!sessionAccess.ok) {
+      return NextResponse.json(flowSessionAccessResponse(sessionAccess), {
+        status: sessionAccess.status,
+      });
+    }
     await logFlowSessionStart(supabase as any, "generate-slide", sessionId, {
       productName: String(productName).slice(0, 80),
     });

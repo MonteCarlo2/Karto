@@ -102,11 +102,7 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
       const supabase = createBrowserClient();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
-        setFlowError(
-          <>
-            Войдите в аккаунт, чтобы начать Поток. Перейдите на главную и войдите или зарегистрируйтесь.
-          </>
-        );
+        router.push("/login?redirect=/studio/understanding");
         return;
       }
       const res = await fetch("/api/subscription", {

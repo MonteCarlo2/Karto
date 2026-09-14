@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
+import { guardFlowApiSession } from "@/lib/flow/guard-flow-api-session";
 
 /**
  * Загрузка данных этапа "Описание" из Supabase
@@ -17,6 +18,11 @@ export async function POST(request: NextRequest) {
         { error: "session_id обязателен" },
         { status: 400 }
       );
+    }
+
+    const guard = await guardFlowApiSession(request, supabase as any, session_id);
+    if (!guard.ok) {
+      return guard.response;
     }
 
     // Сначала проверяем данные "Понимание" для этого session_id

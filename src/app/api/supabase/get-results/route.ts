@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { withTimeout } from "@/lib/supabase/with-timeout";
+import { guardFlowApiSession } from "@/lib/flow/guard-flow-api-session";
 
 const GET_RESULTS_TIMEOUT_MS = 25_000;
 
@@ -21,8 +22,11 @@ export async function POST(request: NextRequest) {
 
     console.log("📥 [GET RESULTS] Загрузка результатов для session_id:", session_id);
 
-    // Создаем клиент Supabase
     const supabase = createServerClient();
+    const guard = await guardFlowApiSession(request, supabase as any, session_id);
+    if (!guard.ok) {
+      return guard.response;
+    }
 
     // Загружаем визуальные данные (включая состояние)
     const { data: visualData, error: visualError } = await withTimeout(
