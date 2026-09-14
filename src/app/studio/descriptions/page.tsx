@@ -28,9 +28,11 @@ import {
   editableHtmlToDescription,
   stripDescriptionMarkup,
 } from "@/lib/utils/description-markup";
+import { StudioLoginCta } from "@/components/auth/studio-login-cta";
 import { FlowProductDescription } from "@/components/studio/ProductDescriptionDisplay";
 import { KartoVoiceTextarea } from "@/components/shared/karto-voice-textarea";
 import { KartoAiOrb } from "@/components/auto-replies/workspace/karto-ai-orb";
+import { useStudioAuth } from "@/hooks/use-studio-auth";
 
 type DescriptionTextLength = "shorter" | "medium" | "longer";
 
@@ -267,6 +269,7 @@ function chipIsActive(preferences: string, chip: string): boolean {
 
 export default function SeoDescriptionsPage() {
   const router = useRouter();
+  const { isLoggedIn, loginHref } = useStudioAuth("/studio/descriptions");
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const styleTabsRef = useRef<HTMLDivElement | null>(null);
@@ -1115,44 +1118,48 @@ export default function SeoDescriptionsPage() {
 
             {/* Generate — large black, radius 12 */}
             <div className="px-6 pb-5 pt-1">
-              <button
-                type="button"
-                onClick={handleGenerate}
-                disabled={isGenerating || !productName.trim()}
-                onMouseEnter={() => setGenHovered(true)}
-                onMouseLeave={() => setGenHovered(false)}
-                className="inline-flex w-full items-center justify-center gap-2 px-5 py-4 text-base font-semibold transition-[background-color,box-shadow,transform] duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
-                style={{
-                  borderRadius: 12,
-                  background:
-                    !productName.trim() || isGenerating
-                      ? "#3a3a3a"
-                      : genHovered
-                        ? C.green
-                        : C.ink,
-                  color: C.white,
-                  boxShadow: genHovered
-                    ? `0 0 0 2px ${C.lime}, 0 8px 24px rgba(31,78,61,0.28)`
-                    : "0 6px 20px rgba(0,0,0,0.18)",
-                }}
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Генерируем…
-                  </>
-                ) : hasResults ? (
-                  <>
-                    <Sparkles className="h-5 w-5" />
-                    Перегенерировать
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-5 w-5" />
-                    Собрать описание
-                  </>
-                )}
-              </button>
+              {!isLoggedIn ? (
+                <StudioLoginCta href={loginHref} variant="dark-full" />
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={isGenerating || !productName.trim()}
+                  onMouseEnter={() => setGenHovered(true)}
+                  onMouseLeave={() => setGenHovered(false)}
+                  className="inline-flex w-full items-center justify-center gap-2 px-5 py-4 text-base font-semibold transition-[background-color,box-shadow,transform] duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
+                  style={{
+                    borderRadius: 12,
+                    background:
+                      !productName.trim() || isGenerating
+                        ? "#3a3a3a"
+                        : genHovered
+                          ? C.green
+                          : C.ink,
+                    color: C.white,
+                    boxShadow: genHovered
+                      ? `0 0 0 2px ${C.lime}, 0 8px 24px rgba(31,78,61,0.28)`
+                      : "0 6px 20px rgba(0,0,0,0.18)",
+                  }}
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Генерируем…
+                    </>
+                  ) : hasResults ? (
+                    <>
+                      <Sparkles className="h-5 w-5" />
+                      Перегенерировать
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-5 w-5" />
+                      Собрать описание
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </aside>
 

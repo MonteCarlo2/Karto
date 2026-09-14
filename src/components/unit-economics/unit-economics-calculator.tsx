@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Download } from "lucide-react";
+import { StudioLoginCta } from "@/components/auth/studio-login-cta";
+import { useStudioAuth } from "@/hooks/use-studio-auth";
 import { OzonCategorySearch } from "@/components/unit-economics/ozon-category-search";
 import { UnitEconomicsComparisonTable } from "@/components/unit-economics/unit-economics-comparison-table";
 import { UnitEconomicsHeader } from "@/components/unit-economics/unit-economics-header";
@@ -180,6 +182,7 @@ function downloadResultsCsv(results: UnitEconFulfillmentResult[], productSummary
 }
 
 export function UnitEconomicsCalculator() {
+  const { isLoggedIn, loginHref } = useStudioAuth("/studio/unit-economics");
   const [input, setInput] = useState<UnitEconCalculatorInput>(DEFAULT_UNIT_ECON_INPUT);
   const [dimensionMode, setDimensionMode] = useState<"size" | "volume">("size");
   const [calculation, setCalculation] = useState<UnitEconCalculation | null>(null);
@@ -796,7 +799,11 @@ export function UnitEconomicsCalculator() {
             </MonolithPanel>
 
             <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-3">
-              <CalculatePrimaryButton onClick={handleCalculate} />
+              {isLoggedIn ? (
+                <CalculatePrimaryButton onClick={handleCalculate} />
+              ) : (
+                <StudioLoginCta href={loginHref} variant="lime" />
+              )}
               <ResetSecondaryButton onClick={reset} />
             </div>
           </div>

@@ -6,8 +6,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { createBrowserClient } from "@/lib/supabase/client";
+import { StudioLoginCta } from "@/components/auth/studio-login-cta";
 import { KartoServicesExplainer } from "@/components/ui/karto-services-explainer";
+import { useStudioAuth } from "@/hooks/use-studio-auth";
+import { createBrowserClient } from "@/lib/supabase/client";
 import { availableFlowStarts } from "@/lib/subscription";
 import { clearFlowSessionClient } from "@/lib/flow/clear-flow-session-client";
 
@@ -90,6 +92,7 @@ function CanvasTexture({ patternAlpha = 15 }: { patternAlpha?: number }) {
 
 export function IntroAnimation({ onComplete }: IntroAnimationProps) {
   const router = useRouter();
+  const { isLoggedIn, loading: authLoading, loginHref } = useStudioAuth("/studio");
   const [showContent, setShowContent] = useState(false);
   const [flowError, setFlowError] = useState<ReactNode | null>(null);
   const [checking, setChecking] = useState(false);
@@ -102,7 +105,6 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
       const supabase = createBrowserClient();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
-        router.push("/login?redirect=/studio/understanding");
         return;
       }
       const res = await fetch("/api/subscription", {
@@ -367,56 +369,59 @@ export function IntroAnimation({ onComplete }: IntroAnimationProps) {
               {flowError}
             </div>
           )}
-          <button
-            onClick={handleOpenFlow}
-            disabled={checking}
-            className="px-10 py-5 text-xl md:text-2xl font-semibold transition-all duration-300 hover:scale-105 active:scale-95 flex items-center gap-3 relative overflow-hidden disabled:opacity-70 disabled:pointer-events-none"
-            style={{
-              background: "rgba(255, 255, 255, 0.12)",
-              backdropFilter: "blur(30px)",
-              WebkitBackdropFilter: "blur(30px)",
-              border: "1px solid rgba(255, 255, 255, 0.25)",
-              color: "rgba(255, 255, 255, 0.95)",
-              borderRadius: "9999px",
-              boxShadow: `
+          {!authLoading && !isLoggedIn ? (
+            <StudioLoginCta href={loginHref} variant="glass" />
+          ) : (
+            <button
+              onClick={handleOpenFlow}
+              disabled={checking || authLoading}
+              className="px-10 py-5 text-xl md:text-2xl font-semibold transition-all duration-300 hover:scale-105 active:scale-95 flex items-center gap-3 relative overflow-hidden disabled:opacity-70 disabled:pointer-events-none"
+              style={{
+                background: "rgba(255, 255, 255, 0.12)",
+                backdropFilter: "blur(30px)",
+                WebkitBackdropFilter: "blur(30px)",
+                border: "1px solid rgba(255, 255, 255, 0.25)",
+                color: "rgba(255, 255, 255, 0.95)",
+                borderRadius: "9999px",
+                boxShadow: `
                 0 4px 16px rgba(0, 0, 0, 0.2),
                 0 0 0 1px rgba(255, 255, 255, 0.1) inset,
                 0 1px 0 rgba(255, 255, 255, 0.3) inset
               `,
-            }}
-          >
-            {/* Блик сверху (как на скриншоте) */}
-            <div
-              style={{
-                position: "absolute",
-                top: "-20%",
-                left: "10%",
-                width: "60%",
-                height: "40%",
-                background: "linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, transparent 100%)",
-                borderRadius: "50%",
-                filter: "blur(15px)",
-                pointerEvents: "none",
               }}
-            />
-            <span>{ctaIsDemo ? "Запустить демо-поток" : "Запустить Поток"}</span>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 20 20"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              style={{ flexShrink: 0 }}
             >
-              <path
-                d="M7.5 15L12.5 10L7.5 5"
-                stroke="rgba(255, 255, 255, 0.95)"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+              <div
+                style={{
+                  position: "absolute",
+                  top: "-20%",
+                  left: "10%",
+                  width: "60%",
+                  height: "40%",
+                  background: "linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, transparent 100%)",
+                  borderRadius: "50%",
+                  filter: "blur(15px)",
+                  pointerEvents: "none",
+                }}
               />
-            </svg>
-          </button>
+              <span>{ctaIsDemo ? "Запустить демо-поток" : "Запустить Поток"}</span>
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 20 20"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                style={{ flexShrink: 0 }}
+              >
+                <path
+                  d="M7.5 15L12.5 10L7.5 5"
+                  stroke="rgba(255, 255, 255, 0.95)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          )}
           <KartoServicesExplainer
             variant="link"
             className="text-white/75 hover:text-white text-[11px] sm:text-xs !font-medium !text-white/75 hover:!text-white"

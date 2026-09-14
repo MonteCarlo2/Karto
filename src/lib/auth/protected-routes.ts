@@ -18,14 +18,14 @@ const PUBLIC_PAGE_EXACT = new Set([
 const PUBLIC_PAGE_PREFIXES = ["/auth/", "/_next/", "/favicon", "/robots.txt", "/sitemap.xml"];
 
 /**
- * /studio — интро без входа; все остальные разделы студии — только после регистрации.
+ * Страницы студии доступны для просмотра без входа; регистрация — на кнопках действий в UI.
+ * Здесь остаются только личные разделы (профиль, бренд, админка).
  */
 export function requiresAuthPage(pathname: string): boolean {
   if (PUBLIC_PAGE_EXACT.has(pathname)) return false;
   if (PUBLIC_PAGE_PREFIXES.some((p) => pathname.startsWith(p))) return false;
 
-  if (pathname === "/studio") return false;
-  if (pathname.startsWith("/studio/")) return true;
+  if (pathname === "/studio" || pathname.startsWith("/studio/")) return false;
 
   if (
     pathname === "/profile" ||

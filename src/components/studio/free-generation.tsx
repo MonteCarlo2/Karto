@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { StudioLoginCta } from "@/components/auth/studio-login-cta";
+import { buildStudioLoginHref } from "@/lib/auth/studio-login-href";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { fetchUserBrandOnboarding } from "@/lib/brand/user-brand-onboarding-db";
 import {
@@ -3896,6 +3898,13 @@ export default function FreeGeneration() {
               )}
 
               {/* Кнопка запуска генерации */}
+              {!user ? (
+                <StudioLoginCta
+                  href={buildStudioLoginHref("/studio/free")}
+                  variant="green-pill"
+                  className="h-full min-h-[48px] whitespace-nowrap px-4 text-[13px] sm:text-sm"
+                />
+              ) : (
               <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -4452,6 +4461,7 @@ export default function FreeGeneration() {
                 <ArrowRight className="w-5 h-5 text-white" />
               )}
             </motion.button>
+              )}
           </motion.div>
         </motion.div>
       </div>

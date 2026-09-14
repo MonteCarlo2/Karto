@@ -6,8 +6,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, ChevronDown, ChevronLeft } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { StudioLoginCta } from "@/components/auth/studio-login-cta";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { Logo } from "@/components/ui/logo";
+import { useStudioAuth } from "@/hooks/use-studio-auth";
 import type {
   AutoRepliesMarketplaceId,
   AutoRepliesUsageId,
@@ -118,9 +120,13 @@ const usageOptions: {
 function ShinyBlackPognaliLink({
   href,
   onBeforeNavigate,
+  isLoggedIn,
+  loginHref,
 }: {
   href: string;
   onBeforeNavigate?: () => void | Promise<void>;
+  isLoggedIn: boolean;
+  loginHref: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -134,7 +140,6 @@ function ShinyBlackPognaliLink({
       data: { session },
     } = await supabase.auth.getSession();
     if (!session) {
-      router.push(`/login?redirect=${encodeURIComponent(href)}`);
       return;
     }
 
@@ -161,8 +166,8 @@ function ShinyBlackPognaliLink({
     }
   };
 
-  return (
-    <span className="relative isolate mx-auto flex w-full max-w-xl justify-center px-5 pb-6 pt-7 sm:px-6">
+  const halo = (
+    <>
       <span
         aria-hidden
         className="pointer-events-none absolute bottom-[0.85rem] left-[min(14%,5rem)] top-6 w-[54%] max-w-[20rem] rounded-[2rem] bg-[radial-gradient(ellipse_at_28%_50%,rgba(185,255,75,0.55),transparent_62%)] opacity-95 blur-[32px] animate-pognali-halo-salad"
@@ -175,6 +180,15 @@ function ShinyBlackPognaliLink({
         aria-hidden
         className="pointer-events-none absolute bottom-3 left-[18%] right-[18%] top-14 rounded-[1.85rem] bg-[radial-gradient(ellipse_at_50%_90%,rgba(110,227,247,0.28),transparent_65%)] opacity-95 blur-[22px] animate-pognali-halo-accent"
       />
+    </>
+  );
+
+  return (
+    <span className="relative isolate mx-auto flex w-full max-w-xl justify-center px-5 pb-6 pt-7 sm:px-6">
+      {halo}
+      {!isLoggedIn ? (
+        <StudioLoginCta href={loginHref} variant="pognali" />
+      ) : (
       <Link
         href={href}
         onClick={handleClick}
@@ -206,12 +220,14 @@ function ShinyBlackPognaliLink({
           />
         </span>
       </Link>
+      )}
     </span>
   );
 }
 
 function AutoRepliesPageContent() {
   const router = useRouter();
+  const { isLoggedIn, loginHref } = useStudioAuth("/studio/auto-replies/workspace");
   const searchParams = useSearchParams();
   const [step, setStep] = useState<Step>(1);
   const [marketplace, setMarketplace] = useState<MarketplaceId | null>(null);
@@ -638,6 +654,8 @@ function AutoRepliesPageContent() {
                 <motion.div variants={step3Item} className="mt-14">
                   <ShinyBlackPognaliLink
                     href="/studio/auto-replies/workspace"
+                    isLoggedIn={isLoggedIn}
+                    loginHref={loginHref}
                     onBeforeNavigate={() => {
                       if (marketplace && usage) {
                         const prev = readAutoRepliesWorkspacePrefs();
