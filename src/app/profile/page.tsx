@@ -46,6 +46,8 @@ import { DEMO_FLOW_SHORT_DETAIL_RU } from "@/lib/demo-flow";
 import { KartoServicesExplainer } from "@/components/ui/karto-services-explainer";
 import { ProfileAutoReplyBillingPanel } from "@/components/profile/profile-auto-reply-billing";
 import { DeleteAccountConfirmDialog } from "@/components/profile/delete-account-confirm-dialog";
+import type { AccountDeletionStatus } from "@/lib/account/deletion-policy";
+import { accountDeletionBlockedMessageRu, daysLabelRu } from "@/lib/account/deletion-policy";
 import { YookassaTestModeStrip } from "@/components/profile/yookassa-test-mode-strip";
 import { clearUserLocalAppData } from "@/lib/clear-user-local-data";
 import {
@@ -205,6 +207,8 @@ function ProfileContent() {
   const [showDeleteAccountConfirm, setShowDeleteAccountConfirm] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
+  const [accountDeletionStatus, setAccountDeletionStatus] =
+    useState<AccountDeletionStatus | null>(null);
 
   const fetchSubscription = async (): Promise<{
     subscription: SubscriptionState | null;
@@ -251,6 +255,42 @@ function ProfileContent() {
       setSubscription(sub);
       setWelcomePerksNotice(storedNotice ?? welcomePerksMessage);
       setSubscriptionReady(true);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setAccountDeletionStatus(null);
+      return;
+    }
+    let mounted = true;
+    void (async () => {
+      try {
+        const supabase = createBrowserClient();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session?.access_token || !mounted) return;
+        const res = await fetch("/api/profile/delete-account", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!res.ok || !mounted) return;
+        const data = await res.json().catch(() => ({}));
+        if (!mounted) return;
+        setAccountDeletionStatus({
+          allowed: Boolean(data.allowed),
+          daysRemaining: Number(data.daysRemaining ?? 0),
+          unlockAt: typeof data.unlockAt === "string" ? data.unlockAt : null,
+          accountCreatedAt:
+            typeof data.accountCreatedAt === "string" ? data.accountCreatedAt : null,
+          minAccountAgeDays: Number(data.minAccountAgeDays ?? 14),
+        });
+      } catch {
+        /* ignore */
+      }
     })();
     return () => {
       mounted = false;
@@ -1341,9 +1381,19 @@ function ProfileContent() {
                   <div className="flex items-center justify-between rounded-xl border border-red-100 bg-red-50/60 px-4 py-3">
                     <div className="pr-3">
                       <h3 className="text-sm font-semibold text-red-900">Удалить профиль</h3>
-                      <p className="text-xs text-red-700/80 mt-0.5">
-                        Безвозвратно удалит аккаунт и все данные. Потом можно зарегистрироваться снова.
-                      </p>
+                      {accountDeletionStatus && !accountDeletionStatus.allowed ? (
+                        <p className="text-xs text-amber-800/90 mt-0.5 leading-relaxed">
+                          {accountDeletionBlockedMessageRu(
+                            accountDeletionStatus.daysRemaining,
+                            accountDeletionStatus.unlockAt
+                          )}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-red-700/80 mt-0.5">
+                          Безвозвратно удалит аккаунт и все данные. Демо-поток и стартовые бонусы при
+                          повторной регистрации не восстанавливаются.
+                        </p>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -1351,10 +1401,20 @@ function ProfileContent() {
                         setDeleteAccountError(null);
                         setShowDeleteAccountConfirm(true);
                       }}
-                      className="px-3 py-2 bg-white hover:bg-red-100 text-red-700 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5 border border-red-200 hover:border-red-300 shrink-0"
+                      className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5 border shrink-0 ${
+                        accountDeletionStatus && !accountDeletionStatus.allowed
+                          ? "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+                          : "bg-white hover:bg-red-100 text-red-700 border-red-200 hover:border-red-300"
+                      }`}
                     >
-                      <Trash2 className="w-4 h-4" />
-                      Удалить
+                      {accountDeletionStatus && !accountDeletionStatus.allowed ? (
+                        <Lock className="w-4 h-4" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                      {accountDeletionStatus && !accountDeletionStatus.allowed
+                        ? `${accountDeletionStatus.daysRemaining} ${daysLabelRu(accountDeletionStatus.daysRemaining)}`
+                        : "Удалить"}
                     </button>
                   </div>
                 </div>
@@ -1785,6 +1845,7 @@ function ProfileContent() {
         email={userEmail}
         deleting={deletingAccount}
         error={deleteAccountError}
+        deletionStatus={accountDeletionStatus}
         onClose={() => {
           if (deletingAccount) return;
           setShowDeleteAccountConfirm(false);

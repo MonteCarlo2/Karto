@@ -4,6 +4,10 @@ import {
   WELCOME_PERKS_DEVICE_LIMIT,
   WELCOME_PERKS_WINDOW_MS,
 } from "@/lib/welcome-perks/constants";
+import {
+  countPersistedEligibleDeviceClaims,
+  oldestPersistedEligibleDeviceClaimAt,
+} from "@/lib/welcome-perks/device-claims-persist";
 
 /** FingerprintJS visitorId: буквы, цифры, точка, дефис, подчёркивание. */
 const DEVICE_ID_RE = /^[a-zA-Z0-9._-]{8,128}$/;
@@ -82,7 +86,9 @@ async function countEligibleDeviceClaims(
     console.error("[welcome-perks] count device claims:", error.message);
     return 0;
   }
-  return count ?? 0;
+  const liveCount = count ?? 0;
+  const persistedCount = await countPersistedEligibleDeviceClaims(supabase, deviceHash);
+  return liveCount + persistedCount;
 }
 
 async function oldestEligibleDeviceClaimAt(
@@ -103,7 +109,14 @@ async function oldestEligibleDeviceClaimAt(
     console.error("[welcome-perks] oldest claim:", error.message);
     return null;
   }
-  return (data as { registered_at?: string } | null)?.registered_at ?? null;
+  const liveOldest = (data as { registered_at?: string } | null)?.registered_at ?? null;
+  const persistedOldest = await oldestPersistedEligibleDeviceClaimAt(supabase, deviceHash);
+
+  if (!liveOldest) return persistedOldest;
+  if (!persistedOldest) return liveOldest;
+  return new Date(liveOldest).getTime() <= new Date(persistedOldest).getTime()
+    ? liveOldest
+    : persistedOldest;
 }
 
 /**

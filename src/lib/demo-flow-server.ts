@@ -10,6 +10,10 @@ import {
   visualLimitForSession,
 } from "@/lib/demo-flow";
 import { SUBSCRIPTION_PERIOD_DAYS } from "@/lib/subscription";
+import {
+  isDemoFlowEmailUsed,
+  recordDemoFlowEmailUsage,
+} from "@/lib/demo-flow/email-usage";
 import { isWelcomePerksEligible } from "@/lib/welcome-perks/registration-server";
 
 export async function isDemoProductSession(
@@ -127,6 +131,22 @@ export async function grantDemoFlowOnWelcome(
     return;
   }
 
+  try {
+    const { data: authData } = await supabase.auth.admin.getUserById(userId);
+    const email = authData.user?.email ?? null;
+    if (email && (await isDemoFlowEmailUsed(supabase, email))) {
+      await supabase
+        .from("demo_flow_grants")
+        .update({ granted_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .is("granted_at", null);
+      console.info(`[demo-flow] demo skipped for reused email user=${userId.slice(0, 8)}…`);
+      return;
+    }
+  } catch (error) {
+    console.warn("[demo-flow] email reuse check failed:", error);
+  }
+
   const { data: grant, error: grantSelectErr } = await supabase
     .from("demo_flow_grants")
     .select("granted_at")
@@ -182,6 +202,13 @@ export async function grantDemoFlowOnWelcome(
     .is("granted_at", null);
   if (markErr) {
     console.error("[demo-flow] grant mark used:", markErr.message);
+  }
+
+  try {
+    const { data: authData } = await supabase.auth.admin.getUserById(userId);
+    await recordDemoFlowEmailUsage(supabase, authData.user?.email ?? null);
+  } catch (error) {
+    console.warn("[demo-flow] record email usage failed:", error);
   }
 }
 

@@ -2,13 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2, Lock } from "lucide-react";
+
+import type { AccountDeletionStatus } from "@/lib/account/deletion-policy";
+import { accountDeletionBlockedMessageRu, daysLabelRu } from "@/lib/account/deletion-policy";
 
 type DeleteAccountConfirmDialogProps = {
   open: boolean;
   email: string;
   deleting: boolean;
   error: string | null;
+  deletionStatus: AccountDeletionStatus | null;
   onClose: () => void;
   onConfirm: (confirmPhrase: string) => void | Promise<void>;
 };
@@ -20,10 +24,12 @@ export function DeleteAccountConfirmDialog({
   email,
   deleting,
   error,
+  deletionStatus,
   onClose,
   onConfirm,
 }: DeleteAccountConfirmDialogProps) {
   const [confirmPhrase, setConfirmPhrase] = useState("");
+  const blocked = deletionStatus != null && !deletionStatus.allowed;
 
   useEffect(() => {
     if (open) setConfirmPhrase("");
@@ -63,37 +69,68 @@ export function DeleteAccountConfirmDialog({
             className="w-full max-w-[440px] overflow-hidden rounded-[1.25rem] border border-red-200/80 bg-white p-6 shadow-[0_28px_64px_-20px_rgba(15,23,42,0.35)]"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <div className="mb-4 flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
-                <AlertTriangle className="h-5 w-5" />
+            {blocked ? (
+              <div className="mb-4 flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+                  <Lock className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 id="delete-account-title" className="text-lg font-semibold tracking-tight text-neutral-950">
+                    Удаление пока недоступно
+                  </h3>
+                  <p className="mt-2 text-[14px] leading-relaxed text-neutral-600">
+                    {accountDeletionBlockedMessageRu(
+                      deletionStatus?.daysRemaining ?? 0,
+                      deletionStatus?.unlockAt ?? null
+                    )}
+                  </p>
+                  {deletionStatus?.daysRemaining != null && deletionStatus.daysRemaining > 0 ? (
+                    <p className="mt-3 text-[13px] font-medium text-amber-800">
+                      Осталось: {deletionStatus.daysRemaining}{" "}
+                      {daysLabelRu(deletionStatus.daysRemaining)}
+                    </p>
+                  ) : null}
+                </div>
               </div>
-              <div>
-                <h3 id="delete-account-title" className="text-lg font-semibold tracking-tight text-neutral-950">
-                  Удалить профиль навсегда?
-                </h3>
-                <p className="mt-2 text-[14px] leading-relaxed text-neutral-600">
-                  Будут удалены все данные аккаунта: проекты, бренд, подписки, баланс ответов, настройки
-                  автоответов и история. После удаления можно зарегистрироваться снова на{" "}
-                  <span className="font-medium text-neutral-900">{email || "этот email"}</span>.
-                </p>
-              </div>
-            </div>
+            ) : (
+              <>
+                <div className="mb-4 flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+                    <AlertTriangle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 id="delete-account-title" className="text-lg font-semibold tracking-tight text-neutral-950">
+                      Удалить профиль навсегда?
+                    </h3>
+                    <p className="mt-2 text-[14px] leading-relaxed text-neutral-600">
+                      Будут удалены все данные аккаунта: проекты, бренд, подписки, баланс ответов, настройки
+                      автоответов и история. Повторная регистрация с тем же email не вернёт демо-поток и
+                      стартовые бонусы.
+                    </p>
+                    <p className="mt-2 text-[13px] text-neutral-500">
+                      Аккаунт:{" "}
+                      <span className="font-medium text-neutral-800">{email || "не указан"}</span>
+                    </p>
+                  </div>
+                </div>
 
-            <label className="block">
-              <span className="mb-2 block text-[13px] font-medium text-neutral-700">
-                Введите <span className="font-semibold text-red-700">{CONFIRM_PHRASE}</span> для подтверждения
-              </span>
-              <input
-                type="text"
-                value={confirmPhrase}
-                disabled={deleting}
-                onChange={(event) => setConfirmPhrase(event.target.value)}
-                className="w-full rounded-xl border border-neutral-200 px-4 py-3 text-[14px] text-neutral-900 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:opacity-60"
-                placeholder={CONFIRM_PHRASE}
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </label>
+                <label className="block">
+                  <span className="mb-2 block text-[13px] font-medium text-neutral-700">
+                    Введите <span className="font-semibold text-red-700">{CONFIRM_PHRASE}</span> для подтверждения
+                  </span>
+                  <input
+                    type="text"
+                    value={confirmPhrase}
+                    disabled={deleting}
+                    onChange={(event) => setConfirmPhrase(event.target.value)}
+                    className="w-full rounded-xl border border-neutral-200 px-4 py-3 text-[14px] text-neutral-900 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:opacity-60"
+                    placeholder={CONFIRM_PHRASE}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </label>
+              </>
+            )}
 
             {error ? (
               <p className="mt-3 text-[13px] font-medium text-red-600" role="alert">
@@ -108,17 +145,19 @@ export function DeleteAccountConfirmDialog({
                 onClick={onClose}
                 className="rounded-xl border border-neutral-200 bg-white px-5 py-3 text-[14px] font-medium text-neutral-800 transition hover:border-[#1F4E3D]/30 hover:bg-[#1F4E3D]/[0.04] hover:text-[#1F4E3D] disabled:opacity-40"
               >
-                Отмена
+                {blocked ? "Понятно" : "Отмена"}
               </button>
-              <button
-                type="button"
-                disabled={deleting || !phraseOk}
-                onClick={() => void onConfirm(confirmPhrase.trim().toUpperCase())}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-700/85 bg-red-700 px-5 py-3 text-[14px] font-semibold text-white shadow-[0_10px_28px_-14px_rgba(185,28,28,0.55)] transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {deleting ? "Удаляем профиль…" : "Удалить профиль"}
-              </button>
+              {!blocked ? (
+                <button
+                  type="button"
+                  disabled={deleting || !phraseOk}
+                  onClick={() => void onConfirm(confirmPhrase.trim().toUpperCase())}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-700/85 bg-red-700 px-5 py-3 text-[14px] font-semibold text-white shadow-[0_10px_28px_-14px_rgba(185,28,28,0.55)] transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {deleting ? "Удаляем профиль…" : "Удалить профиль"}
+                </button>
+              ) : null}
             </div>
           </motion.div>
         </motion.div>
