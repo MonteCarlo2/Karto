@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { createServerClientWithAuth } from "@/lib/supabase/server-auth";
+import {
+  getFlowSessionCredits,
+  mergeVisualStatePreservingCredits,
+} from "@/lib/flow/flow-session-credits";
 
 /**
  * Сохранение результатов потока (визуальные слайды и анализ цены)
@@ -84,10 +88,14 @@ export async function POST(request: NextRequest) {
           .select("visual_state")
           .eq("session_id", session_id)
           .maybeSingle();
-        updateData.visual_state = {
-          ...(existingVisualRow?.visual_state || {}),
-          ...visual_state,
-        };
+        const existing = (existingVisualRow?.visual_state || {}) as Record<string, unknown>;
+        const patch = visual_state as Record<string, unknown>;
+        const freshCredits = await getFlowSessionCredits(supabase, session_id);
+        updateData.visual_state = mergeVisualStatePreservingCredits(
+          existing,
+          patch,
+          freshCredits
+        );
       }
       
       const { error: visualError } = await supabase

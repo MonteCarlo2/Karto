@@ -1,5 +1,9 @@
 import { createServerClient } from "@/lib/supabase/server";
 import type { DesignConcept } from "@/lib/services/style-concept-generator";
+import {
+  getFlowSessionCredits,
+  mergeVisualStatePreservingCredits,
+} from "@/lib/flow/flow-session-credits";
 
 /** Макс. ожидание до доп. запросов (не обязательная пауза — выходим раньше, если все слоты готовы). */
 export const CARD_SLOT_CHECKPOINT_MS =
@@ -206,12 +210,16 @@ export async function persistVisualGeneratedCards(
     .maybeSingle();
 
   const existingState = (existingVisualRow?.visual_state || {}) as Record<string, unknown>;
-  const nextState = {
-    ...existingState,
-    ...extraState,
-    generatedCards: padded,
-    lastGeneratedAt: new Date().toISOString(),
-  };
+  const freshCredits = await getFlowSessionCredits(supabase, sessionId);
+  const nextState = mergeVisualStatePreservingCredits(
+    existingState,
+    {
+      ...extraState,
+      generatedCards: padded,
+      lastGeneratedAt: new Date().toISOString(),
+    },
+    freshCredits
+  );
 
   const { error: saveErr } = await supabase.from("visual_data").upsert(
     {
@@ -236,13 +244,17 @@ export async function persistVisualBatchFlag(
     .maybeSingle();
 
   const existingState = (existingVisualRow?.visual_state || {}) as Record<string, unknown>;
-  const nextState: Record<string, unknown> = {
-    ...existingState,
-    batchInProgress: inProgress,
-  };
+  const freshCredits = await getFlowSessionCredits(supabase, sessionId);
+  const batchPatch: Record<string, unknown> = { batchInProgress: inProgress };
   if (inProgress) {
-    nextState.batchStartedAt = new Date().toISOString();
-  } else {
+    batchPatch.batchStartedAt = new Date().toISOString();
+  }
+  const nextState = mergeVisualStatePreservingCredits(
+    existingState,
+    batchPatch,
+    freshCredits
+  );
+  if (!inProgress) {
     delete nextState.batchStartedAt;
   }
 

@@ -16,6 +16,7 @@ import {
   consumeFlowSessionCredits,
   refundFlowSessionCredits,
 } from "@/lib/flow/flow-session-credits";
+import { logFlowSessionStart } from "@/lib/flow/flow-generation-log";
 
 const DEFAULT_ANIMATE_PROMPT =
   "Subtle cinematic product animation, gentle natural movement, preserve all product text labels and infographic overlays clearly visible, static camera, professional commercial style, high quality";
@@ -131,6 +132,12 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
+
+    await logFlowSessionStart(supabase, "generate-video-flow", sessionId, {
+      user_id: user.id,
+      email: user.email,
+      mode,
+    });
 
     const isDemo = await isDemoProductSession(supabase as never, sessionId);
     if (isDemo && !isFlowDevBypassServerEnabled()) {

@@ -29,6 +29,7 @@ import {
 import { setVisualBatchProgress } from "@/lib/flow/visual-batch-progress";
 import { runFlowGenerateCardForBatch } from "@/app/api/generate-card/route";
 import { getSessionImageResolution } from "@/lib/demo-flow-server";
+import { logFlowSessionStart } from "@/lib/flow/flow-generation-log";
 
 export const maxDuration = 600;
 
@@ -80,6 +81,10 @@ export async function POST(request: NextRequest) {
 
     sessionIdForLog = sessionId;
     const supabase = createServerClient();
+    await logFlowSessionStart(supabase as any, "generate-cards-batch", sessionId, {
+      productName: String(productName).slice(0, 80),
+      count: Number(count) || 4,
+    });
     const imageResolution = await getSessionImageResolution(supabase as any, sessionId);
     const photoCost = photoCreditCost(imageResolution);
     const creditsBefore = await getFlowSessionCredits(supabase as any, sessionId);
@@ -354,7 +359,18 @@ export async function POST(request: NextRequest) {
       { generationUnits: successfulCards.length }
     );
     if (!consumed.ok) {
-      console.warn("[BATCH] consume credits after success failed:", consumed.error);
+      console.error("[BATCH] consume credits after success failed:", consumed.error);
+      setVisualBatchProgress(sessionId, cardUrls, false);
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Не удалось списать кредиты Потока. Генерация остановлена.",
+          code: "insufficient_flow_credits",
+          credits_remaining: consumed.state?.credits_remaining ?? creditsBefore.credits_remaining,
+          credits_total: consumed.state?.credits_total ?? creditsBefore.credits_total,
+        },
+        { status: 403 }
+      );
     }
     const quotaAfter = await getVisualQuota(supabase as any, sessionId);
 

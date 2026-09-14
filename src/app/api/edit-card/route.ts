@@ -9,6 +9,7 @@ import {
 } from "@/lib/flow/flow-session-credits";
 import { photoCreditCost } from "@/lib/credits-pricing";
 import { getSessionImageResolution } from "@/lib/demo-flow-server";
+import { logFlowSessionStart } from "@/lib/flow/flow-generation-log";
 
 /**
  * API endpoint для редактирования карточки товара
@@ -35,6 +36,9 @@ export async function POST(request: NextRequest) {
     let photoCost = 0;
     if (sessionId) {
       const supabase = createServerClient();
+      await logFlowSessionStart(supabase as any, "edit-card", sessionId, {
+        productName: typeof productName === "string" ? productName.slice(0, 80) : undefined,
+      });
       imageResolution = await getSessionImageResolution(supabase as any, sessionId);
       photoCost = photoCreditCost(imageResolution);
       const credits = await getFlowSessionCredits(supabase as any, sessionId);

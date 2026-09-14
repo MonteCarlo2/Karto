@@ -15,6 +15,7 @@ import {
   SLIDE_GENERATION_MAX_WAIT_MS,
 } from "@/lib/flow/slide-generation-race";
 import { getSessionImageResolution } from "@/lib/demo-flow-server";
+import { logFlowSessionStart } from "@/lib/flow/flow-generation-log";
 
 export const maxDuration = 600;
 
@@ -68,6 +69,9 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createServerClient();
+    await logFlowSessionStart(supabase as any, "generate-slide", sessionId, {
+      productName: String(productName).slice(0, 80),
+    });
     const imageResolution = await getSessionImageResolution(supabase as any, sessionId);
     const photoCost = photoCreditCost(imageResolution);
     const creditsBefore = await getFlowSessionCredits(supabase as any, sessionId);

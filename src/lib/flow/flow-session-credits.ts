@@ -73,6 +73,29 @@ export async function seedFlowSessionCredits(
   return state;
 }
 
+/**
+ * При upsert visual_state не перезаписываем кредиты устаревшим снимком
+ * (гонка persist карточек vs consumeFlowSessionCredits после батча).
+ */
+export function mergeVisualStatePreservingCredits(
+  existing: Record<string, unknown>,
+  patch: Record<string, unknown>,
+  credits: FlowCreditsState | null
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...existing, ...patch };
+  if (!credits || credits.credits_total <= 0) return next;
+  next.credits_remaining = credits.credits_remaining;
+  next.credits_total = credits.credits_total;
+  next.credits_spent = credits.credits_spent;
+  if (credits.generation_used != null) {
+    next.generation_used = credits.generation_used;
+  }
+  if (credits.generation_limit != null) {
+    next.generation_limit = credits.generation_limit;
+  }
+  return next;
+}
+
 export async function getFlowSessionCredits(
   supabase: SupabaseClient,
   sessionId: string

@@ -10,6 +10,7 @@ import {
 } from "@/lib/subscription";
 import { DEMO_FLOW_PLAN_TYPE } from "@/lib/demo-flow";
 import { seedFlowSessionCredits } from "@/lib/flow/flow-session-credits";
+import { logFlowSessionStart } from "@/lib/flow/flow-generation-log";
 
 /** Получить user id: сначала из Authorization, затем из cookies */
 async function getUserIdFromRequest(request: NextRequest, supabase: ReturnType<typeof createServerClient>): Promise<string | null> {
@@ -144,6 +145,12 @@ async function chargeFlowAndCreateSession(
   await seedFlowSessionCredits(supabase, newSession.id as string, {
     isDemo: useDemo,
     flowPlanVolume: Number(row.plan_volume) || 1,
+  });
+
+  await logFlowSessionStart(supabase, "flow-start", newSession.id as string, {
+    user_id: userId,
+    flow_charged: true,
+    plan_type: planType,
   });
 
   return { sessionId: newSession.id as string, isDemo: useDemo, flowCharged: true };
