@@ -3909,6 +3909,20 @@ export default function FreeGeneration() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={async () => {
+                const supabaseAuth = createBrowserClient();
+                const {
+                  data: { user: verifiedUser },
+                } = await supabaseAuth.auth.getUser();
+                if (!verifiedUser) {
+                  showToast({
+                    type: "info",
+                    title: "Войдите в аккаунт",
+                    message: "Чтобы отправить запрос, войдите или зарегистрируйтесь.",
+                  });
+                  router.push(buildStudioLoginHref("/studio/free"));
+                  return;
+                }
+
                 if (activeSlideId === null) {
                   showToast({
                     type: "info",

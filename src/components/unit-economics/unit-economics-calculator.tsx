@@ -182,7 +182,7 @@ function downloadResultsCsv(results: UnitEconFulfillmentResult[], productSummary
 }
 
 export function UnitEconomicsCalculator() {
-  const { isLoggedIn, loginHref } = useStudioAuth("/studio/unit-economics");
+  const { isLoggedIn, authReady, loginHref } = useStudioAuth("/studio/unit-economics");
   const [input, setInput] = useState<UnitEconCalculatorInput>(DEFAULT_UNIT_ECON_INPUT);
   const [dimensionMode, setDimensionMode] = useState<"size" | "volume">("size");
   const [calculation, setCalculation] = useState<UnitEconCalculation | null>(null);
@@ -233,7 +233,14 @@ export function UnitEconomicsCalculator() {
   }, [input, dimensionMode, stateRestored]);
 
   useEffect(() => {
-    if (!stateRestored) return;
+    if (!stateRestored || !authReady) return;
+    if (!isLoggedIn) {
+      setCalculation(null);
+      setCalcLoading(false);
+      setCalcError(null);
+      return;
+    }
+
     let cancelled = false;
     setCalcLoading(true);
     setCalcError(null);
@@ -265,7 +272,7 @@ export function UnitEconomicsCalculator() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [input, stateRestored]);
+  }, [input, stateRestored, authReady, isLoggedIn]);
 
   const activeCalculation = calculation ?? {
     marketplace: input.marketplace,
@@ -799,7 +806,16 @@ export function UnitEconomicsCalculator() {
             </MonolithPanel>
 
             <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-3">
-              {isLoggedIn ? (
+              {!authReady ? (
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex h-[54px] min-w-[176px] shrink-0 items-center justify-center rounded-[10px] border-2 border-[#070907]/30 px-8 text-[17px] font-semibold text-[#070907]/40"
+                  style={{ backgroundColor: "#E8E7E1" }}
+                >
+                  Проверяем вход…
+                </button>
+              ) : isLoggedIn ? (
                 <CalculatePrimaryButton onClick={handleCalculate} />
               ) : (
                 <StudioLoginCta href={loginHref} variant="lime" />
@@ -844,7 +860,26 @@ export function UnitEconomicsCalculator() {
                 </button>
               </div>
 
-              {calculation?.results.length ? (
+              {!authReady ? (
+                <p
+                  className="rounded-[12px] border border-dashed border-black/10 bg-white/50 px-4 py-8 text-center text-sm leading-relaxed"
+                  style={{ color: UE.textMuted }}
+                >
+                  Проверяем вход…
+                </p>
+              ) : !isLoggedIn ? (
+                <div
+                  className="rounded-[12px] border border-dashed border-black/10 bg-white/50 px-4 py-8 text-center"
+                  style={{ color: UE.textMuted }}
+                >
+                  <p className="mb-4 text-sm leading-relaxed">
+                    Войдите или зарегистрируйтесь, чтобы увидеть расчёт прибыли и затрат.
+                  </p>
+                  <div className="flex justify-center">
+                    <StudioLoginCta href={loginHref} variant="lime" className="min-w-[220px]" />
+                  </div>
+                </div>
+              ) : calculation?.results.length ? (
                 <UnitEconomicsComparisonTable
                   results={comparisonResults}
                   marketplace={input.marketplace}

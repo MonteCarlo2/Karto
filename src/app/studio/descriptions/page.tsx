@@ -269,7 +269,7 @@ function chipIsActive(preferences: string, chip: string): boolean {
 
 export default function SeoDescriptionsPage() {
   const router = useRouter();
-  const { isLoggedIn, loginHref } = useStudioAuth("/studio/descriptions");
+  const { isLoggedIn, authReady, loginHref } = useStudioAuth("/studio/descriptions");
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const styleTabsRef = useRef<HTMLDivElement | null>(null);
@@ -345,6 +345,10 @@ export default function SeoDescriptionsPage() {
   };
 
   const handleGenerate = async () => {
+    if (!authReady || !isLoggedIn) {
+      router.push(loginHref);
+      return;
+    }
     if (!productName.trim()) {
       alert("Название товара обязательно");
       return;
@@ -381,6 +385,10 @@ export default function SeoDescriptionsPage() {
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          router.push(loginHref);
+          return;
+        }
         const errorData = await response.json().catch(() => ({ error: "Неизвестная ошибка" }));
         const hint = errorData.hint ? `\n\n${errorData.hint}` : "";
         alert(
@@ -434,6 +442,10 @@ export default function SeoDescriptionsPage() {
   };
 
   const handleRegenerate = async () => {
+    if (!authReady || !isLoggedIn) {
+      router.push(loginHref);
+      return;
+    }
     const targetId = selectedVariantId ?? expandedVariantId;
     if (!editInstructions.trim() || !targetId) {
       alert("Укажите, что нужно изменить");
@@ -1118,7 +1130,16 @@ export default function SeoDescriptionsPage() {
 
             {/* Generate — large black, radius 12 */}
             <div className="px-6 pb-5 pt-1">
-              {!isLoggedIn ? (
+              {!authReady ? (
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-4 text-base font-semibold text-white opacity-45"
+                  style={{ background: "#3a3a3a" }}
+                >
+                  Проверяем вход…
+                </button>
+              ) : !isLoggedIn ? (
                 <StudioLoginCta href={loginHref} variant="dark-full" />
               ) : (
                 <button

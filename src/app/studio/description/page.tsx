@@ -36,10 +36,12 @@ import {
   formatForCopy,
   lightSanitizeDescriptionStream,
 } from "@/lib/utils/marketplace-formatter";
+import { StudioLoginCta } from "@/components/auth/studio-login-cta";
 import { FlowProductDescription } from "@/components/studio/ProductDescriptionDisplay";
 import { resolveFlowPhoto, resolveFlowProductName } from "@/lib/flow/flow-photo-cache";
 import { DemoFlowBadge } from "@/components/studio/DemoFlowBadge";
 import { useDemoFlowSession } from "@/lib/hooks/use-demo-flow-session";
+import { useStudioAuth } from "@/hooks/use-studio-auth";
 
 // Статичный эффект рельефной бумаги (копируем из understanding)
 function CanvasTexture({ patternAlpha = 12 }: { patternAlpha?: number }) {
@@ -148,7 +150,8 @@ const PREFERENCE_CHIPS = [
 
 export default function DescriptionPage() {
   const router = useRouter();
-  
+  const { isLoggedIn, authReady, loginHref } = useStudioAuth("/studio/description");
+
   // Данные из предыдущего этапа
   const [productName, setProductName] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -352,6 +355,10 @@ export default function DescriptionPage() {
   
   // Генерация описаний
   const handleGenerate = async () => {
+    if (!authReady || !isLoggedIn) {
+      router.push(loginHref);
+      return;
+    }
     if (!productName.trim()) {
       alert("Название товара обязательно");
       return;
@@ -982,28 +989,41 @@ export default function DescriptionPage() {
               </div>
 
               {/* Кнопка генерации */}
-              <button
-                onClick={handleGenerate}
-                disabled={isGenerating || !productName.trim()}
-                className="w-full py-4 px-6 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  background: productName.trim() && !isGenerating ? "#2E5A43" : "rgba(46, 90, 67, 0.3)",
-                  color: "#ffffff",
-                  border: "none",
-                }}
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Генерируем описания...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-5 h-5" />
-                    Собрать описание
-                  </>
-                )}
-              </button>
+              {!authReady ? (
+                <button
+                  type="button"
+                  disabled
+                  className="w-full py-4 px-6 rounded-xl font-semibold text-white opacity-50"
+                  style={{ background: "rgba(46, 90, 67, 0.3)" }}
+                >
+                  Проверяем вход…
+                </button>
+              ) : !isLoggedIn ? (
+                <StudioLoginCta href={loginHref} variant="dark-full" />
+              ) : (
+                <button
+                  onClick={handleGenerate}
+                  disabled={isGenerating || !productName.trim()}
+                  className="w-full py-4 px-6 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    background: productName.trim() && !isGenerating ? "#2E5A43" : "rgba(46, 90, 67, 0.3)",
+                    color: "#ffffff",
+                    border: "none",
+                  }}
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Генерируем описания...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5" />
+                      Собрать описание
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </motion.div>
         ) : (
@@ -1165,6 +1185,19 @@ export default function DescriptionPage() {
                 ) : null}
 
                 {/* Кнопка перегенерации (outline) */}
+                {!authReady ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="mb-6 w-full rounded-xl border border-[#2E5A43]/30 py-3 px-4 font-medium text-[#2E5A43]/40"
+                  >
+                    Проверяем вход…
+                  </button>
+                ) : !isLoggedIn ? (
+                  <div className="mb-6">
+                    <StudioLoginCta href={loginHref} variant="dark-full" />
+                  </div>
+                ) : (
                 <button
                   onClick={handleGenerate}
                   disabled={isGenerating}
@@ -1187,6 +1220,7 @@ export default function DescriptionPage() {
                     </>
                   )}
                 </button>
+                )}
               </div>
             </div>
 

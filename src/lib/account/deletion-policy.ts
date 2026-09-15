@@ -88,7 +88,5 @@ export function accountDeletionBlockedMessageRu(
           year: "numeric",
         })}.`
       : "";
-  return (
-    `${daysPart}${datePart} Это защита от злоупотреблений: повторная регистрация с тем же email не обходит лимиты сервиса.`
-  );
+  return `${daysPart}${datePart}`.trim();
 }

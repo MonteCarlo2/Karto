@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+
+import { apiUnauthorizedResponse, requireApiUser } from "@/lib/auth/require-api-user";
 import {
   calculateUnitEconomics,
   DEFAULT_UNIT_ECON_INPUT,
@@ -9,7 +11,12 @@ import {
 } from "@/lib/unit-economics/server";
 
 /** POST: расчёт юнит-экономики (пока demo-тарифы; позже — категории из Supabase). */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const auth = await requireApiUser(request);
+  if (!auth.user) {
+    return apiUnauthorizedResponse(auth);
+  }
+
   try {
     const body = (await request.json()) as Partial<UnitEconCalculatorInput>;
     const marketplace = body.marketplace === "wildberries" ? "wildberries" : "ozon";

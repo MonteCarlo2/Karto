@@ -20,17 +20,20 @@ export function useStudioAuth(redirectPath?: string) {
     const supabase = createBrowserClient();
     let mounted = true;
 
-    void supabase.auth.getSession().then(({ data: { session } }) => {
+    void supabase.auth.getUser().then(({ data: { user: verifiedUser } }) => {
       if (!mounted) return;
-      setUser(session?.user ?? null);
+      setUser(verifiedUser ?? null);
       setLoading(false);
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
+      void supabase.auth.getUser().then(({ data: { user: verifiedUser } }) => {
+        if (!mounted) return;
+        setUser(verifiedUser ?? null);
+        setLoading(false);
+      });
     });
 
     return () => {
@@ -43,6 +46,7 @@ export function useStudioAuth(redirectPath?: string) {
     user,
     isLoggedIn: Boolean(user),
     loading,
+    authReady: !loading,
     loginHref,
   };
 }

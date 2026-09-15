@@ -10,6 +10,7 @@ import {
   DEMO_FLOW_DESCRIPTION_STYLE_NAMES,
   DEMO_FLOW_DESCRIPTION_STYLES,
 } from "@/lib/demo-flow";
+import { apiUnauthorizedResponse, requireApiUser } from "@/lib/auth/require-api-user";
 import { guardFlowApiSession } from "@/lib/flow/guard-flow-api-session";
 
 // Допускаем долгий ответ (4 параллельных запроса к OpenRouter), чтобы не обрывать по таймауту
@@ -75,6 +76,11 @@ async function gateDemoDescriptionPost(
  */
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireApiUser(request);
+    if (!auth.user) {
+      return apiUnauthorizedResponse(auth);
+    }
+
     const body = await request.json();
 
     const {
@@ -249,6 +255,11 @@ export async function POST(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
+    const auth = await requireApiUser(request);
+    if (!auth.user) {
+      return apiUnauthorizedResponse(auth);
+    }
+
     const body = await request.json();
 
     const {
