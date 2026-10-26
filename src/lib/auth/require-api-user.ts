@@ -1,6 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
+import { AUTH_REQUIRED_MESSAGE } from "@/lib/auth/auth-required-message";
 import { createServerClientWithAuth } from "@/lib/supabase/server-auth";
 import {
   getUserFromBearerToken,
@@ -11,7 +12,7 @@ export type ApiUserResult =
   | { user: User; error: null; status: 200 }
   | { user: null; error: string; status: 401 | 503 };
 
-export const AUTH_REQUIRED_MESSAGE = "Войдите в аккаунт или зарегистрируйтесь, чтобы пользоваться KARTO.";
+export { AUTH_REQUIRED_MESSAGE };
 
 /**
  * Bearer (мобильные/явные запросы) или cookies Supabase SSR (студия в браузере).

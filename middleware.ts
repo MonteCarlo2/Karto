@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { ATTR_COOKIE_NAME, pickAttributionFromRequest } from "@/lib/attribution";
-import { AUTH_REQUIRED_MESSAGE } from "@/lib/auth/require-api-user";
+import { AUTH_REQUIRED_MESSAGE } from "@/lib/auth/auth-required-message";
 import { requiresAuthApi, requiresAuthPage } from "@/lib/auth/protected-routes";
 
 async function resolveMiddlewareUser(
