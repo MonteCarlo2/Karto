@@ -47,6 +47,7 @@ next-env.d.ts
 public/temp/
 .tmp/
 .vendor/
+karto-diagnostics.json
 
 # impeccable-ignore-start
 # Ephemeral output, runtime state, and per-dev overrides.
@@ -70,3 +71,6 @@ public/temp/
 # вывод scripts/gen-dkim-mailru.ps1 (ключи не в репозиторий)
 scripts/dkim-out/
 supabase/.temp/
+
+# ����� Playwright MCP
+.playwright-mcp/

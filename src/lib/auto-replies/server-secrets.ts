@@ -1,9 +1,15 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { SELLER_HUB_WB_SHOP_ID } from "@/lib/seller-hub/wb-token";
 import type { AutoRepliesMarketplaceId } from "./types";
 
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
+
+/** Строка Seller Hub в общей таблице — не читать/не перешифровывать кодом автоответов. */
+export function isSellerHubSecretShopId(shopId: string): boolean {
+  return shopId === SELLER_HUB_WB_SHOP_ID;
+}
 
 function deriveKey(raw: string): Buffer {
   return scryptSync(raw, "karto-auto-reply-secrets-v1", 32);
@@ -86,6 +92,9 @@ export async function upsertMarketplaceSecrets(
 ): Promise<void> {
   const now = new Date().toISOString();
   for (const entry of entries) {
+    if (isSellerHubSecretShopId(entry.shopId)) {
+      throw new Error("Seller Hub shop_id is reserved and cannot be written by auto-replies");
+    }
     const token = entry.apiKey.trim();
     if (!token) {
       await supabase
@@ -119,7 +128,8 @@ export async function listMarketplaceSecretsForUser(
   const { data, error } = await supabase
     .from("auto_reply_marketplace_secrets")
     .select("shop_id, marketplace_id, api_key_ciphertext, client_id, campaign_id, business_id")
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .neq("shop_id", SELLER_HUB_WB_SHOP_ID);
 
   if (error) {
     if (/does not exist|relation.*auto_reply_marketplace_secrets/i.test(error.message)) {
@@ -128,7 +138,9 @@ export async function listMarketplaceSecretsForUser(
     throw error;
   }
 
-  const rows = (data ?? []) as MarketplaceSecretRow[];
+  const rows = ((data ?? []) as MarketplaceSecretRow[]).filter(
+    (row) => !isSellerHubSecretShopId(row.shop_id),
+  );
   const out: Array<{
     shopId: string;
     marketplaceId: AutoRepliesMarketplaceId;
@@ -150,8 +162,8 @@ export async function listMarketplaceSecretsForUser(
         businessId: row.business_id ?? undefined,
       });
       const reencrypted = encryptAutoReplySecret(apiKey);
-      if (reencrypted !== row.api_key_ciphertext) {
-        void supabase
+      if (reencrypted !== row.api_key_ciphertext && !isSellerHubSecretShopId(row.shop_id)) {
+        await supabase
           .from("auto_reply_marketplace_secrets")
           .update({ api_key_ciphertext: reencrypted, updated_at: new Date().toISOString() })
           .eq("user_id", userId)

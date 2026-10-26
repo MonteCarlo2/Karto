@@ -20,7 +20,8 @@ export async function autoRepliesAuthorizedFetch(
   } = await supabase.auth.getSession();
 
   const headers = new Headers(init?.headers);
-  headers.set("Content-Type", headers.get("Content-Type") ?? "application/json");
+  if (init?.body instanceof FormData) headers.delete("Content-Type");
+  else headers.set("Content-Type", headers.get("Content-Type") ?? "application/json");
   if (session?.access_token) {
     headers.set("Authorization", `Bearer ${session.access_token}`);
   } else {

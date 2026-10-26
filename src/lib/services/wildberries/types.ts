@@ -36,6 +36,8 @@ export type WbFeedback = {
   orderStatus?: string;
   wasViewed?: boolean;
   photoLinks?: { fullSize?: string; miniSize?: string }[];
+  parentFeedbackId?: string | null;
+  childFeedbackId?: string | null;
 };
 
 export type WbFeedbacksListData = {

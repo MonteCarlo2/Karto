@@ -10,6 +10,7 @@ import { UserNotificationBell } from "@/components/layout/user-notification-bell
 import {
   KARTO_CREATIVE_MODE,
   KARTO_FLOW_MODE,
+  KARTO_SELLER_HUB_MODE,
 } from "@/lib/karto-modes"
 import {
   NAV_DROPDOWN_PANEL,
@@ -120,6 +121,22 @@ function StudioMenuGrid({ onNavigate }: { onNavigate?: () => void }) {
             <div className={NAV_MENU_SUBTITLE}>Бесплатные тексты для карточки</div>
           </div>
         </Link>
+        <Link href="/studio/seller-hub" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
+          <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
+            <svg className="h-[22px] w-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7zm4 0h8m-8 5h8m-8 5h5"
+              />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className={NAV_MENU_TITLE}>{KARTO_SELLER_HUB_MODE.title}</div>
+            <div className={NAV_MENU_SUBTITLE}>{KARTO_SELLER_HUB_MODE.tagline}</div>
+          </div>
+        </Link>
       </div>
     </div>
   )
@@ -140,7 +157,8 @@ export function Navbar() {
     pathname === "/studio/free" ||
     pathname.startsWith("/studio/descriptions") ||
     pathname.startsWith("/studio/auto-replies") ||
-    pathname.startsWith("/studio/unit-economics");
+    pathname.startsWith("/studio/unit-economics") ||
+    pathname.startsWith("/studio/seller-hub");
   const { showBadge: profileUpdateBadge, dismissProfileUpdateBadge } = useProfileUpdateBadge()
 
   // Предотвращаем гидратацию до монтирования на клиенте

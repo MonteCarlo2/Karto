@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { readHubCardSeed } from "@/lib/seller-hub/card-seed";
 import { motion, AnimatePresence } from "framer-motion";
 import { StageMenu } from "@/components/ui/stage-menu";
 import { 
@@ -205,6 +206,14 @@ export default function DescriptionPage() {
     const loadData = async () => {
       const savedSessionId = localStorage.getItem("karto_session_id");
       if (!savedSessionId) {
+        const seed = readHubCardSeed();
+        if (seed) {
+          setProductName(seed.title);
+          setUserPreferences(seed.description);
+          setIsRestoring(false);
+          setIsStarted(true);
+          return;
+        }
         router.push("/studio/understanding");
         setIsRestoring(false);
         return;

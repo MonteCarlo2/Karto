@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useRef, useMemo, useLayoutEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  Check,
-  Loader2,
-  Sparkles,
+import { 
+  Check, 
+  Loader2, 
+  Sparkles, 
   Info,
   X,
   Copy,
@@ -28,6 +28,7 @@ import {
   editableHtmlToDescription,
   stripDescriptionMarkup,
 } from "@/lib/utils/description-markup";
+import { seoDescriptionWishes, takeHubCardSeed } from "@/lib/seller-hub/card-seed";
 import { StudioLoginCta } from "@/components/auth/studio-login-cta";
 import { FlowProductDescription } from "@/components/studio/ProductDescriptionDisplay";
 import { KartoVoiceTextarea } from "@/components/shared/karto-voice-textarea";
@@ -274,18 +275,33 @@ export default function SeoDescriptionsPage() {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const styleTabsRef = useRef<HTMLDivElement | null>(null);
   const styleTabBtnRefs = useRef<Record<number, HTMLButtonElement | null>>({});
-
+  
   const [productName, setProductName] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [userPreferences, setUserPreferences] = useState("");
   const [textLength, setTextLength] = useState<DescriptionTextLength>("medium");
   const [showHowItWorks, setShowHowItWorks] = useState(false);
 
+  // Переход из Seller Hub («Собрать SEO-описание»): подставляем название, текущее описание и недостающие ключи.
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      const seed = takeHubCardSeed();
+      if (!seed) return;
+      setProductName((prev) => prev || seed.title);
+      setUserPreferences((prev) => prev || seoDescriptionWishes(seed));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [variants, setVariants] = useState<DescriptionVariant[]>([]);
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
   const [expandedVariantId, setExpandedVariantId] = useState<number | null>(null);
-
+  
   const [editInstructions, setEditInstructions] = useState("");
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [finalDescription, setFinalDescription] = useState<string | null>(null);
@@ -313,12 +329,12 @@ export default function SeoDescriptionsPage() {
   const handlePhotoChange = (file: File | null) => {
     if (!file) {
       setPhotoUrl(null);
-      return;
-    }
+        return;
+      }
     if (!file.type.startsWith("image/")) {
       alert("Выберите изображение");
-      return;
-    }
+        return;
+      }
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") setPhotoUrl(reader.result);
@@ -343,7 +359,7 @@ export default function SeoDescriptionsPage() {
       setUserPreferences(current + (current ? " " : "") + lower);
     }
   };
-
+  
   const handleGenerate = async () => {
     if (!authReady || !isLoggedIn) {
       router.push(loginHref);
@@ -353,7 +369,7 @@ export default function SeoDescriptionsPage() {
       alert("Название товара обязательно");
       return;
     }
-
+    
     setIsGenerating(true);
     setIsEditing(false);
     setShowStickerPicker(false);
@@ -369,7 +385,7 @@ export default function SeoDescriptionsPage() {
         userPreferences.toLowerCase().includes("стикеры/эмодзи") ||
         userPreferences.toLowerCase().includes("стикеры") ||
         userPreferences.toLowerCase().includes("эмодзи");
-
+      
       const response = await fetch("/api/generate-description", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -383,7 +399,7 @@ export default function SeoDescriptionsPage() {
           mark_highlights: true,
         }),
       });
-
+      
       if (!response.ok) {
         if (response.status === 401) {
           router.push(loginHref);
@@ -396,9 +412,9 @@ export default function SeoDescriptionsPage() {
         );
         return;
       }
-
+      
       const data = await response.json();
-
+      
       if (data.success && data.variants && Array.isArray(data.variants) && data.variants.length > 0) {
         setVariants(data.variants);
         setExpandedVariantId(1);
@@ -415,7 +431,7 @@ export default function SeoDescriptionsPage() {
       setIsGenerating(false);
     }
   };
-
+  
   const selectTab = (variantId: number) => {
     if (isEditing && editorRef.current) {
       const next = editableHtmlToDescription(editorRef.current.innerHTML);
@@ -434,13 +450,13 @@ export default function SeoDescriptionsPage() {
         if (finalDescription !== null) setFinalDescription(next);
       }
     }
-    setExpandedVariantId(variantId);
+      setExpandedVariantId(variantId);
     setSelectedVariantId(variantId);
     setFinalDescription(null);
-    setIsEditing(false);
+      setIsEditing(false);
     setShowStickerPicker(false);
   };
-
+  
   const handleRegenerate = async () => {
     if (!authReady || !isLoggedIn) {
       router.push(loginHref);
@@ -451,10 +467,10 @@ export default function SeoDescriptionsPage() {
       alert("Укажите, что нужно изменить");
       return;
     }
-
+    
     const selectedVariant = variants.find((v) => v.id === targetId);
     if (!selectedVariant) return;
-
+    
     // Берём актуальный текст: правки с листа / финал / исходный вариант
     let currentText = selectedVariant.description;
     if (isEditing && editorRef.current) {
@@ -467,13 +483,13 @@ export default function SeoDescriptionsPage() {
     setIsEditing(false);
     setShowStickerPicker(false);
     setIsRegenerating(true);
-
+    
     try {
       const wantsStickers =
         userPreferences.toLowerCase().includes("стикеры/эмодзи") ||
         userPreferences.toLowerCase().includes("стикеры") ||
         userPreferences.toLowerCase().includes("эмодзи");
-
+      
       const response = await fetch("/api/generate-description", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -490,9 +506,9 @@ export default function SeoDescriptionsPage() {
           mark_highlights: true,
         }),
       });
-
+      
       const data = await response.json();
-
+      
       if (data.success && data.description) {
         const next = String(data.description);
         setVariants((prev) =>
@@ -520,7 +536,7 @@ export default function SeoDescriptionsPage() {
       setIsRegenerating(false);
     }
   };
-
+  
   const applySavedText = (next: string) => {
     const targetId = expandedVariantId ?? selectedVariantId;
     if (targetId) {
@@ -713,7 +729,7 @@ export default function SeoDescriptionsPage() {
       className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl font-semibold transition-[background-color,box-shadow,transform,color] duration-200 active:scale-[0.96] ${
         large ? "w-full px-5 py-3.5 text-sm" : "px-3.5 py-2 text-xs"
       }`}
-      style={{
+          style={{
         background: copied ? C.lime : C.green,
         color: copied ? C.ink : C.white,
         boxShadow: copied
@@ -743,7 +759,7 @@ export default function SeoDescriptionsPage() {
         else startInlineEdit();
       }}
       className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-[background-color,color,transform] duration-200 active:scale-[0.96]"
-      style={{
+              style={{ 
         background: isEditing ? C.ink : C.white,
         color: isEditing ? C.white : C.ink,
         border: `1px solid ${C.ink}`,
@@ -767,28 +783,28 @@ export default function SeoDescriptionsPage() {
     <div
       className="relative flex min-h-screen flex-col"
       style={{ background: C.beige, WebkitFontSmoothing: "antialiased" }}
-    >
-      <div
+                >
+                  <div
         className="relative z-[1] mx-auto flex w-[95vw] max-w-[1400px] flex-1 flex-col py-5 md:py-6"
       >
         {/* Header */}
         <div className="mb-5 flex items-start gap-4 md:mb-6">
-          <button
+            <button
             type="button"
-            onClick={() => router.push("/")}
+              onClick={() => router.push("/")}
             className="flex shrink-0 items-center transition-opacity hover:opacity-80"
-          >
-            <Image
-              src="/logo-flow.png"
-              alt="KARTO"
+            >
+              <Image
+                src="/logo-flow.png"
+                alt="KARTO"
               width={80}
               height={80}
-              className="object-contain"
-              priority
-              unoptimized
+                className="object-contain"
+                priority
+                unoptimized
               style={{ width: "auto", height: "4.0625rem", maxHeight: "65px" }}
-            />
-          </button>
+              />
+            </button>
           <div className="min-w-0 flex-1 pt-0.5">
             <div className="flex flex-wrap items-center gap-2.5">
               <h1
@@ -814,13 +830,13 @@ export default function SeoDescriptionsPage() {
               style={{ color: C.muted, lineHeight: 1.5 }}
             >
               Соберём описание с учётом ваших пожеланий — так, чтобы оно подошло маркетплейсу.
-            </p>
-          </div>
-          <button
+              </p>
+            </div>
+              <button
             type="button"
             onClick={() => setShowHowItWorks((v) => !v)}
             className="hidden shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium sm:inline-flex"
-            style={{
+                style={{
               background: showHowItWorks ? C.white : "transparent",
               border: `1px solid ${C.border}`,
               color: C.ink,
@@ -828,12 +844,12 @@ export default function SeoDescriptionsPage() {
           >
             <Info className="h-4 w-4" />
             Как это работает?
-          </button>
-        </div>
+              </button>
+            </div>
 
         <AnimatePresence initial={false}>
-          {showHowItWorks && (
-            <motion.div
+              {showHowItWorks && (
+                <motion.div
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
@@ -850,25 +866,25 @@ export default function SeoDescriptionsPage() {
                   className="text-base font-semibold"
                   style={{ fontFamily: "var(--font-serif), Georgia, serif", color: C.ink }}
                 >
-                  Как это работает?
-                </h2>
-                <button
+                        Как это работает?
+                      </h2>
+                      <button
                   type="button"
-                  onClick={() => setShowHowItWorks(false)}
+                        onClick={() => setShowHowItWorks(false)}
                   className="rounded-lg p-1"
                   style={{ color: C.muted }}
-                >
+                      >
                   <X className="h-4 w-4" />
-                </button>
-              </div>
+                      </button>
+                    </div>
               <div className="space-y-1 text-sm" style={{ color: C.muted, lineHeight: 1.55 }}>
                 <p>• Товар, пожелания и длина — Короче / Авто / Длиннее</p>
                 <p>• ИИ даст 4 стиля описания; выберите подходящий</p>
                 <p>• Правки на листе или через «Что изменить», затем копируйте в карточку</p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
         {/* Workspace: широкая панель настроек + лист по ширине текста */}
         <div className="flex flex-col items-stretch gap-8 lg:flex-row lg:items-start">
@@ -903,7 +919,7 @@ export default function SeoDescriptionsPage() {
                     type="button"
                     onClick={() => photoInputRef.current?.click()}
                     className="relative flex h-[96px] w-[96px] shrink-0 items-center justify-center overflow-hidden transition-transform active:scale-[0.96]"
-                    style={{
+                  style={{
                       borderRadius: 12,
                       background: C.softBeige,
                       border: `1px solid ${C.border}`,
@@ -934,17 +950,17 @@ export default function SeoDescriptionsPage() {
                         background: C.white,
                         border: `1px solid ${C.border}`,
                         color: C.ink,
-                      }}
-                      onFocus={(e) => {
+                  }}
+                  onFocus={(e) => {
                         e.currentTarget.style.borderColor = C.ink;
                         e.currentTarget.style.boxShadow =
                           "0 0 0 3px rgba(185, 255, 75, 0.35)";
-                      }}
-                      onBlur={(e) => {
+                  }}
+                  onBlur={(e) => {
                         e.currentTarget.style.borderColor = C.border;
-                        e.currentTarget.style.boxShadow = "none";
-                      }}
-                    />
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
+                />
                     <button
                       type="button"
                       onClick={() => photoInputRef.current?.click()}
@@ -953,8 +969,8 @@ export default function SeoDescriptionsPage() {
                     >
                       {photoUrl ? "Заменить фото" : "Фото (необяз.)"}
                     </button>
-                  </div>
                 </div>
+              </div>
               </section>
 
               {/* Preferences — compact */}
@@ -965,7 +981,7 @@ export default function SeoDescriptionsPage() {
                     style={{ color: C.muted }}
                   >
                     Пожелания
-                  </label>
+                </label>
                   <div
                     className="relative inline-flex rounded-[12px] p-1"
                     style={{ background: "rgba(0,0,0,0.06)" }}
@@ -974,23 +990,23 @@ export default function SeoDescriptionsPage() {
                   >
                     {TEXT_LENGTH_OPTIONS.map((opt) => {
                       const active = textLength === opt.id;
-                      return (
-                        <button
+                    return (
+                      <button
                           key={opt.id}
                           type="button"
                           onClick={() => setTextLength(opt.id)}
                           className="relative z-[1] rounded-[9px] px-3.5 py-1.5 text-[13px] font-semibold transition-[color,background-color] duration-200"
-                          style={{
+                        style={{
                             background: active ? C.ink : "transparent",
                             color: active ? C.white : C.muted,
                           }}
                         >
                           {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
+                      </button>
+                    );
+                  })}
                 </div>
+              </div>
                 <KartoVoiceTextarea
                   value={userPreferences}
                   onChange={setUserPreferences}
@@ -1012,22 +1028,22 @@ export default function SeoDescriptionsPage() {
                   {PREFERENCE_CHIPS.map((chip) => {
                     const active = chipIsActive(userPreferences, chip);
                     return (
-                      <button
+              <button
                         key={chip}
                         type="button"
                         onClick={() => togglePreferenceChip(chip)}
                         className="rounded-lg px-2.5 py-1 text-[11px] font-semibold tracking-tight transition-[background-color,color,border-color,transform] duration-200 active:scale-[0.96]"
-                        style={{
+                style={{
                           background: active ? C.ink : C.white,
                           color: active ? C.white : C.ink,
                           border: `1px solid ${active ? C.ink : "#C8C6BC"}`,
                         }}
                       >
                         + {chip}
-                      </button>
+              </button>
                     );
                   })}
-                </div>
+                        </div>
               </section>
 
               {/* Quality — beige widget */}
@@ -1069,17 +1085,17 @@ export default function SeoDescriptionsPage() {
                           strokeLinecap="round"
                           transform="rotate(-90 28 28)"
                         />
-                      </svg>
-                      <div className="absolute inset-0 flex items-center justify-center">
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
                         <span
                           className="text-[13px] font-bold tabular-nums"
                           style={{ color: C.ink }}
                         >
                           {quality.qualityScore}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                            </span>
+                          </div>
+                        </div>
+                          </div>
                   <div className="space-y-2 text-[13px]">
                     <div className="flex justify-between gap-2">
                       <span style={{ color: C.muted }}>Длина</span>
@@ -1095,24 +1111,24 @@ export default function SeoDescriptionsPage() {
                         }}
                       >
                         {quality.lengthLabel}
-                      </span>
-                    </div>
+                            </span>
+                          </div>
                     <div className="flex justify-between gap-2 text-[11px]" style={{ color: C.muted }}>
                       <span>WB ≤ {WB_CHAR_LIMIT}</span>
                       <span>Ozon ≤ {OZON_CHAR_LIMIT}</span>
-                    </div>
+                        </div>
                     <div className="flex justify-between gap-2">
                       <span style={{ color: C.muted }}>Стоп-слова</span>
                       <span
                         className="inline-flex items-center gap-1.5 font-semibold"
-                        style={{
+                    style={{
                           color: quality.issues.length > 0 ? "#dc2626" : C.greenMid,
-                        }}
+                    }}
                       >
                         {quality.issues.length > 0 ? `${quality.issues.length}` : "Нет"}
                         {quality.issues.length === 0 && <Check className="h-3.5 w-3.5" />}
                       </span>
-                    </div>
+                </div>
                     <div className="flex justify-between gap-2">
                       <span style={{ color: C.muted }}>Формат</span>
                       <span
@@ -1122,11 +1138,11 @@ export default function SeoDescriptionsPage() {
                         Plain text
                         <Check className="h-3.5 w-3.5" />
                       </span>
-                    </div>
+                  </div>
                   </div>
                 </section>
               )}
-            </div>
+                </div>
 
             {/* Generate — large black, radius 12 */}
             <div className="px-6 pb-5 pt-1">
@@ -1181,12 +1197,12 @@ export default function SeoDescriptionsPage() {
                   )}
                 </button>
               )}
-            </div>
+              </div>
           </aside>
 
           {/* RIGHT — лист под текст, чуть шире вправо */}
           <main className="relative w-full max-w-[820px] shrink-0">
-            {isGenerating ? (
+                {isGenerating ? (
               <DescriptionGeneratingPanel />
             ) : finalDescription || variants.length > 0 ? (
               <div
@@ -1224,7 +1240,7 @@ export default function SeoDescriptionsPage() {
                         const isActive = activeTabId === variant.id;
 
                         return (
-                          <button
+                      <button
                             key={variant.id}
                             type="button"
                             ref={(el) => {
@@ -1232,7 +1248,7 @@ export default function SeoDescriptionsPage() {
                             }}
                             onClick={() => selectTab(variant.id)}
                             className="relative z-[1] inline-flex min-w-0 flex-1 items-center justify-center gap-1 whitespace-nowrap px-2 py-2 text-[12px] font-semibold transition-colors duration-200 sm:px-2.5 sm:text-[13px]"
-                            style={{
+                        style={{
                               color: isActive ? C.white : C.muted,
                               background: "transparent",
                               border: "none",
@@ -1242,7 +1258,7 @@ export default function SeoDescriptionsPage() {
                               {config?.emoji}
                             </span>
                             {config?.label || variant.style}
-                          </button>
+                      </button>
                         );
                       })}
                     </div>
@@ -1269,7 +1285,7 @@ export default function SeoDescriptionsPage() {
                             exit={{ opacity: 0, y: 4, scale: 0.98 }}
                             transition={{ duration: 0.22 }}
                             className="absolute right-0 top-[calc(100%+10px)] z-30 w-[min(320px,78vw)] rounded-xl p-3 text-left shadow-lg"
-                            style={{
+                        style={{ 
                               background: C.ink,
                               color: C.white,
                               border: `1px solid rgba(185,255,75,0.35)`,
@@ -1290,8 +1306,8 @@ export default function SeoDescriptionsPage() {
                           </motion.div>
                         )}
                       </AnimatePresence>
+                      </div>
                     </div>
-                  </div>
                 )}
 
                 {/* Текст на всю ширину листа — без узкой колонки внутри */}
@@ -1318,7 +1334,7 @@ export default function SeoDescriptionsPage() {
                               border: `1px solid ${C.border}`,
                             }}
                           >
-                            <button
+                      <button
                               type="button"
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={applyBoldToSelection}
@@ -1338,18 +1354,18 @@ export default function SeoDescriptionsPage() {
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => setShowStickerPicker((v) => !v)}
                               className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors hover:bg-white"
-                              style={{
+                        style={{
                                 color: C.ink,
                                 background: showStickerPicker ? C.white : "transparent",
-                              }}
+                        }}
                               title="Стикеры"
                               aria-label="Стикеры"
                               aria-expanded={showStickerPicker}
-                            >
+                      >
                               <SmilePlus className="h-4 w-4" strokeWidth={2.25} />
                               Стикеры
-                            </button>
-                          </div>
+                      </button>
+                    </div>
 
                           <AnimatePresence>
                             {showStickerPicker && (
@@ -1369,22 +1385,22 @@ export default function SeoDescriptionsPage() {
                                 >
                                   <div className="mb-0 flex flex-wrap gap-1.5">
                                     {EDITOR_STICKERS.map((sticker) => (
-                                      <button
+                            <button
                                         key={sticker}
                                         type="button"
                                         onMouseDown={(e) => e.preventDefault()}
                                         onClick={() => insertSticker(sticker)}
                                         className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-lg transition-[background-color,transform] duration-150 hover:bg-white active:scale-95"
-                                        style={{
+                              style={{
                                           border: `1px solid ${C.border}`,
                                           background: C.white,
                                         }}
                                         title={`Вставить ${sticker}`}
                                       >
                                         {sticker}
-                                      </button>
+                            </button>
                                     ))}
-                                  </div>
+                      </div>
                                 </div>
                               </motion.div>
                             )}
@@ -1437,7 +1453,7 @@ export default function SeoDescriptionsPage() {
                           >
                             Сделать полную карточку в Потоке →
                           </button>
-                        </div>
+                    </div>
                       </div>
                     ) : (
                       variants.map((variant) => {
@@ -1507,7 +1523,7 @@ export default function SeoDescriptionsPage() {
                         );
                       })
                     )}
-                  </div>
+                            </div>
 
                   {/* Compact floating search-style prompt */}
                   {showFloatingPrompt && (
@@ -1530,11 +1546,11 @@ export default function SeoDescriptionsPage() {
                         <div className="min-w-0 flex-1">
                           <input
                             type="text"
-                            value={editInstructions}
-                            onChange={(e) => setEditInstructions(e.target.value)}
+                                      value={editInstructions}
+                                      onChange={(e) => setEditInstructions(e.target.value)}
                             placeholder="Что изменить в описании?"
                             className="w-full bg-transparent text-sm outline-none"
-                            style={{
+                                      style={{
                               color: C.ink,
                               lineHeight: 1.4,
                               padding: "6px 2px",
@@ -1544,35 +1560,35 @@ export default function SeoDescriptionsPage() {
                                 e.preventDefault();
                                 void handleRegenerate();
                               }
-                            }}
-                          />
-                        </div>
-                        <button
+                                      }}
+                                    />
+                                  </div>
+                                  <button
                           type="button"
-                          onClick={handleRegenerate}
-                          disabled={!editInstructions.trim() || isRegenerating}
+                                    onClick={handleRegenerate}
+                                    disabled={!editInstructions.trim() || isRegenerating}
                           className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-sm font-semibold transition-[background-color,transform,opacity] duration-200 active:scale-[0.96] disabled:opacity-40"
-                          style={{
+                                    style={{
                             background:
                               editInstructions.trim() && !isRegenerating
                                 ? C.ink
                                 : "#3a3a3a",
                             color: C.white,
-                          }}
-                        >
-                          {isRegenerating ? (
+                                    }}
+                                  >
+                                    {isRegenerating ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                             <Sparkles className="h-4 w-4" />
                           )}
                           Переделать
-                        </button>
-                      </div>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                     </div>
-                  )}
-                </div>
-              </div>
-            ) : (
+                  </div>
+                ) : (
               <div
                 className="flex min-h-[420px] flex-col items-center justify-center px-8 text-center"
                 style={{
@@ -1586,15 +1602,15 @@ export default function SeoDescriptionsPage() {
                   style={{ background: C.ink }}
                 >
                   <FileTextIcon className="h-6 w-6" style={{ color: C.lime }} />
-                </div>
+                  </div>
                 <p className="mb-1.5 text-[15px] font-semibold" style={{ color: C.ink }}>
                   Здесь появятся 4 варианта описания
                 </p>
                 <p className="max-w-sm text-sm" style={{ color: C.muted, lineHeight: 1.55 }}>
                   Слева укажите товар и пожелания, затем нажмите «Собрать описание».
                 </p>
-              </div>
-            )}
+          </div>
+        )}
           </main>
         </div>
       </div>

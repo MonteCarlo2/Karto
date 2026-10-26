@@ -7,6 +7,7 @@ import type {
 import type { AutoRepliesMarketplaceId } from "@/lib/auto-replies/types";
 import { getAutoReplyBalance } from "@/lib/auto-replies-balance";
 import { listMarketplaceSecretsForUser } from "@/lib/auto-replies/server-secrets";
+import { SELLER_HUB_WB_SHOP_ID } from "@/lib/seller-hub/wb-token";
 import { runWildberriesInboxSync } from "@/lib/auto-replies/inbox-sync-wildberries-core";
 import { runYandexInboxSync } from "@/lib/auto-replies/inbox-sync-yandex-core";
 import { runOzonInboxSync } from "@/lib/auto-replies/inbox-sync-ozon-core";
@@ -80,7 +81,10 @@ async function processAutoReplyInboxCronInner(
       .select("user_id, settings_json")
       .order("updated_at", { ascending: false })
       .limit(userLimit),
-    supabase.from("auto_reply_marketplace_secrets").select("user_id"),
+    supabase
+      .from("auto_reply_marketplace_secrets")
+      .select("user_id")
+      .neq("shop_id", SELLER_HUB_WB_SHOP_ID),
   ]);
 
   if (stateErr) {
@@ -149,7 +153,8 @@ async function processAutoReplyInboxCronInner(
     const { data: secretRowRefs } = await supabase
       .from("auto_reply_marketplace_secrets")
       .select("shop_id, marketplace_id")
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .neq("shop_id", SELLER_HUB_WB_SHOP_ID);
     const secretRowKeys = new Set(
       (secretRowRefs ?? []).map((r) => `${r.shop_id as string}:${r.marketplace_id as string}`)
     );

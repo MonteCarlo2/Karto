@@ -15,6 +15,11 @@ export const KARTO_REVIEWS_MODE = {
   tagline: "Ответы на отзывы покупателей",
 } as const;
 
+export const KARTO_SELLER_HUB_MODE = {
+  title: "Seller Hub",
+  tagline: "Каталог SKU и API-хаб маркетплейса",
+} as const;
+
 export const KARTO_PRICING_MODES = [
   KARTO_FLOW_MODE,
   KARTO_CREATIVE_MODE,

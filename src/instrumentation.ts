@@ -9,6 +9,13 @@ export async function register() {
     console.error("[instrumentation] auto-reply scheduler failed to start:", e);
   }
 
+  try {
+    const { startSellerHubBackgroundScheduler } = await import("@/lib/seller-hub/sync/scheduler");
+    startSellerHubBackgroundScheduler();
+  } catch (e) {
+    console.error("[instrumentation] seller-hub scheduler failed to start:", e);
+  }
+
   // Telegram polling не стартуем здесь — иначе Turbopack залипает на старом bot-api без прокси.
   // Polling/process запускается из link-token и process-updates.
 

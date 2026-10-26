@@ -15,7 +15,8 @@ export function Footer() {
   const hideOnImmersiveStudio =
     pathname === "/studio/free" ||
     pathname.startsWith("/studio/auto-replies") ||
-    pathname.startsWith("/studio/unit-economics");
+    pathname.startsWith("/studio/unit-economics") ||
+    pathname.startsWith("/studio/seller-hub");
 
   useEffect(() => {
     let mounted = true
