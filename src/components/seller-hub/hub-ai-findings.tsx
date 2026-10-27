@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { acceptSellerHubAiFinding, dismissSellerHubAiFinding, loadSellerHubAiFeed, markSellerHubPlanStep, setSellerHubPlanAutopilot, type AiFeedItem } from "@/lib/seller-hub/client-api";
-import { describeCondition, describePlanAction, effectReport, evidenceLabel, stepCompliance, stepProgress } from "@/lib/seller-hub/agent/strategy";
+import { planBrief, describeCondition, describePlanAction, effectReport, evidenceLabel, stepCompliance, stepProgress } from "@/lib/seller-hub/agent/strategy";
 import { writeHubCardSeed } from "@/lib/seller-hub/card-seed";
 import { HubBadge, HubButton, HubPanel, hub } from "./hub-ui";
 
@@ -62,6 +62,9 @@ export function HubAiFindings({ titleByNm, cardByNm, chatId, reloadKey }: { titl
   }
 
   if (items.length === 0) return null;
+  const planned = items.filter((i) => i.finding?.strategy);
+  const programActions = planned.reduce((n, i) => n + planBrief(i.finding!.strategy!).program.length, 0);
+  const humanActions = planned.reduce((n, i) => n + planBrief(i.finding!.strategy!).humanSteps, 0);
 
   return (
     <HubPanel className="px-4 py-3">
@@ -69,6 +72,11 @@ export function HubAiFindings({ titleByNm, cardByNm, chatId, reloadKey }: { titl
         <HubBadge tone="accent">ИИ</HubBadge>
         <p className="text-[13px] font-semibold" style={{ color: hub.text }}>{chatId ? "Планы по вашей задаче" : "Что заметил ИИ и как предлагает решать"}</p>
       </div>
+      {chatId && planned.length > 0 ? (
+        <p className="mb-2 text-[12px] leading-4" style={{ color: hub.textMuted }}>
+          Решение подготовлено для товаров: {planned.length} (один план на один товар). Всего действий программы по вашей кнопке: {programActions}, ваших шагов: {humanActions}. Ничего не выполнится, пока вы не примете план и не нажмёте «Выполнить».
+        </p>
+      ) : null}
       <ul className="space-y-3">
         {(showAll || chatId ? items : items.slice(0, 3)).map((item) => {
           const f = item.finding!;
@@ -253,6 +261,28 @@ export function HubAiFindings({ titleByNm, cardByNm, chatId, reloadKey }: { titl
                 </div>
               ) : null}
               {!st && f.humanAdvice ? <p className="mt-1.5 text-[13px] leading-5" style={{ color: hub.text }}>Что сделать: {f.humanAdvice}</p> : null}
+
+              {st && !f.ownerAccepted ? (
+                (() => {
+                  const brief = planBrief(st);
+                  const title = (f.nmId && titleByNm?.get(f.nmId)) || (f.nmId ? `артикул ${f.nmId}` : "магазин");
+                  return (
+                    <div className="mt-2 rounded-md px-2.5 py-2" style={{ background: hub.borderSoft }}>
+                      <p className="text-[12px] font-semibold" style={{ color: hub.text }}>Итог перед запуском</p>
+                      <p className="text-[12px] leading-4" style={{ color: hub.text }}>Применяется к: {title}.</p>
+                      <p className="text-[12px] leading-4" style={{ color: hub.text }}>Цель: {brief.goal}</p>
+                      <p className="text-[12px] leading-4" style={{ color: hub.text }}>
+                        {brief.program.length > 0
+                          ? `Сделает программа по вашей кнопке «Выполнить» (сама в кабинет ничего не изменит): ${brief.program.map((a) => `${a.condition ? `если ${a.condition}: ` : ""}${a.text}`).join("; ")}.`
+                          : "Программа сама ничего не меняет в кабинете: в плане только шаги для вас."}
+                      </p>
+                      {brief.humanSteps > 0 ? <p className="text-[12px] leading-4" style={{ color: hub.text }}>Ваших шагов: {brief.humanSteps} (с отметками «сделал» и «пропустил»).</p> : null}
+                      {brief.success.length > 0 ? <p className="text-[12px] leading-4" style={{ color: hub.text }}>Результат оценим по: {brief.success.join(", ")}{brief.horizonDays ? ` (итог через ${brief.horizonDays} дн.)` : ""}.</p> : null}
+                      {brief.guards.length > 0 ? <p className="text-[12px] leading-4" style={{ color: hub.textMuted }}>Остановим план, если нарушится: {brief.guards.join(", ")}.</p> : null}
+                    </div>
+                  );
+                })()
+              ) : null}
 
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                 <HubBadge tone={second.tone} title={f.secondReason || undefined}>{second.text}</HubBadge>

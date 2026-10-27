@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { MAX_PLAN_PRODUCTS, chatGroups, chatPayload, chatTitle, parseChatTurn, parsePlanForProduct, planProductPayload, type ChatProduct } from "./chat";
+import { SCOPE_QUESTION, MAX_PLAN_PRODUCTS, chatGroups, chatPayload, chatTitle, parseChatTurn, parsePlanForProduct, planProductPayload, type ChatProduct } from "./chat";
 
 const products: ChatProduct[] = [
   { nmId: "1", title: "Ведро", facts: { orders_28d: 15, margin_pct: -3, cart_pct: 4 }, tasks: ["Убыточная цена"] },
@@ -90,5 +90,21 @@ describe("чат «поставить задачу»: запросы к ИИ", (
   });
   it("заголовок диалога: первая реплика без лишних пробелов", () => {
     assert.equal(chatTitle("  Увеличить   продажи \n сегодня "), "Увеличить продажи сегодня");
+  });
+  it("общая задача без названной области: вместо планов вопрос, к чему применить", () => {
+    const t = parseChatTurn(turn("plan", { scope: "unclear", selected: [{ nmId: "1", why: "падают заказы" }] }), products, 0, "Поднять маржу");
+    assert.equal(t.mode, "ask");
+    assert.deepEqual(t.questions, [SCOPE_QUESTION]);
+    assert.equal(t.selected.length, 0);
+  });
+  it("«весь магазин» без слов владельца о магазине тоже уточняется; со словами «ко всему магазину» идёт в планы", () => {
+    const body = turn("plan", { scope: "store", selected: [{ nmId: "1", why: "w" }] });
+    assert.equal(parseChatTurn(body, products, 0, "увеличить продажи").mode, "ask");
+    assert.equal(parseChatTurn(body, products, 1, "увеличить продажи, ко всему магазину").mode, "plan");
+  });
+  it("конкретный товар или группа идут сразу в планы; после раундов вопросов область не спрашивается снова", () => {
+    assert.equal(parseChatTurn(turn("plan", { scope: "product", selected: [{ nmId: "1", why: "w" }] }), products, 0, "ведро 12 литров").mode, "plan");
+    assert.equal(parseChatTurn(turn("plan", { scope: "group", selected: [{ nmId: "1", why: "w" }] }), products, 0, "все залежавшиеся").mode, "plan");
+    assert.equal(parseChatTurn(turn("plan", { scope: "unclear", selected: [{ nmId: "1", why: "w" }] }), products, 2, "сделай").mode, "plan");
   });
 });

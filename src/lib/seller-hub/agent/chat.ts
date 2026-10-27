@@ -127,8 +127,14 @@ export function chatGroups(products: ChatProduct[], chatId: string, goal: string
   }));
 }
 
-export function parseChatTurn(raw: string, products: ChatProduct[], roundsUsed: number): ChatTurnParsed {
-  const json = extractJson(raw) as { mode?: unknown; reply?: unknown; questions?: unknown; selected?: unknown } | null;
+/** Вопрос об области задачи: задаётся, когда владелец не сказал, к чему применить решение. */
+export const SCOPE_QUESTION = "К чему применить решение: к конкретному товару (назовите артикул или название), к группе товаров (к какой именно) или ко всему магазину?";
+
+/** Владелец сам указал, что решать нужно для всего магазина или оставил выбор за ИИ. */
+export const OWNER_LEFT_SCOPE_TO_AI = /(все\s+товар|всем\s+товар|всех\s+товар|весь\s+магазин|всему\s+магазину|по\s+всему|в\s+целом\s+по\s+магазину|целиком|сам\s+реши|на\s+твоё\s+усмотрение|на\s+твое\s+усмотрение|любые|весь\s+каталог|по\s+магазину)/i;
+
+export function parseChatTurn(raw: string, products: ChatProduct[], roundsUsed: number, ownerText = ""): ChatTurnParsed {
+  const json = extractJson(raw) as { mode?: unknown; scope?: unknown; reply?: unknown; questions?: unknown; selected?: unknown } | null;
   if (!json || typeof json !== "object") return { mode: "ask", reply: "Не получилось разобрать ответ. Повторите, пожалуйста, задачу.", questions: [], selected: [], dropped: 0, reasons: ["ответ не разобран"] };
   const reply = typeof json.reply === "string" ? json.reply.trim().slice(0, 1500) : "";
   const questions = (Array.isArray(json.questions) ? json.questions : []).filter((q): q is string => typeof q === "string" && q.trim().length > 0).map((q) => q.trim().slice(0, 300)).slice(0, 3);
@@ -146,6 +152,12 @@ export function parseChatTurn(raw: string, products: ChatProduct[], roundsUsed: 
     seen.add(nmId);
     selected.push({ nmId, why: typeof s.why === "string" ? s.why.trim().slice(0, 300) : "" });
     if (selected.length >= MAX_PLAN_PRODUCTS) break;
+  }
+  // Область задачи не названа (общая задача без товара, группы или слов «ко всему магазину»): сначала спрашиваем, а не угадываем.
+  const scope = json.scope;
+  const scopeUnclear = scope === "unclear" || (scope === "store" && !OWNER_LEFT_SCOPE_TO_AI.test(ownerText));
+  if (json.mode === "plan" && selected.length > 0 && scopeUnclear && roundsUsed < MAX_QUESTION_ROUNDS) {
+    return { mode: "ask", reply: reply || "Чтобы решение было точным, мне нужно понять, к чему его применить.", questions: [SCOPE_QUESTION], selected: [], dropped: reasons.length, reasons };
   }
   if (json.mode === "plan" && selected.length > 0) return { mode: "plan", reply, questions: [], selected, dropped: reasons.length, reasons };
   if (questions.length > 0 && roundsUsed < MAX_QUESTION_ROUNDS) return { mode: "ask", reply, questions, selected: [], dropped: reasons.length, reasons };

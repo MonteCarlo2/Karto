@@ -577,6 +577,28 @@ export function dueProgramSteps(strategy: Strategy, input: { doneSteps: number[]
 /** Условие-триггер словами: «дней до нулевого остатка ≤ 14». */
 export const describeCondition = (c: Criterion): string => `${METRIC_LABEL[c.metric]} ${c.op === "<=" ? "≤" : "≥"} ${c.value}`;
 
+/** Краткая сводка плана перед принятием: цель, что сделает программа (по кнопке «Выполнить»), что делает человек, как поймём результат, чем ограничено. */
+export type PlanBrief = {
+  goal: string;
+  program: Array<{ when: string; text: string; condition: string | null }>;
+  humanSteps: number;
+  success: string[];
+  guards: string[];
+  horizonDays: number | null;
+};
+
+export function planBrief(strategy: Strategy, campaignName?: (id: string) => string): PlanBrief {
+  const crit = (c: Criterion) => `${METRIC_LABEL[c.metric]} ${c.op === "<=" ? "не выше" : "не ниже"} ${c.value}`;
+  return {
+    goal: strategy.goal,
+    program: strategy.steps.filter((s) => s.by === "program" && s.action).map((s) => ({ when: s.day === 0 ? "сразу" : s.when || `через ${s.day} дн.`, text: describePlanAction(s.action!, campaignName), condition: s.onlyIf ? describeCondition(s.onlyIf) : null })),
+    humanSteps: strategy.steps.filter((s) => !(s.by === "program" && s.action)).length,
+    success: strategy.success.map(crit),
+    guards: strategy.guards.map(crit),
+    horizonDays: strategy.reviewAfterDays,
+  };
+}
+
 /** Короткое описание действия программы для экрана и для проверяющего ИИ. */
 export function describePlanAction(a: PlanAction, campaignName?: (id: string) => string): string {
   const name = (id: string) => (campaignName ? campaignName(id) : id);

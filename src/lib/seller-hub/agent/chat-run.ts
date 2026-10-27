@@ -85,7 +85,7 @@ export async function runChatTurn(input: {
     const first = await ask({ system: CHAT_SYSTEM, user, maxTokens: 6000, role: "analyst" });
     calls += 1;
     costUsd += first.costUsd;
-    turn = parseChatTurn(first.text, chatProducts, chat.rounds);
+    turn = parseChatTurn(first.text, chatProducts, chat.rounds, messages.filter((m) => m.role === "user").map((m) => m.text).join("\n"));
   } catch (error) {
     console.error("[seller-hub-agent] чат ИИ не ответил:", error instanceof Error ? error.message : String(error));
     messages.push({ role: "assistant", text: "ИИ сейчас не ответил. Сообщение сохранено, попробуйте ещё раз через минуту.", at: nowIso });

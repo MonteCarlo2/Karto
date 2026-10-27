@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DAY_MS, dueProgramSteps, effectReport, evaluateStrategy, humanizeKeys, parseStrategy, trackedMetrics, stepCompliance, type Strategy, type StrategyState } from "./strategy";
+import { DAY_MS, dueProgramSteps, effectReport, planBrief, evaluateStrategy, humanizeKeys, parseStrategy, trackedMetrics, stepCompliance, type Strategy, type StrategyState } from "./strategy";
 
 const T0 = Date.parse("2026-10-28T10:00:00Z");
 const price = (day: number, direction: "lower" | "raise" = "lower", stepPercent = 2) => ({ day, when: `день ${day}`, by: "program", step: "шаг цены", action: { type: "price", direction, stepPercent, reason: "r" } });
@@ -375,5 +375,27 @@ describe("шаги с условием-триггером", () => {
     const c = stepCompliance(s, { status: "running", acceptedAt: new Date(accepted).toISOString() } as StrategyState, now);
     assert.equal(c.total, 1);
     assert.equal(c.waiting, 1, "ждёт отметки только шаг человека");
+  });
+});
+
+describe("сводка плана перед принятием", () => {
+  it("называет действия программы, условия, шаги человека, критерии и ограничители", () => {
+    const s = parseStrategy(
+      base({
+        steps: [
+          { day: 0, when: "сразу", by: "human", step: "Проверить поставку", action: null },
+          { day: 0, when: "если запас на исходе", by: "program", step: "Поднять цену", action: { type: "price", direction: "raise", stepPercent: 3, reason: "r" }, if: { metric: "oos_days", op: "<=", value: 14 } },
+        ],
+        success: [{ metric: "orders_28d", op: ">=", value: 30 }],
+        guards: [{ metric: "margin_pct", op: ">=", value: 15 }],
+        reviewAfterDays: 14,
+      }),
+    )!;
+    const b = planBrief(s);
+    assert.equal(b.humanSteps, 1);
+    assert.deepEqual(b.program, [{ when: "сразу", text: "цена +3%", condition: "дней до нулевого остатка ≤ 14" }]);
+    assert.deepEqual(b.success, ["заказы за 28 дней не ниже 30"]);
+    assert.deepEqual(b.guards, ["маржа, % не ниже 15"]);
+    assert.equal(b.horizonDays, 14);
   });
 });
