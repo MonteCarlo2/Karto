@@ -196,28 +196,44 @@ export function HubAiFindings({ titleByNm, cardByNm, chatId, reloadKey }: { titl
                       <p className="text-[12px] leading-4" style={{ color: hub.textMuted }}>План: {stepCompliance(st, state, Date.now()).text}.</p>
                       {state.reason ? <p className="text-[12px] leading-4" style={{ color: hub.textMuted }}>{state.reason}</p> : null}
                       {effectReport(st, state, state.current ?? {}).length > 0 ? (
-                        <table className="mt-1 w-full text-[12px]" style={{ color: hub.text }}>
-                          <thead>
-                            <tr style={{ color: hub.textMuted }}>
-                              <th className="text-left font-normal">Показатель</th>
-                              <th className="text-right font-normal">Было</th>
-                              <th className="text-right font-normal">Стало</th>
-                              <th className="text-right font-normal">Изменение</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {effectReport(st, state, state.current ?? {}).map((r) => (
-                              <tr key={r.metric}>
-                                <td>{r.label}</td>
-                                <td className="text-right">{r.before ?? "—"}</td>
-                                <td className="text-right">{r.after ?? "—"}</td>
-                                <td className="text-right" style={{ color: r.better == null ? hub.textMuted : r.better ? hub.greenDark : hub.danger }}>
-                                  {r.change == null ? "—" : `${r.change > 0 ? "+" : ""}${r.change}${r.changePct != null ? ` (${r.changePct > 0 ? "+" : ""}${r.changePct}%)` : ""}`}
-                                </td>
+                        (state.checkpoints ?? []).length === 0 && state.status === "running" ? (
+                          <div className="mt-1">
+                            <p className="text-[12px] leading-4" style={{ color: hub.textMuted }}>Исходные показатели на момент принятия плана. Сравнение «было → стало» появится после первой контрольной точки.</p>
+                            <table className="mt-1 w-full text-[12px]" style={{ color: hub.text }}>
+                              <tbody>
+                                {effectReport(st, state, state.current ?? {}).map((r) => (
+                                  <tr key={r.metric}>
+                                    <td>{r.label}</td>
+                                    <td className="text-right">{r.before ?? "—"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <table className="mt-1 w-full text-[12px]" style={{ color: hub.text }}>
+                            <thead>
+                              <tr style={{ color: hub.textMuted }}>
+                                <th className="text-left font-normal">Показатель</th>
+                                <th className="text-right font-normal">Было</th>
+                                <th className="text-right font-normal">Стало</th>
+                                <th className="text-right font-normal">Изменение</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody>
+                              {effectReport(st, state, state.current ?? {}).map((r) => (
+                                <tr key={r.metric}>
+                                  <td>{r.label}</td>
+                                  <td className="text-right">{r.before ?? "—"}</td>
+                                  <td className="text-right">{r.after ?? "—"}</td>
+                                  <td className="text-right" style={{ color: r.better == null ? hub.textMuted : r.better ? hub.greenDark : hub.danger }}>
+                                    {r.change == null ? "—" : `${r.change > 0 ? "+" : ""}${r.change}${r.changePct != null ? ` (${r.changePct > 0 ? "+" : ""}${r.changePct}%)` : ""}`}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )
                       ) : null}
                       {(state.checkpoints ?? []).map((c) => (
                         <p key={`${c.day}-${c.label}`} className="mt-0.5 text-[12px] leading-4" style={{ color: hub.textMuted }}>

@@ -122,8 +122,8 @@ export async function syncAgentProposals(db: SupabaseClient, userId: string, sna
   const calc = {
     proposals: [...(adsCalc.unavailable ? [] : adsCalc.proposals), ...scenario.proposals],
     statsMissing: adsCalc.statsMissing,
-    // Расчёта нет вовсе, если нечего считать: ни правил рекламы, ни включённых сценариев цен.
-    unavailable: adsCalc.unavailable != null && scenario.enabledCount === 0 && !scenarioFailed ? adsCalc.unavailable : null,
+    // Расчёта нет вовсе, если нечего считать: ни правил рекламы, ни включённых сценариев цен, ни шагов принятых планов и регулярных задач.
+    unavailable: adsCalc.unavailable != null && scenario.enabledCount === 0 && scenario.proposals.length === 0 && !scenarioFailed ? adsCalc.unavailable : null,
   };
 
   const { data, error } = await db.from(TABLE).select("proposal_key, status, resolved_at").eq("user_id", userId).eq("marketplace_id", marketplaceId);

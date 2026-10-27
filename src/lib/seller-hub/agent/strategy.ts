@@ -62,6 +62,7 @@ const INLINE_LABEL: Record<string, string> = {
   price_buyer: "цена для покупателя",
   break_even: "безубыточная цена",
   decline_days: "дней подряд падения заказов",
+  rise_days: "дней подряд роста заказов",
   negative_recent: "свежих негативных отзывов",
   share_dead_stock_pct: "доля товаров без движения",
   club_discount_pct: "скидка Клуба",
