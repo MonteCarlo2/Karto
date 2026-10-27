@@ -509,6 +509,8 @@ export type CategoryCharcMeta = {
 const categoryCharcMemory = new Map<number, CategoryCharcCacheEntry>();
 
 function charcEntryFresh(entry: CategoryCharcCacheEntry, now = Date.now()): boolean {
+  // Записи кэша со старого формата (только названия, без идентификаторов характеристик) считаются устаревшими: агенту нужны идентификаторы.
+  if (!Array.isArray(entry.charcs)) return false;
   const loaded = Date.parse(entry.loadedAt);
   return Number.isFinite(loaded) && now - loaded < CHARC_TTL_MS;
 }
