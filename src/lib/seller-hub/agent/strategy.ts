@@ -133,6 +133,8 @@ export type ContentEditAction = { type: "content_edit"; field: "title" | "descri
 export type PlanAction = PriceAction | AdsPauseAction | AdsResumeAction | AdsBidAction | AdsCreateTestAction | ContentEditAction | PromoExitAction | AdsRemoveNmAction | AdsAddNmAction | AdsDepositAction | ClubDiscountAction | PromoJoinAction | AdsMinusPhrasesAction | AdsPlacementsAction | AdsDailyLimitAction | CharacteristicsEditAction;
 
 export type StrategyStep = {
+  /** Условие-триггер: шаг программы предлагается, только когда наступил его день и условие выполнено по свежим данным («остаток ≤ 14 дней до нуля»). Нет условия: по дню. */
+  onlyIf?: Criterion;
   step: string;
   by: "human" | "program";
   /** День от принятия плана (0 — сразу). */
@@ -328,7 +330,8 @@ export function parseStrategy(raw: unknown, ctx: ParseContext = {}): Strategy | 
       const action = parseAction(p.action, ctx);
       const day = clamp(Math.round(Number(p.day) || 0), 0, MAX_REVIEW_DAYS);
       const flow = (STEP_FLOWS as readonly string[]).includes(String(p.flow)) ? (p.flow as StepFlow) : undefined;
-      return { step: clip(typeof p.step === "string" ? p.step.replace(/\s*flow:\s*\\?"?\w+\\?"?\.?/gi, "") : p.step, 600), by: action || p.by === "program" ? ("program" as const) : ("human" as const), day, when: clip(p.when, 120) || (day === 0 ? "сразу" : `через ${day} дн.`), action, ...(flow && !action ? { flow } : {}) };
+      const onlyIf = p.if && typeof p.if === "object" ? parseCriteria([p.if], 1)[0] : undefined;
+      return { step: clip(typeof p.step === "string" ? p.step.replace(/\s*flow:\s*\\?"?\w+\\?"?\.?/gi, "") : p.step, 600), by: action || p.by === "program" ? ("program" as const) : ("human" as const), day, when: clip(p.when, 120) || (day === 0 ? "сразу" : `через ${day} дн.`), action, ...(onlyIf ? { onlyIf } : {}), ...(flow && !action ? { flow } : {}) };
     })
     .sort((a, b) => a.day - b.day);
   const totals = { lower: 0, raise: 0 };
@@ -388,6 +391,7 @@ export function trackedMetrics(strategy: Strategy): CriteriaMetric[] {
   strategy.success.forEach((c) => set.add(c.metric));
   strategy.guards.forEach((c) => set.add(c.metric));
   strategy.checks.forEach((c) => c.look.forEach((l) => set.add(l.metric)));
+  strategy.steps.forEach((s) => s.onlyIf && set.add(s.onlyIf.metric));
   return [...set];
 }
 
@@ -519,14 +523,16 @@ export function stepProgress(strategy: Strategy, state: StrategyState, nowMs: nu
     let status: StepProgress["status"];
     if (kind === "program") status = state.doneSteps?.includes(index) ? "done" : "upcoming";
     else status = state.humanSteps?.[String(index)]?.status ?? "upcoming";
-    if (status === "upcoming" && Number.isFinite(acceptedMs) && nowMs >= acceptedMs + step.day * DAY_MS) status = "due";
+    // Шаг с условием-триггером не «ждёт отметки», пока условие не сработало: он наготове.
+    if (status === "upcoming" && Number.isFinite(acceptedMs) && nowMs >= acceptedMs + step.day * DAY_MS && !(kind === "program" && step.onlyIf)) status = "due";
     return { index, step, kind, status };
   });
 }
 
 /** Сводка по исполнению плана: сколько сделано, пропущено, ждёт. Нужна для честной оценки результата («план выполнен не полностью») и для следующей попытки. */
 export function stepCompliance(strategy: Strategy, state: StrategyState, nowMs: number): { total: number; done: number; skipped: number; waiting: number; text: string } {
-  const list = stepProgress(strategy, state, nowMs);
+  // Шаги-триггеры, которые не понадобились (условие не наступило), в исполнение плана не входят.
+  const list = stepProgress(strategy, state, nowMs).filter((x) => !(x.step.onlyIf && x.kind === "program" && x.status === "upcoming"));
   const done = list.filter((x) => x.status === "done").length;
   const skipped = list.filter((x) => x.status === "skipped").length;
   const waiting = list.filter((x) => x.status === "due").length;
@@ -550,12 +556,13 @@ export const programSteps = (strategy: Strategy): ProgramStepRef[] =>
  * Какие шаги программы пора предложить владельцу. Шаг считается сделанным, когда владелец выполнил предложение (шаг записан в doneSteps).
  * Шаг предлагается, когда наступил его день; следующий шаг цены не раньше чем через сутки после предыдущего выполненного шага цены.
  */
-export function dueProgramSteps(strategy: Strategy, input: { doneSteps: number[]; lastPriceDoneAtMs: number | null; acceptedAtMs: number; nowMs: number }): ProgramStepRef[] {
+export function dueProgramSteps(strategy: Strategy, input: { doneSteps: number[]; lastPriceDoneAtMs: number | null; acceptedAtMs: number; nowMs: number; /** Свежие значения метрик: нужны шагам с условием-триггером. */ current?: Record<string, number | null | undefined> }): ProgramStepRef[] {
   const out: ProgramStepRef[] = [];
   let priceTaken = false;
   for (const ref of programSteps(strategy)) {
     if (input.doneSteps.includes(ref.index)) continue;
     if (input.nowMs < input.acceptedAtMs + ref.step.day * DAY_MS) continue;
+    if (ref.step.onlyIf && !(input.current?.[ref.step.onlyIf.metric] != null && criterionMet(input.current, ref.step.onlyIf))) continue;
     if (PRICE_LIKE.has(ref.step.action.type)) {
       // Цена меняется не чаще раза в сутки и по одному шагу за раз: следующий шаг цены ждёт, пока выполнен предыдущий.
       if (priceTaken) continue;
@@ -566,6 +573,9 @@ export function dueProgramSteps(strategy: Strategy, input: { doneSteps: number[]
   }
   return out;
 }
+
+/** Условие-триггер словами: «дней до нулевого остатка ≤ 14». */
+export const describeCondition = (c: Criterion): string => `${METRIC_LABEL[c.metric]} ${c.op === "<=" ? "≤" : "≥"} ${c.value}`;
 
 /** Короткое описание действия программы для экрана и для проверяющего ИИ. */
 export function describePlanAction(a: PlanAction, campaignName?: (id: string) => string): string {

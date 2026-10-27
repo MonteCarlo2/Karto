@@ -71,7 +71,7 @@ export async function advanceStrategies(db: SupabaseClient, userId: string, prod
     if (changed) await db.from("seller_hub_ai_findings").update({ strategy_state: state }).eq("id", row.id);
     if (state.status !== "running") continue;
 
-    const due = dueProgramSteps(strategy, { doneSteps: state.doneSteps ?? [], lastPriceDoneAtMs: state.lastPriceDoneAt ? Date.parse(state.lastPriceDoneAt) : null, acceptedAtMs: Date.parse(state.acceptedAt!), nowMs });
+    const due = dueProgramSteps(strategy, { doneSteps: state.doneSteps ?? [], lastPriceDoneAtMs: state.lastPriceDoneAt ? Date.parse(state.lastPriceDoneAt) : null, acceptedAtMs: Date.parse(state.acceptedAt!), nowMs, current: state.current });
     for (const ref of due) {
       const action = ref.step.action;
       if (action.type === "price") {

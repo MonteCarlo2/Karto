@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { acceptSellerHubAiFinding, dismissSellerHubAiFinding, loadSellerHubAiFeed, markSellerHubPlanStep, setSellerHubPlanAutopilot, type AiFeedItem } from "@/lib/seller-hub/client-api";
-import { describePlanAction, effectReport, evidenceLabel, stepCompliance, stepProgress } from "@/lib/seller-hub/agent/strategy";
+import { describeCondition, describePlanAction, effectReport, evidenceLabel, stepCompliance, stepProgress } from "@/lib/seller-hub/agent/strategy";
 import { writeHubCardSeed } from "@/lib/seller-hub/card-seed";
 import { HubBadge, HubButton, HubPanel, hub } from "./hub-ui";
 
@@ -113,6 +113,7 @@ export function HubAiFindings({ titleByNm, cardByNm, chatId, reloadKey }: { titl
                       return (
                         <li key={i}>
                           <span style={{ color: hub.textMuted }}>{p.day === 0 ? "сразу" : p.when || `день ${p.day}`}: </span>
+                          {p.onlyIf ? <span className="mr-1 rounded px-1 text-[11px]" style={{ background: hub.borderSoft, color: hub.textMuted }}>если {describeCondition(p.onlyIf)}</span> : null}
                           <span style={{ textDecoration: prog?.status === "skipped" ? "line-through" : undefined, opacity: prog?.status === "skipped" ? 0.6 : 1 }}>{p.step}</span>
                           {p.action ? (
                             <span className="ml-1.5 text-[11px]" style={{ color: hub.textMuted }}>

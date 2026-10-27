@@ -7,7 +7,7 @@ import type { AiAsk } from "./ai-orchestrator";
 import type { Solution } from "./ai-solver";
 import { loadAdQueries } from "./ads-queries";
 import { adsForPrompt, promosForPrompt } from "./ai-solver";
-import { PLAN_REVIEWER_SYSTEM, applyPlanReview, parsePlanReviews, planForReview } from "./plan-review";
+import { PLAN_REVIEWER_SYSTEM, type PlanReview, applyPlanReview, parsePlanReviews, planForReview } from "./plan-review";
 import { monthCapUsd, monthSpend, recordAiUsage, remainingBudget } from "./ai-usage";
 import { CHAT_PLAN_SYSTEM, CHAT_SYSTEM, MAX_QUESTION_ROUNDS, chatGroups, chatPayload, chatTitle, parseChatTurn, parsePlanForProduct, planProductPayload, type ChatMessage, type ChatProduct } from "./chat";
 import type { ScenarioProduct } from "./scenario-run";
@@ -109,32 +109,63 @@ export async function runChatTurn(input: {
   const promoOpenByNm = new Map(chatProducts.map((p) => [p.nmId, p.promoOpen ?? []]));
   const productByNm = new Map(chatProducts.map((p) => [p.nmId, p]));
   const rules = await loadOwnerRules(db, userId).catch(() => NO_RULES);
-  const planned = await Promise.allSettled(
-    turn.selected.map(async (sel) => {
-      const product = productByNm.get(sel.nmId)!;
-      const res = await ask({ system: CHAT_PLAN_SYSTEM, user: withOwnerRules(planProductPayload({ profile, product, why: sel.why, messages, nowIso }), rules), maxTokens: 9000, role: "analyst" });
-      calls += 1;
-      costUsd += res.costUsd;
-      const parsed = parsePlanForProduct(res.text, groupByNm.get(sel.nmId)!, facts, profile, adsByNm, promosByNm, adsOtherByNm, promoOpenByNm, adQueriesByNm, new Map(chatProducts.filter((p) => p.card).map((p) => [p.nmId, p.card!])));
-      if (parsed.reasons.length > 0) console.info(`[seller-hub-agent] план ${sel.nmId}, не принято: ${parsed.reasons.join(" | ")}`);
-      return parsed.plan ? { ...parsed.plan, strategy: applyOwnerRules(parsed.plan.strategy, rules, currentFromEvidence(parsed.plan.evidence)) } : null;
-    }),
-  );
-  const plans: Solution[] = planned.flatMap((r) => (r.status === "fulfilled" && r.value ? [r.value] : []));
-  planned.forEach((r) => r.status === "rejected" && console.error("[seller-hub-agent] план по товару не составился:", r.reason instanceof Error ? r.reason.message : String(r.reason)));
+  const cardsByNm = new Map(chatProducts.filter((p) => p.card).map((p) => [p.nmId, p.card!]));
 
-  // Второй ИИ проверяет каждый план отдельно и параллельно: согласился (действия остаются), есть замечания (останавливаются только названные шаги) или отверг (план не показывается).
-  const reviewed = await Promise.allSettled(
-    plans.map(async (sol) => {
-      const prod = productByNm.get(sol.nmId ?? "");
-      const picture = { store: profile, product: prod ? { nmId: sol.nmId, title: prod.title, facts: prod.facts, ads_campaigns: adsForPrompt(prod.ads), promotions: promosForPrompt(prod.promos), promotions_open: promosForPrompt(prod.promoOpen) } : null, owner_dialog: messages.map((m) => ({ role: m.role, text: m.text.slice(0, 800) })) };
-      const res = await ask({ system: PLAN_REVIEWER_SYSTEM, user: JSON.stringify({ picture, owner_goal: goal, plans: [planForReview(sol)] }), maxTokens: 3500, role: "reviewer" });
-      calls += 1;
-      costUsd += res.costUsd;
-      return parsePlanReviews(res.text, 1)[0] ?? null;
+  /** Второй ИИ проверяет план: согласился (действия остаются), есть замечания (останавливаются только названные шаги) или отверг (план не показывается). */
+  const reviewPlan = async (sol: Solution): Promise<PlanReview | null> => {
+    const prod = productByNm.get(sol.nmId ?? "");
+    const picture = { store: profile, product: prod ? { nmId: sol.nmId, title: prod.title, facts: prod.facts, ads_campaigns: adsForPrompt(prod.ads), promotions: promosForPrompt(prod.promos), promotions_open: promosForPrompt(prod.promoOpen) } : null, owner_dialog: messages.map((m) => ({ role: m.role, text: m.text.slice(0, 800) })) };
+    const res = await ask({ system: PLAN_REVIEWER_SYSTEM, user: JSON.stringify({ picture, owner_goal: goal, plans: [planForReview(sol)] }), maxTokens: 3500, role: "reviewer" });
+    calls += 1;
+    costUsd += res.costUsd;
+    return parsePlanReviews(res.text, 1)[0] ?? null;
+  };
+
+  const draftPlan = async (sel: { nmId: string; why: string }, extra?: Record<string, unknown>): Promise<Solution | null> => {
+    const product = productByNm.get(sel.nmId)!;
+    const base = withOwnerRules(planProductPayload({ profile, product, why: sel.why, messages, nowIso }), rules);
+    const user = extra ? JSON.stringify({ ...(JSON.parse(base) as Record<string, unknown>), ...extra }) : base;
+    const res = await ask({ system: CHAT_PLAN_SYSTEM, user, maxTokens: 9000, role: "analyst" });
+    calls += 1;
+    costUsd += res.costUsd;
+    const parsed = parsePlanForProduct(res.text, groupByNm.get(sel.nmId)!, facts, profile, adsByNm, promosByNm, adsOtherByNm, promoOpenByNm, adQueriesByNm, cardsByNm);
+    if (parsed.reasons.length > 0) console.info(`[seller-hub-agent] план ${sel.nmId}, не принято: ${parsed.reasons.join(" | ")}`);
+    return parsed.plan ? { ...parsed.plan, strategy: applyOwnerRules(parsed.plan.strategy, rules, currentFromEvidence(parsed.plan.evidence)) } : null;
+  };
+
+  // Каждый товар идёт своим конвейером параллельно: черновик, проверка вторым ИИ и, если есть замечания, одна доработка с учётом замечаний и повторная проверка.
+  // Владелец видит план, доведённый до ума, а не «второй ИИ сомневается»; если замечания остались, показываем лучшую версию с пометкой.
+  const pipelines = await Promise.allSettled(
+    turn.selected.map(async (sel): Promise<{ sol: Solution; verdict: PlanReview | null } | null> => {
+      const draft = await draftPlan(sel);
+      if (!draft) return null;
+      const first = await reviewPlan(draft).catch(() => null);
+      if (!first || first.verdict === "agree") return { sol: draft, verdict: first };
+      try {
+        const revised = await draftPlan(sel, {
+          revision: {
+            instruction: "Независимый проверяющий нашёл замечания к твоему плану. Исправь план: устрани каждое замечание по существу (замени шаг, уточни условие, добавь страховку), сохрани то, что было верно. Верни полный исправленный план в том же формате, ровно один объект в solutions.",
+            previous_plan: planForReview(draft),
+            reviewer_verdict: first.verdict,
+            reviewer_remarks: first.reason,
+            steps_reviewer_objected_to: first.blockedSteps ?? [],
+          },
+        });
+        if (!revised) return { sol: draft, verdict: first };
+        const second = await reviewPlan(revised).catch(() => null);
+        // Берём исправленную версию, если проверяющий согласился или хотя бы не отверг её целиком.
+        if (second && second.verdict !== "reject") return { sol: revised, verdict: second };
+        return { sol: draft, verdict: first };
+      } catch (error) {
+        console.error("[seller-hub-agent] доработка плана не удалась:", error instanceof Error ? error.message : String(error));
+        return { sol: draft, verdict: first };
+      }
     }),
   );
-  const verdicts = reviewed.map((r) => (r.status === "fulfilled" ? r.value : null));
+  pipelines.forEach((r) => r.status === "rejected" && console.error("[seller-hub-agent] план по товару не составился:", r.reason instanceof Error ? r.reason.message : String(r.reason)));
+  const done = pipelines.flatMap((r) => (r.status === "fulfilled" && r.value ? [r.value] : []));
+  const plans: Solution[] = done.map((d) => d.sol);
+  const verdicts = done.map((d) => d.verdict);
   const turnPlans = plans;
 
   const planIds: string[] = [];

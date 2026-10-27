@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DAY_MS, dueProgramSteps, effectReport, evaluateStrategy, humanizeKeys, parseStrategy, trackedMetrics, type Strategy, type StrategyState } from "./strategy";
+import { DAY_MS, dueProgramSteps, effectReport, evaluateStrategy, humanizeKeys, parseStrategy, trackedMetrics, stepCompliance, type Strategy, type StrategyState } from "./strategy";
 
 const T0 = Date.parse("2026-10-28T10:00:00Z");
 const price = (day: number, direction: "lower" | "raise" = "lower", stepPercent = 2) => ({ day, when: `день ${day}`, by: "program", step: "шаг цены", action: { type: "price", direction, stepPercent, reason: "r" } });
@@ -342,5 +342,38 @@ describe("служебные имена полей в тексте для кли
     assert.equal(s.goal, "Поднять конверсия корзина→заказ");
     assert.equal(s.fallback, "Если заказы за 28 дней не растёт");
     assert.equal(s.steps[0]!.step, "Проверить маржа");
+  });
+});
+
+describe("шаги с условием-триггером", () => {
+  const plan = () =>
+    parseStrategy(
+      base({
+        steps: [
+          { day: 0, when: "сразу", by: "human", step: "Проверить поставку", action: null },
+          { day: 0, when: "если запас на исходе", by: "program", step: "Поднять цену", action: { type: "price", direction: "raise", stepPercent: 3, reason: "r" }, if: { metric: "oos_days", op: "<=", value: 14 } },
+        ],
+        success: [{ metric: "orders_28d", op: ">=", value: 1 }],
+      }),
+    )!;
+  const accepted = Date.parse("2026-10-01T00:00:00Z");
+  const now = accepted + 3 * DAY_MS;
+  it("условие читается и попадает в отслеживаемые метрики", () => {
+    const s = plan();
+    assert.deepEqual(s.steps[1]!.onlyIf, { metric: "oos_days", op: "<=", value: 14 });
+    assert.ok(trackedMetrics(s).includes("oos_days"));
+  });
+  it("шаг не предлагается, пока условие не выполнено, и предлагается, когда выполнено", () => {
+    const s = plan();
+    const input = { doneSteps: [], lastPriceDoneAtMs: null, acceptedAtMs: accepted, nowMs: now };
+    assert.equal(dueProgramSteps(s, { ...input, current: { oos_days: 39 } }).length, 0);
+    assert.equal(dueProgramSteps(s, { ...input }).length, 0, "нет данных: ждём");
+    assert.equal(dueProgramSteps(s, { ...input, current: { oos_days: 12 } }).length, 1);
+  });
+  it("не понадобившийся шаг-триггер не считается невыполненным", () => {
+    const s = plan();
+    const c = stepCompliance(s, { status: "running", acceptedAt: new Date(accepted).toISOString() } as StrategyState, now);
+    assert.equal(c.total, 1);
+    assert.equal(c.waiting, 1, "ждёт отметки только шаг человека");
   });
 });
