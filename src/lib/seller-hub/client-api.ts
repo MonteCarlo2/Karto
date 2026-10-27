@@ -1679,3 +1679,25 @@ export async function loadSellerHubAgentReports(): Promise<{ ok: boolean; report
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; reports?: AgentReportView[]; error?: string };
   return res.ok && data.ok ? { ok: true, reports: data.reports ?? [] } : { ok: false, reports: [], error: data.error ?? `Ошибка ${res.status}` };
 }
+
+/**
+ * Если ответ на сообщение оборвался (шлюз сервера отрезает долгие запросы, например 502), работа на сервере всё равно идёт и заканчивается записью ответа ИИ в диалог.
+ * Ждём этот ответ, опрашивая диалог: так владелец не теряет результат из-за таймаута прокси. Возвращает диалог с ответом ИИ или null, если не дождались.
+ */
+export async function waitSellerHubAiChatReply(chatId: string | null, since: number, maxWaitMs = 240_000): Promise<AiChat | null> {
+  const deadline = Date.now() + maxWaitMs;
+  let id = chatId;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 6_000));
+    if (!id) {
+      const list = await listSellerHubAiChats();
+      const fresh = list.chats.filter((c) => Date.parse(c.updatedAt) >= since - 5_000).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+      if (fresh) id = fresh.id;
+    }
+    if (!id) continue;
+    const res = await loadSellerHubAiChat(id);
+    const last = res.chat?.messages[res.chat.messages.length - 1];
+    if (res.ok && res.chat && last?.role === "assistant" && Date.parse(last.at) >= since - 5_000) return res.chat;
+  }
+  return null;
+}

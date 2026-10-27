@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { closeSellerHubAiChat, listSellerHubAiChats, loadSellerHubAiChat, sendSellerHubAiChat, type AiChat } from "@/lib/seller-hub/client-api";
+import { closeSellerHubAiChat, listSellerHubAiChats, loadSellerHubAiChat, waitSellerHubAiChatReply, sendSellerHubAiChat, type AiChat } from "@/lib/seller-hub/client-api";
 import { HubAiFindings } from "./hub-ai-findings";
 import { HubBadge, HubButton, HubPanel, hub } from "./hub-ui";
 
@@ -67,7 +67,13 @@ export function HubAiChat({ titleByNm, cardByNm }: { titleByNm?: Map<string, str
     // Сообщение показывается сразу, пока ИИ думает.
     setChat((prev) => (prev ? { ...prev, messages: [...prev.messages, { role: "user", text: msg, at: new Date().toISOString() }] } : { id: "", title: msg.slice(0, 80), state: "asking", rounds: 0, messages: [{ role: "user", text: msg, at: new Date().toISOString() }], updatedAt: "" }));
     setText("");
-    const res = await sendSellerHubAiChat(chat?.id || null, msg);
+    const startedAt = Date.now();
+    let res = await sendSellerHubAiChat(chat?.id || null, msg);
+    if (!res.ok || !res.chat) {
+      // Долгий запрос могла оборвать сеть или шлюз, а сервер дорабатывает план: ждём ответ ИИ в диалоге.
+      const recovered = await waitSellerHubAiChatReply(chat?.id || null, startedAt);
+      if (recovered) res = { ok: true, chat: recovered };
+    }
     setBusy(false);
     if (!res.ok || !res.chat) {
       setError(res.error ?? "Не удалось отправить задачу");
