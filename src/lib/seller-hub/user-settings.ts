@@ -3,6 +3,7 @@
  * и поэтому одинаковы на всех устройствах. Разрешены только перечисленные ключи с проверкой значения.
  */
 
+import { isValidForbidString } from "./agent/owner-rules";
 import { isValidKeepQueries } from "./ads-keep-queries";
 import { isAnalyticsPeriod } from "./analytics-periods";
 import { isValidMarksString, isValidMutedString } from "./events-marks";
@@ -21,6 +22,14 @@ export const USER_SETTING_VALIDATORS = {
   "ads.keepQueries": isValidKeepQueries,
   /** Автоматический анализ нейросетью при изменении данных (разбор кампаний, план по карточкам, оценка новых и изменённых карточек). */
   "ai.auto": bool,
+  /** Что ИИ-менеджеру менять нельзя никогда: prices, ads, cards (через запятую, пустая строка: можно всё). */
+  "ai.forbid": isValidForbidString,
+  /** Нижняя маржа для планов ИИ, %. 0 — без своей нижней границы (остаётся безубыточность). */
+  "ai.minMarginPct": intRange(0, 60),
+  /** Ограничители цены: запас над безубыточностью, % (5–30), шаг за раз, % (1–5), пауза между изменениями, часов (24–168). Только строже стандартных. */
+  "ai.priceCushionPct": intRange(5, 30),
+  "ai.priceStepPct": intRange(1, 5),
+  "ai.priceCooldownHours": intRange(24, 168),
   /** Через сколько часов ожидания заказа напоминать об отгрузке. */
   "fulfillment.remindHours": intRange(1, 168),
   /** Запас на своём складе в днях, ниже которого предупреждаем. */

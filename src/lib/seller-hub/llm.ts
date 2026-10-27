@@ -32,6 +32,8 @@ async function once(model: string, system: string, user: string, maxTokens: numb
       temperature: 0,
       seed: 7,
       max_tokens: maxTokens,
+      // Рассуждение модели съедает лимит ответа и обрезает JSON: для структурного разбора держим его минимальным.
+      reasoning: { effort: "low" },
       usage: { include: true },
       messages: [
         { role: "system", content: system },
@@ -45,12 +47,23 @@ async function once(model: string, system: string, user: string, maxTokens: numb
     error.routing = isOpenRouterModelRoutingError(response.status, errText);
     throw error;
   }
-  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>; usage?: { cost?: number } };
+  const data = (await response.json()) as { choices?: Array<{ finish_reason?: string; message?: { content?: string | Array<{ text?: string }> } }>; usage?: { cost?: number } };
   const content = data.choices?.[0]?.message?.content;
+  if (process.env.DEBUG_AI) console.log(`[llm] ${model} finish=${data.choices?.[0]?.finish_reason} max=${maxTokens} len=${typeof content === "string" ? content.length : "arr"}`);
   return {
     text: (Array.isArray(content) ? content.map((p) => p?.text ?? "").join("") : (content ?? "")).trim(),
     costUsd: typeof data.usage?.cost === "number" ? data.usage.cost : 0,
   };
+}
+
+/**
+ * Модели агента по ролям. Выбраны по замеру на 13 разборах (scripts/agent-ai-benchmark.ts): аналитик и проверяющий от разных разработчиков,
+ * чтобы не повторять одни и те же ошибки. Меняются переменными SELLER_HUB_AGENT_ANALYST_MODEL / SELLER_HUB_AGENT_REVIEWER_MODEL.
+ */
+export const AGENT_MODELS = { analyst: "openai/gpt-5.6-luna", reviewer: "anthropic/claude-haiku-5.5" } as const;
+export function agentModel(role: "analyst" | "reviewer"): string {
+  const env = role === "analyst" ? process.env.SELLER_HUB_AGENT_ANALYST_MODEL : process.env.SELLER_HUB_AGENT_REVIEWER_MODEL;
+  return (env || "").trim() || AGENT_MODELS[role];
 }
 
 /** Один запрос к модели с запасной моделью при ошибке маршрутизации и понятным сообщением при сбое сети. */

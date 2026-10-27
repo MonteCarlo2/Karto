@@ -77,7 +77,7 @@ describe("buildAgentProposals", () => {
     const r = rules({ drr_guard: { params: { stepPercent: 20, overPp: 0 } } });
     const out = buildAgentProposals({ ...base, rules: r, adsByProduct: [nmRow(300, 2, 1000)] }); // ДРР 30% при марже 20%
     assert.equal(out.proposals.length, 1);
-    assert.deepEqual(out.proposals[0]!.action, { type: "bid", advertId: "10", nmId: "111", bidRub: 240 });
+    assert.deepEqual(out.proposals[0]!.action, { type: "bid", advertId: "10", nmId: "111", bidRub: 240, previousBidRub: 300 });
     const fine = buildAgentProposals({ ...base, rules: r, adsByProduct: [nmRow(100, 2, 1000)] }); // ДРР 10%
     assert.equal(fine.proposals.length, 0);
   });
@@ -87,7 +87,7 @@ describe("buildAgentProposals", () => {
     const bids: BidRow[] = [{ advertId: "10", campaignName: "К1", nmId: "111", currentRub: 300, competitiveRub: 500, leadersRub: 600, verdict: "below_competitive", note: "" }];
     const out = buildAgentProposals({ ...base, rules: r, bids, adsByProduct: [nmRow(100, 4, 1000)] }); // ДРР 10%, запас 10 п.п.
     assert.equal(out.proposals.length, 1);
-    assert.deepEqual(out.proposals[0]!.action, { type: "bid", advertId: "10", nmId: "111", bidRub: 375 }); // 300 × 1,25, а не 500
+    assert.deepEqual(out.proposals[0]!.action, { type: "bid", advertId: "10", nmId: "111", bidRub: 375, previousBidRub: 300 }); // 300 × 1,25, а не 500
     const few = buildAgentProposals({ ...base, rules: r, bids, adsByProduct: [nmRow(100, 2, 500)] });
     assert.equal(few.proposals.length, 0); // заказов меньше порога
     const noHeadroom = buildAgentProposals({ ...base, rules: r, bids, adsByProduct: [nmRow(180, 4, 1000)] }); // ДРР 18%, запас 2 п.п.

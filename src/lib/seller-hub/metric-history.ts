@@ -21,7 +21,13 @@ export type DailyMetrics = {
   cancels: number | null;
   /** Остаток на WB в момент снимка. Только для дня снимка. */
   stock?: number | null;
+  /** Базовая цена продавца и скидка продавца, % на конец дня (по последнему снимку дня). Нужны, чтобы измерять эффект смены цены. */
+  price?: number | null;
+  discount?: number | null;
 };
+
+/** Поля, которые пишутся не из воронки: при дозаписи воронки за день их нужно сохранить, а не затереть. */
+export const SNAPSHOT_METRIC_KEYS = ["stock", "price", "discount"] as const;
 
 export type DailyRow = { metricDate: string; nmId: string; metrics: DailyMetrics };
 

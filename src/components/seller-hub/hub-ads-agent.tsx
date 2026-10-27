@@ -16,13 +16,16 @@ import { applyActionToCampaigns, describeAgentAction, executeAgentAction } from 
 import {
   loadSellerHubActionLog,
   loadSellerHubAdBidRecommendations,
+  loadSellerHubAgentProposals,
   loadSellerHubAgentRules,
+  resolveSellerHubAgentProposal,
   saveSellerHubAgentRule,
   type ActionLogRow,
 } from "@/lib/seller-hub/client-api";
 import type { SellerAdBidRecommendation, SellerAdCampaignRow } from "@/lib/seller-hub/types";
 import type { AdsData } from "./hub-ads-data";
 import { hub, HubButton, HubPanel, HubPanelHeader, hubSans } from "./hub-ui";
+import { useSellerHubSyncMode } from "./sync-mode-context";
 
 /** Агент рекламы: правила и очередь предложений. В режиме «предлагать» ничего не меняется без вашего подтверждения. */
 export function HubAdsAgent({
@@ -42,6 +45,11 @@ export function HubAdsAgent({
   onOpenAgents?: () => void;
 }) {
   const full = variant === "full";
+  const syncMode = useSellerHubSyncMode();
+  // При фоновом сборе предложения насчитывает сервер и они копятся в базе; экран их только показывает.
+  const serverMode = syncMode === "background";
+  const [serverProposals, setServerProposals] = useState<AgentProposal[] | null>(null);
+  const [serverReload, setServerReload] = useState(0);
   const [rules, setRules] = useState<AgentRule[]>(defaultRules());
   const [rulesLoaded, setRulesLoaded] = useState(false);
   const [rulesError, setRulesError] = useState<string | null>(null);
@@ -74,6 +82,22 @@ export function HubAdsAgent({
     };
   }, []);
 
+  useEffect(() => {
+    if (!serverMode) return;
+    let cancelled = false;
+    const load = () =>
+      void loadSellerHubAgentProposals().then((res) => {
+        if (cancelled || !res.ok) return;
+        setServerProposals(res.proposals.filter((p) => p.status === "open" && p.rule !== "playbook").map((p) => ({ id: p.id, rule: p.rule as AgentProposal["rule"], title: p.title, facts: p.facts, effect: p.effect, risk: p.risk, action: p.action })));
+      });
+    load();
+    const timer = setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [serverMode, serverReload]);
+
   const active = useMemo(() => campaigns.filter((c) => c.status === 9 && c.paymentType === "cpm"), [campaigns]);
   const pairs = useMemo(() => active.flatMap((c) => (c.bids ?? []).map((b) => ({ advertId: Number(c.id), nmId: Number(b.nmId) }))).slice(0, 12), [active]);
   const needsBids = rules.some((r) => r.enabled && r.kind === "bid_climb");
@@ -105,7 +129,10 @@ export function HubAdsAgent({
       }),
     [rules, campaigns, data.allProductRows, data.advisorProducts, data.advice, recs, accountRub, depositedToday, data.titles],
   );
-  const allProposals = result.proposals.filter((p) => !done[p.id]);
+  // Серверные предложения плюс те, что сервер не считает сам (подъём ставки читает рекомендации WB по конкретным парам).
+  const localProposals = serverMode && serverProposals ? result.proposals.filter((p) => p.rule === "bid_climb") : result.proposals;
+  const allProposals = [...(serverMode && serverProposals ? serverProposals : []), ...localProposals].filter((p) => !done[p.id]);
+  const isServerRow = (id: string) => Boolean(serverProposals?.some((p) => p.id === id));
   const proposals = full ? allProposals : allProposals.slice(0, 3);
 
   const draftOf = (rule: AgentRule): AgentRule => drafts[rule.kind] ?? rule;
@@ -145,8 +172,10 @@ export function HubAdsAgent({
     setConfirmId(null);
     if (!res.ok) {
       setFailed((prev) => ({ ...prev, [p.id]: res.error ?? "Не удалось выполнить" }));
+      if (isServerRow(p.id)) void resolveSellerHubAgentProposal(p.id, "failed", res.error ?? "Не удалось выполнить").then(() => setServerReload((n) => n + 1));
       return;
     }
+    if (isServerRow(p.id)) void resolveSellerHubAgentProposal(p.id, "done", "Выполнено из раздела «Агенты»").then(() => setServerReload((n) => n + 1));
     setFailed((prev) => {
       const next = { ...prev };
       delete next[p.id];
@@ -198,7 +227,7 @@ export function HubAdsAgent({
                     {p.title}
                   </p>
                   <span className="rounded-md px-2 py-0.5 text-[11.5px] font-semibold" style={{ ...hubSans, backgroundColor: p.risk === "low" ? hub.greenSoft : hub.warnSoft, color: p.risk === "low" ? hub.green : hub.warn }}>
-                    {p.risk === "low" ? "низкий риск" : "средний риск"} · {RULE_META[p.rule].title}
+                    {p.risk === "low" ? "низкий риск" : p.risk === "medium" ? "средний риск" : "высокий риск"} · {p.rule === "playbook" ? "Сценарий цен" : RULE_META[p.rule].title}
                   </span>
                 </div>
                 <ul className="list-disc space-y-0.5 pl-5 text-[13px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
@@ -227,9 +256,23 @@ export function HubAdsAgent({
                     </HubButton>
                   </div>
                 ) : (
-                  <HubButton size="sm" onClick={() => setConfirmId(p.id)}>
-                    Выполнить
-                  </HubButton>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <HubButton size="sm" onClick={() => setConfirmId(p.id)}>
+                      Выполнить
+                    </HubButton>
+                    {isServerRow(p.id) ? (
+                      <HubButton
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setDone((prev) => ({ ...prev, [p.id]: "Отклонено" }));
+                          void resolveSellerHubAgentProposal(p.id, "dismissed").then(() => setServerReload((n) => n + 1));
+                        }}
+                      >
+                        Не надо
+                      </HubButton>
+                    ) : null}
+                  </div>
                 )}
               </li>
             ))}
@@ -248,9 +291,9 @@ export function HubAdsAgent({
             ) : null}
           </div>
         ) : null}
-        {Object.keys(done).length > 0 ? (
+        {Object.values(done).some((v) => v === "Выполнено") ? (
           <p className="border-t px-5 py-3 text-[12.5px] sm:px-6" style={{ ...hubSans, borderColor: hub.borderSoft, color: hub.green }}>
-            Выполнено в этой сессии: {Object.keys(done).length}. Подробности в журнале действий (раздел «Агенты»).
+            Выполнено в этой сессии: {Object.values(done).filter((v) => v === "Выполнено").length}. Подробности в журнале действий (раздел «Агенты»).
           </p>
         ) : null}
       </HubPanel>

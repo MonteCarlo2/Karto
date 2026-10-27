@@ -3,6 +3,7 @@ import { mergeMinusPhrases, type AdMinusRequest } from "@/lib/seller-hub/ads-min
 import { checkBidSafety, rubToKopecks, type AdBidRequest } from "@/lib/seller-hub/ads-bid";
 import { adCreateWbBody, type AdCreateRequest } from "@/lib/seller-hub/ads-create";
 import { adAddNmWbBody, adRemoveNmWbBody, AD_MAX_NMS_PER_CAMPAIGN, type AdAddNmRequest, type AdRemoveNmRequest } from "@/lib/seller-hub/ads-nms";
+import { adDailyLimitWbBody, type AdDailyLimitRequest } from "@/lib/seller-hub/ads-daily-limit";
 import { type AdPlacementsRequest } from "@/lib/seller-hub/ads-placements";
 import { clusterBidKey, type ClusterBidRequest, type ClusterResetRequest } from "@/lib/seller-hub/ads-cluster-bid";
 import { WildberriesApiError } from "./client";
@@ -561,4 +562,29 @@ export async function setWbAdPlacements(token: string, request: AdPlacementsRequ
     return { ok: false, error: body?.detail ?? body?.title ?? body?.message ?? body?.error ?? `Ошибка ${res.status}` };
   }
   return { ok: true };
+}
+/**
+ * Дневной лимит расхода кампании (только CPC). PUT /api/advert/v0/daily-limits: { advertIds, enabled, dailyLimit, carryOverEnabled }.
+ * Перед записью читаем текущее состояние: если оно уже такое, запись не нужна (changed=false). После записи читаем лимит ещё раз и сверяем.
+ */
+export async function setWbAdDailyLimit(token: string, request: AdDailyLimitRequest): Promise<{ ok: boolean; error?: string; changed?: boolean }> {
+  const readLimit = async () => {
+    const res = await wbGetFetch(token, `${ADVERT_BASE}/api/advert/v0/daily-limits?advertIds=${request.advertId}`);
+    if (!res.ok) return null;
+    const row = parseJson<{ adverts?: Array<{ advertId?: number; enabled?: boolean; dailyLimit?: number; carryOverEnabled?: boolean }> }>(res.text)?.adverts?.find((a) => a.advertId === request.advertId);
+    return row ?? null;
+  };
+  const same = (row: { enabled?: boolean; dailyLimit?: number; carryOverEnabled?: boolean } | null) =>
+    row != null && (row.enabled === true) === request.enabled && (!request.enabled || (row.dailyLimit === request.dailyLimit && (row.carryOverEnabled === true) === request.carryOver));
+  const before = await readLimit();
+  if (!before) return { ok: false, error: "Не удалось прочитать текущий лимит (метод доступен только кампаниям с оплатой за клики): изменений нет." };
+  if (same(before)) return { ok: true, changed: false };
+  const res = await wbSendFetch(token, `${ADVERT_BASE}/api/advert/v0/daily-limits`, "PUT", adDailyLimitWbBody(request));
+  if (!res.ok) {
+    const body = parseJson<{ title?: string; detail?: string; message?: string; error?: string }>(res.text);
+    return { ok: false, error: body?.detail ?? body?.title ?? body?.message ?? body?.error ?? `Ошибка ${res.status}` };
+  }
+  const after = await readLimit();
+  if (after && !same(after)) return { ok: false, error: "WB принял запрос, но прочитанный лимит не совпал с отправленным. Проверьте кампанию в кабинете." };
+  return { ok: true, changed: true };
 }

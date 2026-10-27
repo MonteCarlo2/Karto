@@ -38,6 +38,7 @@ import {
 } from "./hub-task-present";
 import { HubTopActions } from "./hub-top-actions";
 import { HubTasksOk } from "./hub-tasks-ok";
+import { HubAiFindings } from "./hub-ai-findings";
 import { HubTasksRisks } from "./hub-tasks-risks";
 import { buildTopActions } from "./top-actions";
 import {
@@ -534,6 +535,7 @@ export function HubTasks({
         </HubButton>
       </div>
       <HubTasksRisks blocked={blocked} />
+      <HubAiFindings titleByNm={new Map(snapshot.items.map((item) => [String(item.externalId), item.title]))} cardByNm={new Map(snapshot.items.map((item) => [String(item.externalId), { title: item.title, vendorCode: item.vendorCode, description: item.description ?? "" }]))} />
       {funnelNote ? (
         <HubPanel className="px-4 py-3">
           <p className="text-[13px] leading-5" style={{ color: hub.textMuted }}>{funnelNote}</p>

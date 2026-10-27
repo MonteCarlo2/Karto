@@ -45,10 +45,10 @@ describe("применимость вариантов", () => {
 describe("цена и действия", () => {
   it("снижение на 5%, но не ниже безубыточной цены с подушкой; скидка продавца сохраняется", () => {
     const a = actionForProductOption("lower_price", f());
-    assert.deepEqual(a, { type: "price", nmId: "1", targetRub: 950, baseRub: 1188, discount: 20, currentRub: 1000, currentBaseRub: 1250 });
-    const near = actionForProductOption("lower_price", f({ priceRub: 760, breakEvenRub: 720 }));
+    assert.deepEqual(a, { type: "price", nmId: "1", targetRub: 950.4, baseRub: 1188, discount: 20, currentRub: 1000, currentBaseRub: 1250 });
+    const near = actionForProductOption("lower_price", f({ priceRub: 760, basePriceRub: 950, breakEvenRub: 720 }));
     assert.equal(near?.type === "price" ? near.targetRub : null, 756); // пол: 720 × 1,05
-    assert.equal(actionForProductOption("lower_price", f({ priceRub: 735, breakEvenRub: 700 })), null); // пол 735: ниже нельзя
+    assert.equal(actionForProductOption("lower_price", f({ priceRub: 735, basePriceRub: 918.75, breakEvenRub: 700 })), null); // пол 735: ниже нельзя
     assert.equal(actionForProductOption("lower_price", f({ breakEvenRub: null })), null);
   });
   it("тестовая реклама превращается в создание кампании", () => {

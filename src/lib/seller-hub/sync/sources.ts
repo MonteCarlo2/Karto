@@ -18,6 +18,7 @@ export type SyncSourceId =
   | "feedbacks"
   | "blocked"
   | "tariffs"
+  | "subscription"
   | "news"
   | "history";
 
@@ -121,6 +122,16 @@ export const SYNC_SOURCES: readonly SyncSource[] = [
     priority: 2,
     needs: [],
     endpoints: [{ method: "GET", path: "/api/v1/analytics/banned-products/blocked", calls: () => 1 }],
+  },
+  {
+    // Подписка «Джем»: от неё зависят расширенные данные и возможности агента. Меняется редко.
+    id: "subscription",
+    lane: "fast",
+    title: "Подписка продавца «Джем»",
+    everyMs: 6 * HOUR,
+    priority: 3,
+    needs: [],
+    endpoints: [{ method: "GET", path: "/api/common/v1/subscriptions", calls: () => 1 }],
   },
   {
     id: "tariffs",

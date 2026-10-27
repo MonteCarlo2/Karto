@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchSalesFunnelDay, fetchStocksReport } from "@/lib/services/wildberries/analytics-client";
-import { HISTORY_HORIZON_DAYS, missingDays, rowsFromFunnelDay, STORE_NM_ID, stockByNm, type DailyMetrics } from "@/lib/seller-hub/metric-history";
+import { HISTORY_HORIZON_DAYS, missingDays, rowsFromFunnelDay, SNAPSHOT_METRIC_KEYS, STORE_NM_ID, stockByNm, type DailyMetrics } from "@/lib/seller-hub/metric-history";
 
 /**
  * Накопление истории показателей по дням (воронка и остаток) в нашей базе. Общая часть для маршрута (ручной запуск из браузера)
@@ -14,6 +14,16 @@ const running = new Map<string, Promise<string[]>>();
 
 export function moscowToday(now = Date.now()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
+}
+
+/** Из строки дня берём только то, что пришло не из воронки (остаток, цена, скидка): при записи воронки за день это сохраняется. */
+export function pickSnapshotFields(metrics: Partial<DailyMetrics> | null | undefined): Partial<DailyMetrics> {
+  const out: Record<string, unknown> = {};
+  for (const key of SNAPSHOT_METRIC_KEYS) {
+    const value = metrics?.[key];
+    if (value != null) out[key] = value;
+  }
+  return out as Partial<DailyMetrics>;
 }
 
 export type StoredMetricRow = { metric_date: string; nm_id: string; metrics: DailyMetrics };
@@ -65,11 +75,15 @@ export async function refreshMetricHistory(input: { db: SupabaseClient; userId: 
       }
       // Если за этот день уже есть остаток (снимок, сделанный в тот день), переносим его в новую строку, а не затираем.
       const { data: old } = await db.from("seller_hub_metric_daily").select("nm_id, metrics").eq("user_id", userId).eq("marketplace_id", MARKETPLACE).eq("metric_date", day);
-      const oldStock = new Map((old ?? []).map((o) => [o.nm_id as string, (o.metrics as DailyMetrics).stock]));
-      const payload = rows.map((r) => {
-        const stock = oldStock.get(r.nmId);
-        return { user_id: userId, marketplace_id: MARKETPLACE, metric_date: r.metricDate, nm_id: r.nmId, metrics: stock == null ? r.metrics : { ...r.metrics, stock }, source: "wb-funnel" };
-      });
+      const oldSnapshotFields = new Map((old ?? []).map((o) => [o.nm_id as string, pickSnapshotFields(o.metrics as DailyMetrics)]));
+      const payload = rows.map((r) => ({
+        user_id: userId,
+        marketplace_id: MARKETPLACE,
+        metric_date: r.metricDate,
+        nm_id: r.nmId,
+        metrics: { ...r.metrics, ...(oldSnapshotFields.get(r.nmId) ?? {}) },
+        source: "wb-funnel",
+      }));
       const { error } = await db.from("seller_hub_metric_daily").upsert(payload, { onConflict: "user_id,marketplace_id,metric_date,nm_id" });
       if (error) throw new Error(error.message);
     }
@@ -96,4 +110,40 @@ export async function refreshMetricHistory(input: { db: SupabaseClient; userId: 
   } finally {
     running.delete(userId);
   }
+}
+
+/**
+ * Записывает в историю дня цену и скидку каждого товара по последнему снимку каталога. WB не вызывается.
+ * Цена за день хранится одна (последняя): ночью это цена на конец дня, и по ней потом видно, как смена цены повлияла на заказы.
+ * Другие показатели дня (воронка, остаток) сохраняются: строка читается и дополняется, а не заменяется.
+ */
+export async function recordDailyPrices(input: {
+  db: SupabaseClient;
+  userId: string;
+  today: string;
+  items: Array<{ nmId: string; price: number | null; discountPercent: number | null }>;
+}): Promise<number> {
+  const { db, userId, today, items } = input;
+  const known = items.filter((item) => item.nmId && (item.price != null || item.discountPercent != null));
+  if (known.length === 0) return 0;
+  const { data, error } = await db
+    .from("seller_hub_metric_daily")
+    .select("nm_id, metrics")
+    .eq("user_id", userId)
+    .eq("marketplace_id", MARKETPLACE)
+    .eq("metric_date", today)
+    .in("nm_id", known.map((item) => item.nmId));
+  if (error) throw new Error(error.message);
+  const existing = new Map((data ?? []).map((row) => [row.nm_id as string, (row.metrics ?? {}) as Record<string, unknown>]));
+  const payload = known.map((item) => ({
+    user_id: userId,
+    marketplace_id: MARKETPLACE,
+    metric_date: today,
+    nm_id: item.nmId,
+    metrics: { ...(existing.get(item.nmId) ?? {}), price: item.price, discount: item.discountPercent ?? 0 },
+    source: "wb-price",
+  }));
+  const { error: writeError } = await db.from("seller_hub_metric_daily").upsert(payload, { onConflict: "user_id,marketplace_id,metric_date,nm_id" });
+  if (writeError) throw new Error(writeError.message);
+  return payload.length;
 }

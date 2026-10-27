@@ -33,7 +33,7 @@ export async function fetchAutoReplySubscriptionInfo(
   const [{ data: sub }, { data: billing }] = await Promise.all([
     supabase
       .from("user_subscriptions")
-      .select("plan_volume, period_start, auto_reply_welcome_remaining")
+      .select("plan_volume, period_start, auto_reply_welcome_remaining, auto_reply_comp_until")
       .eq("user_id", userId)
       .eq("plan_type", "auto_replies")
       .maybeSingle(),
@@ -50,6 +50,7 @@ export async function fetchAutoReplySubscriptionInfo(
     plan_volume?: number;
     period_start?: string;
     auto_reply_welcome_remaining?: number;
+    auto_reply_comp_until?: string | null;
   } | null;
   const billingRow = billing as {
     tariff_index?: number;
@@ -81,7 +82,9 @@ export async function fetchAutoReplySubscriptionInfo(
   }
 
   const periodStart = row?.period_start ?? billingRow?.period_start;
-  const active = isPeriodActive(periodStart);
+  const compUntilMs = row?.auto_reply_comp_until ? new Date(row.auto_reply_comp_until).getTime() : NaN;
+  const compActive = Number.isFinite(compUntilMs) && compUntilMs > Date.now();
+  const active = isPeriodActive(periodStart) || compActive;
   const rawVolume = Math.max(0, Number(row?.plan_volume ?? 0));
   const welcomeRemaining = Math.max(0, Number(row?.auto_reply_welcome_remaining ?? 0));
   const paidRemaining = active ? rawVolume : 0;
@@ -96,7 +99,11 @@ export async function fetchAutoReplySubscriptionInfo(
     welcomeRemaining,
     paidRemaining,
     periodStart,
-    periodEnd: periodStart ? getAutoReplyPeriodEndIso(periodStart) : undefined,
+    periodEnd: compActive && row?.auto_reply_comp_until
+      ? row.auto_reply_comp_until
+      : periodStart
+        ? getAutoReplyPeriodEndIso(periodStart)
+        : undefined,
     packExpired: Boolean(row && !active && rawVolume > 0),
     hasActivePack: active && rawVolume > 0,
     autoRenew: Boolean(billingRow?.auto_renew),

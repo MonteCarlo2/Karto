@@ -8,7 +8,8 @@ import { syncWildberriesCatalog } from "@/lib/services/wildberries/content-clien
 import { fetchRealizationMargin } from "@/lib/services/wildberries/realization-margin";
 import { fetchWbBlockedCards } from "@/lib/services/wildberries/risks-client";
 import { fetchWbBoxTariffs } from "@/lib/services/wildberries/tariffs-client";
-import { missingFunnelDays, moscowToday, readStoreMetricRows, refreshMetricHistory } from "@/lib/seller-hub/history/refresh";
+import { fetchWbJamSubscription } from "@/lib/services/wildberries/subscription-client";
+import { missingFunnelDays, moscowToday, readStoreMetricRows, recordDailyPrices, refreshMetricHistory } from "@/lib/seller-hub/history/refresh";
 import { loadMutedRubrics, newsProfileFromSnapshot, refreshSellerHubNews } from "@/lib/seller-hub/news/refresh";
 import { assessBaseSnapshot } from "./assess";
 import type { CabinetKey, SyncStore } from "./store";
@@ -143,6 +144,12 @@ const tariffs: Job = async (ctx) => {
   return { status: "ok", changed, rows: result.warehouses.length };
 };
 
+const subscription: Job = async (ctx) => {
+  const result = await fetchWbJamSubscription(ctx.token, ctx.now);
+  const changed = await ctx.store.publishSnapshot(ctx.key, "subscription", result);
+  return { status: "ok", changed };
+};
+
 /** Пауза перед следующей страницей новостей: у WB лимит один запрос в минуту. */
 const NEWS_NEXT_PAGE_MS = 70_000;
 
@@ -168,6 +175,20 @@ const HISTORY_NEXT_STEP_MS = 4 * 60_000;
 const history: Job = async (ctx) => {
   const today = moscowToday(ctx.now);
   const notes = await refreshMetricHistory({ db: ctx.db, userId: ctx.key.userId, token: ctx.token, today });
+  // Цена и скидка дня берутся из уже прочитанного каталога, WB не нужен. Сбой здесь не должен ломать докачку воронки.
+  try {
+    const baseSnap = await ctx.store.readSnapshot<SellerCatalogSnapshot>(ctx.key, "base");
+    if (baseSnap) {
+      await recordDailyPrices({
+        db: ctx.db,
+        userId: ctx.key.userId,
+        today,
+        items: baseSnap.payload.items.map((item) => ({ nmId: String(item.externalId), price: item.price ?? null, discountPercent: item.discountPercent ?? null })),
+      });
+    }
+  } catch (error) {
+    console.error("[seller-hub-sync] цена дня не записалась:", error instanceof Error ? error.message : String(error));
+  }
   if (notes.length > 0) return { status: "partial", reason: notes[0]! };
   const left = missingFunnelDays(await readStoreMetricRows(ctx.db, ctx.key.userId, today), today);
   return { status: "ok", changed: false, ...(left > 0 ? { retryInMs: HISTORY_NEXT_STEP_MS } : {}) };
@@ -212,6 +233,7 @@ export const JOBS: Record<SyncSourceId, Job> = {
   feedbacks,
   blocked,
   tariffs,
+  subscription,
   news,
   history,
 };

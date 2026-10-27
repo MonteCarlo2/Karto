@@ -1,4 +1,5 @@
 import type { AgentAction } from "@/lib/seller-hub/ads-agent-engine";
+import { checkPriceChange, DEFAULT_PRICE_GUARD } from "@/lib/seller-hub/agent/guardrails";
 import type { CardVerdict } from "@/lib/seller-hub/card-verdict";
 import { extractJsonLoose } from "@/lib/seller-hub/json-loose";
 import type { TextResult } from "@/lib/seller-hub/card-text-score";
@@ -109,12 +110,25 @@ export function actionForProductOption(kind: ProductOptionKind, f: ProductFacts)
     return { type: "create_campaign", nmId: f.nmId, name: `KARTO тест: ${f.title}`.slice(0, 100) };
   }
   if (kind === "lower_price") {
-    if (f.priceRub == null || !(f.priceRub > 0) || f.breakEvenRub == null || !(f.breakEvenRub > 0) || f.discountPercent == null) return null;
-    if (!(f.discountPercent >= 0 && f.discountPercent < 95)) return null;
-    const floor = Math.ceil(f.breakEvenRub * PRICE_FLOOR_CUSHION);
-    const target = Math.max(Math.round(f.priceRub * (1 - PRICE_STEP)), floor);
-    if (!(target < f.priceRub)) return null;
-    return { type: "price", nmId: f.nmId, targetRub: target, baseRub: Math.ceil(target / (1 - f.discountPercent / 100)), discount: f.discountPercent, currentRub: Math.round(f.priceRub), currentBaseRub: f.basePriceRub };
+    if (f.priceRub == null || !(f.priceRub > 0) || f.discountPercent == null || f.basePriceRub == null) return null;
+    // Те же проверки, что у сценариев цен (agent/guardrails.ts): пол по безубыточности, шаг не больше 5%, нет остатка — не снижаем.
+    // Время прошлого изменения здесь неизвестно, поэтому паузу между изменениями проверит сервер при пересчёте предложений.
+    const target = f.priceRub * (1 - PRICE_STEP);
+    const check = checkPriceChange(
+      {
+        currentBase: f.basePriceRub,
+        currentDiscount: f.discountPercent,
+        proposedBase: Math.ceil(target / (1 - f.discountPercent / 100)),
+        proposedDiscount: f.discountPercent,
+        breakEvenBuyerPrice: f.breakEvenRub,
+        stock: f.stock,
+        lastChangeAt: null,
+        nowMs: 0,
+      },
+      { ...DEFAULT_PRICE_GUARD, breakEvenCushion: PRICE_FLOOR_CUSHION - 1 },
+    );
+    if (!check.ok || !check.final || !(check.final.buyerPrice < f.priceRub)) return null;
+    return { type: "price", nmId: f.nmId, targetRub: check.final.buyerPrice, baseRub: check.final.base, discount: check.final.discount, currentRub: Math.round(f.priceRub * 100) / 100, currentBaseRub: f.basePriceRub };
   }
   return null;
 }

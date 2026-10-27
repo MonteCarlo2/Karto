@@ -3,7 +3,25 @@ import type { HistoryPoint } from "@/lib/seller-hub/metric-history";
 import type { VisionResult } from "@/lib/seller-hub/card-vision-score";
 import type { TextResult } from "@/lib/seller-hub/card-text-score";
 import type { QueryRelevance } from "@/lib/seller-hub/ads-query-relevance";
-import type { AgentRule } from "@/lib/seller-hub/ads-agent-engine";
+import type { AgentAction, AgentRule, AgentRuleKind } from "@/lib/seller-hub/ads-agent-engine";
+
+/** Предложение агента, насчитанное сервером (строка очереди из базы). */
+export type ServerAgentProposal = {
+  id: string;
+  key: string;
+  rule: AgentRuleKind | "playbook";
+  title: string;
+  facts: string[];
+  effect: string;
+  risk: "low" | "medium" | "high";
+  action: AgentAction;
+  meta?: Record<string, unknown>;
+  status: "open" | "done" | "dismissed" | "expired" | "failed";
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
+  resolutionNote: string | null;
+};
 import type { CampaignFacts, CampaignReview } from "@/lib/seller-hub/ads-review";
 import type { ProductAdvice, ProductFacts } from "@/lib/seller-hub/product-advice";
 import { autoRepliesAuthorizedFetch } from "@/lib/auto-replies/auto-replies-fetch";
@@ -384,9 +402,12 @@ export async function readSellerHubCardSellability(params: {
 
 export async function updateSellerHubCard(params: {
   nmId: number;
-  title: string;
-  description: string;
-  vendorCode: string;
+  /** Не переданное поле в карточке остаётся как есть. */
+  title?: string;
+  description?: string;
+  vendorCode?: string;
+  /** Правки характеристик по идентификатору (остальные в карточке остаются как есть). */
+  characteristics?: Array<{ id: number; value: string | number; numeric?: boolean }>;
   length?: number;
   width?: number;
   height?: number;
@@ -398,6 +419,7 @@ export async function updateSellerHubCard(params: {
       title: params.title,
       description: params.description,
       vendorCode: params.vendorCode,
+      characteristics: params.characteristics,
       length: params.length,
       width: params.width,
       height: params.height,
@@ -850,6 +872,12 @@ export async function addSellerHubAdNm(params: { advertId: number; nmId: number 
   return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
 }
 /** Изменить зоны показов кампании. Запись в WB: только после подтверждения человеком. */
+/** Дневной лимит расхода кампании (CPC). */
+export async function setSellerHubAdDailyLimit(params: { advertId: number; enabled: boolean; dailyLimit: number; carryOver: boolean }): Promise<{ ok: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/ads/daily-limit", { method: "POST", body: JSON.stringify({ ...params, confirm: `${params.advertId}:${params.enabled}:${params.dailyLimit}` }), timeoutMs: 30_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+}
 export async function setSellerHubAdPlacements(params: { advertId: number; search: boolean; recommendations: boolean }): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/ads/placements", { method: "POST", body: JSON.stringify({ ...params, confirm: `${params.search}:${params.recommendations}` }), timeoutMs: 30_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
@@ -896,6 +924,21 @@ export async function loadSellerHubAgentRules(): Promise<{ ok: boolean; rules: A
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; rules?: AgentRule[]; depositedToday?: Record<string, number>; error?: string };
   if (!res.ok || !data.ok || !data.rules) return { ok: false, rules: [], depositedToday: {}, error: data.error ?? `Ошибка ${res.status}` };
   return { ok: true, rules: data.rules, depositedToday: data.depositedToday ?? {} };
+}
+
+/** Предложения агента, которые сервер насчитал по снимку кабинета. Только чтение из нашей базы. */
+export async function loadSellerHubAgentProposals(): Promise<{ ok: boolean; proposals: ServerAgentProposal[]; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/proposals", { method: "GET", timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; proposals?: ServerAgentProposal[]; error?: string };
+  if (!res.ok || !data.ok || !data.proposals) return { ok: false, proposals: [], error: data.error ?? `Ошибка ${res.status}` };
+  return { ok: true, proposals: data.proposals };
+}
+
+/** Отметить решение по предложению агента (само действие в кабинете выполняют отдельные маршруты). */
+export async function resolveSellerHubAgentProposal(id: string, decision: "done" | "dismissed" | "failed", note?: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/proposals", { method: "POST", body: JSON.stringify({ id, decision, note }), timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
 }
 
 /** Сохранить правило агента (включено, режим, параметры). Кабинет WB не затрагивает. */
@@ -1513,4 +1556,126 @@ export async function buildSellerHubDiagnosticsRemote(): Promise<{
       error instanceof Error ? error.message : "Полный прогон диагностики не удался";
     return { ok: false, error: message };
   }
+}
+
+
+export type AiFeedItem = import("@/lib/seller-hub/agent/feed").FeedItem & { kindLabel: string | null };
+
+/** Единая лента: задачи алгоритмов и находки ИИ. Только чтение из нашей базы. */
+export async function loadSellerHubAiFeed(): Promise<{ ok: boolean; items: AiFeedItem[]; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/feed", { method: "GET", timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; items?: AiFeedItem[]; error?: string };
+  if (!res.ok || !data.ok || !data.items) return { ok: false, items: [], error: data.error ?? `Ошибка ${res.status}` };
+  return { ok: true, items: data.items };
+}
+
+/** Скрыть находку ИИ (владелец решил, что она не нужна). */
+export async function dismissSellerHubAiFinding(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: "dismiss" }), timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+}
+
+/** Принять действие из находки ИИ (или снять принятие): оно станет предложением «Выполнить» в разделе «Агенты». */
+export async function acceptSellerHubAiFinding(id: string, accept: boolean): Promise<{ ok: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: accept ? "accept" : "unaccept" }), timeoutMs: 40_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+}
+
+/** Принять сразу несколько планов (после одного пересчёта предложений). */
+export async function acceptSellerHubAiFindings(ids: string[], accept: boolean): Promise<{ ok: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ ids, action: accept ? "accept" : "unaccept" }), timeoutMs: 60_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+}
+
+export type AiChatMessage = { role: "user" | "assistant"; text: string; at: string; questions?: string[] };
+export type AiChat = { id: string; title: string; state: "asking" | "planned" | "closed"; rounds: number; messages: AiChatMessage[]; updatedAt: string };
+
+export async function listSellerHubAiChats(): Promise<{ ok: boolean; chats: Array<Pick<AiChat, "id" | "title" | "state" | "updatedAt">>; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/chat", { method: "GET", timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; chats?: Array<Pick<AiChat, "id" | "title" | "state" | "updatedAt">>; error?: string };
+  return res.ok && data.ok && data.chats ? { ok: true, chats: data.chats } : { ok: false, chats: [], error: data.error ?? `Ошибка ${res.status}` };
+}
+
+export async function loadSellerHubAiChat(id: string): Promise<{ ok: boolean; chat?: AiChat; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch(`/api/seller-hub/agents/chat?id=${encodeURIComponent(id)}`, { method: "GET", timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; chat?: AiChat; error?: string };
+  return res.ok && data.ok && data.chat ? { ok: true, chat: data.chat } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+}
+
+/** Сообщение владельца в диалог: ИИ задаёт вопросы или составляет планы (долго: до пары минут). */
+export async function sendSellerHubAiChat(chatId: string | null, message: string): Promise<{ ok: boolean; chat?: AiChat; planIds?: string[]; limited?: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/chat", { method: "POST", body: JSON.stringify({ chatId, message }), timeoutMs: 200_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; chat?: AiChat; planIds?: string[]; limited?: boolean; error?: string };
+  return res.ok && data.ok && data.chat ? { ok: true, chat: data.chat, planIds: data.planIds ?? [], limited: data.limited } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+}
+
+export async function closeSellerHubAiChat(chatId: string): Promise<void> {
+  await autoRepliesAuthorizedFetch("/api/seller-hub/agents/chat", { method: "POST", body: JSON.stringify({ chatId, action: "close" }), timeoutMs: 20_000 }).catch(() => undefined);
+}
+
+export type AiActivityPlan = {
+  id: string;
+  nmId: string | null;
+  title: string;
+  origin: string;
+  accepted: boolean;
+  strategy: import("@/lib/seller-hub/agent/strategy").Strategy | null;
+  state: import("@/lib/seller-hub/agent/strategy").StrategyState;
+  lastSeenAt: string;
+};
+export type AiActivity = { plans: AiActivityPlan[] };
+
+/** История работы ИИ: что стало с принятыми планами. Только чтение из нашей базы. */
+export async function loadSellerHubAiActivity(): Promise<{ ok: boolean; data?: AiActivity; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/ai-activity", { method: "GET", timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; plans?: AiActivityPlan[]; error?: string };
+  return res.ok && data.ok ? { ok: true, data: { plans: data.plans ?? [] } } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+}
+
+/** Отметить шаг плана, который делает человек: «сделал», «пропустил» или сбросить отметку. */
+export async function markSellerHubPlanStep(id: string, stepIndex: number, status: "done" | "skipped" | "reset"): Promise<{ ok: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: "step", stepIndex, status }), timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+}
+
+/** Скидка WB Клуба по товару (целые проценты). */
+export async function updateSellerHubClubDiscount(params: { nmId: number; clubDiscount: number }): Promise<{ ok: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/prices/club", { method: "POST", body: JSON.stringify({ updates: [params] }), timeoutMs: 90_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+}
+
+export type AutopilotSettingsView = { enabled: boolean; allowedTypes: string[]; maxActionsPerDay: number; maxDepositPerDayRub: number; routines: string[] };
+export type AutopilotView = { settings: AutopilotSettingsView; types: string[]; routines: Array<{ id: string; label: string }>; recent: Array<{ id: string; title: string; status: string; note: string; at: string }> };
+
+export async function loadSellerHubAutopilot(): Promise<{ ok: boolean; data?: AutopilotView; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/autopilot", { method: "GET", timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; settings?: AutopilotSettingsView; types?: string[]; routines?: AutopilotView["routines"]; recent?: AutopilotView["recent"]; error?: string };
+  return res.ok && data.ok && data.settings ? { ok: true, data: { settings: data.settings, types: data.types ?? [], routines: data.routines ?? [], recent: data.recent ?? [] } } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+}
+
+export async function saveSellerHubAutopilot(settings: AutopilotSettingsView): Promise<{ ok: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/autopilot", { method: "POST", body: JSON.stringify(settings), timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+}
+
+/** Включить или выключить автопилот у принятого плана. */
+export async function setSellerHubPlanAutopilot(id: string, on: boolean): Promise<{ ok: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: "autopilot", on }), timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+}
+
+export type AgentReportView = { id: string; period_start: string; period_end: string; payload: import("@/lib/seller-hub/agent/report").WeeklyReport };
+
+/** Недельные отчёты о работе агентов. */
+export async function loadSellerHubAgentReports(): Promise<{ ok: boolean; reports: AgentReportView[]; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/report", { method: "GET", timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; reports?: AgentReportView[]; error?: string };
+  return res.ok && data.ok ? { ok: true, reports: data.reports ?? [] } : { ok: false, reports: [], error: data.error ?? `Ошибка ${res.status}` };
 }

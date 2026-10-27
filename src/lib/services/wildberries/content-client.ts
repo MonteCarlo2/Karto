@@ -469,14 +469,34 @@ function filledCharacteristicNames(value: unknown): string[] | undefined {
   return names;
 }
 
+/** Заполненные характеристики карточки с значениями: основа для правдивых правок текста. Не больше 40 строк по 120 знаков, чтобы снимок не раздувался. */
+export function filledCharacteristicValues(value: unknown): Array<{ id?: number; name: string; value: string }> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: Array<{ id?: number; name: string; value: string }> = [];
+  for (const row of value) {
+    if (!row || typeof row !== "object") continue;
+    const named = row as { id?: unknown; name?: unknown; value?: unknown };
+    if (!characteristicValueFilled(named.value) || typeof named.name !== "string" || !named.name.trim()) continue;
+    const raw = named.value;
+    const text = (Array.isArray(raw) ? raw.map((x) => String(x)).join(", ") : String(raw)).replace(/\s+/g, " ").trim().slice(0, 120);
+    if (text) out.push({ ...(typeof named.id === "number" ? { id: named.id } : {}), name: named.name.trim(), value: text });
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+
 /** Справочник категории меняется редко — обновляем раз в неделю. */
 const CHARC_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** За один sync не тянем все subjectId сразу: остаток — в следующую синхронизацию. */
 const CHARC_FETCH_BUDGET = 40;
 
+export type CategoryCharc = { id: number; name: string; required: boolean; /** 1 — текст (список значений), 4 — число. */ type: number | null; unit: string | null; maxCount: number | null };
+
 export type CategoryCharcCacheEntry = {
   names: string[];
   requiredNames: string[];
+  /** Характеристики категории с идентификаторами: нужны, чтобы агент мог заполнять недостающие. Может не быть в старых записях кэша. */
+  charcs?: CategoryCharc[];
   loadedAt: string;
 };
 
@@ -499,6 +519,7 @@ function applyCharcEntry(items: SellerCatalogItem[], subjectId: number, entry: C
     item.categoryCharcCount = entry.names.length;
     item.categoryCharcNames = entry.names;
     item.categoryCharcRequiredNames = entry.requiredNames;
+    item.categoryCharcs = entry.charcs;
   }
 }
 
@@ -509,14 +530,17 @@ async function fetchSubjectCharcs(
   await throttle(cardsThrottle, CARDS_MIN_INTERVAL_MS);
   const res = await wbFetch(token, `${CONTENT_BASE}/content/v2/object/charcs/${subjectId}?locale=ru`);
   if (!res.ok) return null;
-  const parsed = parseJson<{ data?: Array<{ name?: string; required?: boolean }> }>(res.text);
+  const parsed = parseJson<{ data?: Array<{ charcID?: number; name?: string; required?: boolean; unitName?: string; maxCount?: number; charcType?: number }> }>(res.text);
   const rows = parsed?.data ?? [];
+  const charcs: CategoryCharc[] = rows
+    .filter((row) => typeof row.charcID === "number" && row.charcID > 0 && typeof row.name === "string" && row.name.trim())
+    .map((row) => ({ id: row.charcID as number, name: (row.name as string).trim(), required: row.required === true, type: typeof row.charcType === "number" ? row.charcType : null, unit: row.unitName?.trim() || null, maxCount: typeof row.maxCount === "number" ? row.maxCount : null }));
   const names = rows.map((row) => row.name?.trim() ?? "").filter((name) => name.length > 0);
   const requiredNames = rows
     .filter((row) => row.required === true)
     .map((row) => row.name?.trim() ?? "")
     .filter((name) => name.length > 0);
-  return { names, requiredNames, loadedAt: new Date().toISOString() };
+  return { names, requiredNames, charcs, loadedAt: new Date().toISOString() };
 }
 
 function seedCharcMemory(previous?: Record<string, CategoryCharcCacheEntry>) {
@@ -529,6 +553,7 @@ function seedCharcMemory(previous?: Record<string, CategoryCharcCacheEntry>) {
       categoryCharcMemory.set(subjectId, {
         names: entry.names,
         requiredNames: entry.requiredNames ?? [],
+        charcs: entry.charcs,
         loadedAt: entry.loadedAt,
       });
     }
@@ -633,6 +658,7 @@ function mapCard(card: WbContentCard): SellerCatalogItem {
     sizesCount: card.sizes?.length ?? null,
     filledCharacteristics: countFilledCharacteristics(card.characteristics),
     characteristicNames: filledCharacteristicNames(card.characteristics),
+    characteristics: filledCharacteristicValues(card.characteristics),
     promotionIds: [],
     createdAt: card.createdAt,
     updatedAt: card.updatedAt,

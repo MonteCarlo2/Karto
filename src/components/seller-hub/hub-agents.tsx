@@ -8,6 +8,11 @@ import { readHubScenarios, writeHubScenarios, type HubScenario } from "@/lib/sel
 import { hub, HubButton, HubPanel, hubSans } from "./hub-ui";
 import { HubActionJournal } from "./hub-action-journal";
 import { HubAgentsAds } from "./hub-agents-ads";
+import { HubAiActivity } from "./hub-ai-activity";
+import { HubAutopilot } from "./hub-autopilot";
+import { HubAgentReport } from "./hub-agent-report";
+import { HubAiRules } from "./hub-ai-rules";
+import { HubAiChat } from "./hub-ai-chat";
 import { HubAgentsLogistics } from "./hub-agents-logistics";
 import type { FulfillmentTab } from "@/lib/seller-hub/fulfillment-center";
 import type { SellerAdCampaignRow, SellerCatalogSnapshot } from "@/lib/seller-hub/types";
@@ -72,6 +77,22 @@ export function HubAgents({ onAsk, snapshot, connected, onAdsUpdate, onOpenFulfi
 
   return (
     <div className="space-y-4">
+      <HubAiChat titleByNm={new Map((snapshot?.items ?? []).map((item) => [String(item.externalId), item.title]))} cardByNm={new Map((snapshot?.items ?? []).map((item) => [String(item.externalId), { title: item.title, vendorCode: item.vendorCode, description: item.description ?? "" }]))} />
+      <HubAiActivity />
+      <HubAiRules />
+      <HubAutopilot />
+      <HubAgentReport />
+      <HubPanel className="px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-[14px] font-semibold" style={{ color: hub.text }}>Автоответы на отзывы и вопросы</p>
+            <p className="text-[13px] leading-5" style={{ color: hub.textMuted }}>Работают отдельным модулем: правила ответов, стиль бренда, проверка перед отправкой. Здесь агенты их не заменяют, а подсказывают, где отзывы мешают продажам.</p>
+          </div>
+          <Link href="/studio/auto-replies/workspace" className="inline-flex">
+            <HubButton variant="secondary">Открыть автоответы</HubButton>
+          </Link>
+        </div>
+      </HubPanel>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {(Object.keys(AGENT_LABEL) as HubScenario["agent"][]).map((id) => {
           const face = AGENT_FACE[id];

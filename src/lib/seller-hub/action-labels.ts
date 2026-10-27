@@ -10,6 +10,7 @@ export const ACTION_LABEL: Record<string, string> = {
   ad_remove_nm: "Товар убран из кампании",
   ad_add_nm: "Товар добавлен в кампанию",
   ad_placements: "Изменение зон показов",
+  ad_daily_limit: "Дневной лимит кампании",
   ad_cluster_bid: "Ставка на поисковый кластер",
   ad_cluster_bid_reset: "Сброс ставки кластера",
   supply_create: "Создание поставки FBS",

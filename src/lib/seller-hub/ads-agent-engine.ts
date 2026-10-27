@@ -114,22 +114,48 @@ export function validateRule(rule: { kind: string; mode: string; params: Record<
 export type AgentAction =
   | { type: "deposit"; campaignId: string; sumRub: number }
   | { type: "pause"; campaignId: string }
+  /** Обратное к «pause»: запуск кампании. Нужен прежде всего для отката. */
+  | { type: "resume"; campaignId: string }
   | { type: "remove_nm"; campaignId: string; nmId: string }
-  | { type: "bid"; advertId: string; nmId: string; bidRub: number }
+  /** Обратное к «remove_nm»: вернуть товар в кампанию (ставка станет стандартной, прежняя не сохраняется WB). */
+  | { type: "add_nm"; campaignId: string; nmId: string }
+  /** previousBidRub — ставка до изменения: по ней строится откат. */
+  | { type: "bid"; advertId: string; nmId: string; bidRub: number; previousBidRub?: number | null }
   | { type: "create_campaign"; nmId: string; name: string }
+  /** Правка названия или описания карточки WB. previousText нужен для отката и для показа «было → станет». */
+  /** Выход товара из акции WB (календарной): прежние условия участия вернуть через API нельзя, повторный вход делается вручную на странице акции. */
+  | { type: "promo_exit"; promoId: string; promoName: string; nmId: string }
+  /** Правка характеристик карточки: replace по идентификатору. previous нужен для показа «было → станет» и отката (null: характеристика была пустой). */
+  | { type: "characteristics"; nmId: string; changes: Array<{ charcId: number; name: string; value: string | number; numeric: boolean; previous: string | null }> }
+  /** Минус-фразы кампании по товару: показы по этим запросам прекращаются. */
+  | { type: "minus_phrases"; advertId: string; nmId: string; queries: string[] }
+  /** Где показывается реклама кампании: в поиске и/или в рекомендациях. previous нужен для отката. */
+  | { type: "placements"; advertId: string; search: boolean; recommendations: boolean; previousSearch: boolean | null; previousRecommendations: boolean | null }
+  /** Дневной лимит расхода кампании (только CPC). previous нужен для отката: null, если прежнее состояние неизвестно. */
+  | { type: "daily_limit"; campaignId: string; enabled: boolean; limitRub: number; carryOver: boolean; previous: { enabled: boolean; limitRub: number | null; carryOver: boolean } | null }
+  /** Вход в календарную акцию: WB-метод ставит скидку продавца так, чтобы цена совпала с ценой акции. previous* нужны для показа «было → станет» и ручного возврата. */
+  | { type: "promo_join"; promoId: string; promoName: string; nmId: string; planPrice: number; planDiscount: number | null; basePrice: number | null; discountedPrice: number | null; discountPercent: number | null }
+  /** Скидка WB Клуба, целые проценты. previousPercent нужен для отката. */
+  | { type: "club_discount"; nmId: string; clubPercent: number; previousPercent: number | null }
+  | { type: "content"; nmId: string; field: "title" | "description"; text: string; previousText: string }
   | { type: "price"; nmId: string; targetRub: number; baseRub: number; discount: number; currentRub: number;
       /** Базовая цена, которую видел человек, когда агент предложил действие: перед записью сверяется с WB. */
       currentBaseRub?: number | null };
 
+/** Правило рекламы или сценарий цен («playbook»): сценарии цен настраиваются отдельно от правил рекламы. */
+export type AgentProposalRule = AgentRuleKind | "playbook";
+
 export type AgentProposal = {
   id: string;
-  rule: AgentRuleKind;
+  rule: AgentProposalRule;
   title: string;
   facts: string[];
   /** Что изменится и чем рискуем. */
   effect: string;
-  risk: "low" | "medium";
+  risk: "low" | "medium" | "high";
   action: AgentAction;
+  /** Служебные данные предложения (для сценариев цен: стратегия, шаг, причины, состояние сценария после выполнения). */
+  meta?: Record<string, unknown>;
 };
 
 const rub = (v: number) => `${Math.round(v).toLocaleString("ru-RU")} ₽`;
@@ -221,7 +247,7 @@ export function buildAgentProposals(input: {
           facts: [`ДРР товара ${pct(drr)} при марже ${pct(margin)}: реклама съедает больше, чем товар зарабатывает.`, `Расход ${rub(row.spend)}, заказов по рекламе ${row.orders} на ${rub(row.orderSum)}.`],
           effect: "Показов станет меньше, расход упадёт. Заказов по рекламе может стать меньше: смотрите ДРР через несколько дней.",
           risk: "medium",
-          action: { type: "bid", advertId: c.id, nmId: row.nmId, bidRub: next },
+          action: { type: "bid", advertId: c.id, nmId: row.nmId, bidRub: next, previousBidRub: current },
         });
       }
     }
@@ -245,7 +271,7 @@ export function buildAgentProposals(input: {
             ],
             effect: "Показов и заказов может стать больше, расход вырастет. Если ДРР приблизится к марже, правило защиты предложит снизить ставку.",
             risk: "medium",
-            action: { type: "bid", advertId: c.id, nmId: row.nmId, bidRub: next },
+            action: { type: "bid", advertId: c.id, nmId: row.nmId, bidRub: next, previousBidRub: bidRow.currentRub },
           });
         }
       }

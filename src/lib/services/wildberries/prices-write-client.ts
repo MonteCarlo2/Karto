@@ -134,6 +134,29 @@ export async function updateWbPrices(
 }
 
 /**
+ * Установить скидку WB Клуба (целые проценты). POST https://discounts-prices-api.wildberries.ru/api/v2/upload/task/club-discount
+ * Обработку задачи ждёт тот же `waitForWbPriceUpload`: история задач общая для всех загрузок цен и скидок.
+ */
+export async function updateWbClubDiscount(
+  token: string,
+  updates: Array<{ nmId: number; clubDiscount: number }>
+): Promise<{ ok: boolean; uploadId?: number; error?: string; status?: number }> {
+  if (updates.length === 0) return { ok: true };
+  for (const u of updates) {
+    if (!Number.isInteger(u.nmId) || u.nmId <= 0) return { ok: false, error: "Неверный артикул WB" };
+    if (!Number.isFinite(u.clubDiscount) || u.clubDiscount < 0 || u.clubDiscount > 100) return { ok: false, error: "Скидка Клуба должна быть от 0 до 100%" };
+  }
+  const res = await wbFetch(token, `${PRICES_BASE}/api/v2/upload/task/club-discount`, {
+    method: "POST",
+    body: { data: updates.map((u) => ({ nmID: u.nmId, clubDiscount: Math.round(u.clubDiscount) })) },
+  });
+  if (!res.ok) return { ok: false, status: res.status, error: parseWbPricesError(res.text, res.status) };
+  const body = parseJson<{ data?: { uploadID?: number; id?: number }; error?: boolean; errorText?: string }>(res.text);
+  if (body?.error) return { ok: false, status: 400, error: body.errorText ?? "Wildberries отклонил скидку Клуба" };
+  return { ok: true, uploadId: body?.data?.uploadID ?? body?.data?.id };
+}
+
+/**
  * Восстановить скидку: сначала только discount (как в кабинете WB), затем price+discount.
  */
 export async function applyWbDiscountRestore(

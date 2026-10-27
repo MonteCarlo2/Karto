@@ -77,6 +77,10 @@ export type SellerCatalogItem = {
   filledCharacteristics?: number | null;
   /** Названия заполненных характеристик, как их отдал WB. */
   characteristicNames?: string[];
+  /** Заполненные характеристики со значениями (до 40): ИИ правит текст карточки только по ним и по описанию. */
+  characteristics?: Array<{ id?: number; name: string; value: string }>;
+  /** Характеристики категории товара с идентификаторами (из справочника WB). */
+  categoryCharcs?: Array<{ id: number; name: string; required: boolean; type: number | null; unit: string | null; maxCount: number | null }>;
   /** Сколько полей в справочнике предмета. Нет поля — справочник ещё не читали. */
   categoryCharcCount?: number | null;
   /** Названия полей справочника предмета. */
@@ -684,6 +688,8 @@ export type SellerCatalogSnapshot = {
   supplies?: SellerSuppliesSnapshot;
   /** Рекламные кампании WB. */
   ads?: SellerAdsSnapshot;
+  /** Подписка продавца «Джем» (отдельный источник фонового сбора). */
+  jam?: SellerJamSubscription;
   /** Статистика рекламы за последние 7 полных дней: нужна движку задач. Грузится отдельно от списка кампаний. */
   adsStats?: SellerAdsStats;
   /** То же за предыдущие 7 дней: для тренда эффективности рекламы. */
@@ -902,3 +908,14 @@ export function computeCatalogTotals(items: SellerCatalogItem[]): SellerCatalogT
     avgDiscount: discountCount > 0 ? discountSum / discountCount : null,
   };
 }
+
+/** Подписка «Джем»: active null, если WB не отдал сведения (метод недоступен для токена): тогда подписку считаем неизвестной. */
+export type SellerJamSubscription = {
+  loadedAt: string;
+  status: "ok" | "unavailable";
+  active: boolean | null;
+  since: string | null;
+  till: string | null;
+  state: "never" | "active" | "inactive" | "unknown";
+  httpStatus?: number;
+};

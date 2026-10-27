@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { safeSellerHubMessage, wbAuthorization } from "@/lib/seller-hub/wb-token";
 import { requireSellerHubWbToken } from "@/lib/seller-hub/wb-token-http";
 import { descriptionForWb, WB_DESCRIPTION_LIMIT } from "@/lib/seller-hub/wb-description";
+import { mergeCharacteristics } from "@/lib/seller-hub/card-characteristics";
 
 import { withSyncInvalidation } from "@/lib/seller-hub/sync/invalidate";
 export const maxDuration = 60;
@@ -29,6 +30,8 @@ async function handlePost(request: NextRequest) {
     length?: number;
     width?: number;
     height?: number;
+    /** Правки характеристик: заменить значение по идентификатору или добавить. numeric: значение число (тип характеристики 4), иначе список из одной строки. */
+    characteristics?: Array<{ id: number; value: string | number; numeric?: boolean }>;
   };
   try {
     body = await request.json();
@@ -98,7 +101,7 @@ async function handlePost(request: NextRequest) {
           height,
           weightBrutto: card.dimensions?.weightBrutto,
         },
-        characteristics: card.characteristics ?? [],
+        characteristics: mergeCharacteristics(card.characteristics ?? [], body.characteristics),
         sizes: card.sizes,
       },
     ]),
