@@ -42,6 +42,25 @@ export async function loadNegativeSnippets(db: SupabaseClient, userId: string, n
 }
 
 /** Товары с сигналами для сценариев по снимку. Отзывы и заказы по дням читаются из нашей базы. */
+/**
+ * Рекламные показатели товара за период статистики по всем его кампаниям (только из данных WB): расход, заказы по рекламе, ДРР (расход / сумма заказов по рекламе),
+ * стоимость заказа (CPO), CTR. Нет рекламы или нет данных: пусто (null), а не нули.
+ */
+export function adFactsFor(adsStats: SellerCatalogSnapshot["adsStats"] | undefined, nmId: string): Record<string, number | null> {
+  const empty = { ads_spend_rub: null, ads_orders: null, ads_drr: null, ads_cpo: null, ads_ctr_pct: null };
+  if (!adsStats) return empty;
+  let views = 0, clicks = 0, spend = 0, orders = 0, orderSum = 0, found = false;
+  for (const c of adsStats.campaigns ?? []) {
+    const r = c.byNm?.[nmId];
+    if (!r) continue;
+    found = true;
+    views += r.views; clicks += r.clicks; spend += r.spend; orders += r.orders; orderSum += r.orderSum;
+  }
+  if (!found) return empty;
+  const r1 = (v: number) => Math.round(v * 10) / 10;
+  return { ads_spend_rub: Math.round(spend), ads_orders: orders, ads_drr: orderSum > 0 ? r1((spend / orderSum) * 100) : null, ads_cpo: orders > 0 ? Math.round(spend / orders) : null, ads_ctr_pct: views > 0 ? r1((clicks / views) * 100) : null };
+}
+
 export async function loadScenarioProducts(db: SupabaseClient, userId: string, snapshot: SellerCatalogSnapshot, nowMs: number): Promise<ScenarioProduct[]> {
   const todayKey = moscowDateKey(nowMs);
   const since = new Date(nowMs - HISTORY_DAYS * 86_400_000).toISOString().slice(0, 10);
@@ -113,6 +132,7 @@ export async function loadScenarioProducts(db: SupabaseClient, userId: string, s
               rating: fact.reviewRatingAvg,
               negative_recent: signals.recentNegative == null ? null : signals.recentNegative ? 1 : 0,
               margin_pct: fact.marginPercent,
+              ...adFactsFor(snapshot.adsStats, fact.nmId),
               jam_data: snapshot.jam?.active === true ? 1 : snapshot.jam?.active === false ? 0 : null,
             },
             snippets: snippets.get(fact.nmId) ?? [],

@@ -7,7 +7,7 @@
 
 export const DAY_MS = 86_400_000;
 
-export const CRITERIA_METRICS = ["orders_28d", "cart_pct", "cart_to_order_pct", "turnover_days", "margin_pct", "stock", "opens_28d", "rating", "oos_days", "price_buyer"] as const;
+export const CRITERIA_METRICS = ["orders_28d", "cart_pct", "cart_to_order_pct", "turnover_days", "margin_pct", "stock", "opens_28d", "rating", "oos_days", "price_buyer", "ads_drr", "ads_cpo", "ads_orders"] as const;
 export type CriteriaMetric = (typeof CRITERIA_METRICS)[number];
 
 export const METRIC_LABEL: Record<CriteriaMetric, string> = {
@@ -21,6 +21,9 @@ export const METRIC_LABEL: Record<CriteriaMetric, string> = {
   rating: "рейтинг",
   oos_days: "дней до нулевого остатка",
   price_buyer: "цена для покупателя, ₽",
+  ads_drr: "ДРР рекламы, %",
+  ads_cpo: "стоимость заказа с рекламы, ₽",
+  ads_orders: "заказы с рекламы",
 };
 
 /** Подписи чисел из доказательств решения: клиент видит понятные слова, а не имена полей. */
@@ -87,6 +90,9 @@ export const BETTER_WHEN: Record<CriteriaMetric, "up" | "down" | null> = {
   rating: "up",
   oos_days: null,
   price_buyer: null,
+  ads_drr: "down",
+  ads_cpo: "down",
+  ads_orders: "up",
 };
 
 export type Criterion = { metric: CriteriaMetric; op: ">=" | "<="; value: number };
