@@ -79,7 +79,8 @@ export async function runSolver(input: {
     if (!key) continue;
     if (!input.force && r.signal_fp) solvedMap.set(key, String(r.signal_fp));
     // Идущая стратегия, принятая владельцем, не пересматривается, пока не получен её итог.
-    const running = r.owner_accepted === true && (r.strategy_state as StrategyState | null)?.status === "running";
+    const stStatus = (r.strategy_state as StrategyState | null)?.status;
+    const running = r.owner_accepted === true && (stStatus === "running" || stStatus === "scheduled");
     if (running) solvedMap.set(key, "running");
     if (Array.isArray(r.attempts) && r.attempts.length > 0) attempts.set(key, r.attempts as PastAttempt[]);
   }
@@ -209,7 +210,7 @@ export async function runSolver(input: {
     // Все сигналы товара исчезли (алгоритм больше не видит проблему): решение больше не актуально, кроме идущей принятой стратегии.
     const activeKeys = new Set(groupsAll.map((g) => g.key));
     const { data: open } = await db.from("seller_hub_ai_findings").select("id, task_id, owner_accepted, strategy_state").eq("user_id", userId).eq("marketplace_id", MARKETPLACE).eq("origin", "signal").in("status", ["open", "not_problem"]);
-    const gone = (open ?? []).filter((r) => r.task_id && !activeKeys.has(String(r.task_id)) && !(r.owner_accepted === true && (r.strategy_state as StrategyState | null)?.status === "running")).map((r) => r.id as string);
+    const gone = (open ?? []).filter((r) => r.task_id && !activeKeys.has(String(r.task_id)) && !(r.owner_accepted === true && ["running", "scheduled"].includes(String((r.strategy_state as StrategyState | null)?.status)))).map((r) => r.id as string);
     if (gone.length > 0) await db.from("seller_hub_ai_findings").update({ status: "faded" }).in("id", gone);
     await recordAiUsage(db, userId, { kind: "agent-solver", calls, costUsd, nowMs }).catch(() => undefined);
   }

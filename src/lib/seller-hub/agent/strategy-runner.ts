@@ -51,7 +51,14 @@ export async function advanceStrategies(db: SupabaseClient, userId: string, prod
 
   for (const row of (data ?? []) as Row[]) {
     const strategy = normalizeStoredStrategy(row.strategy);
-    const state0 = row.strategy_state ?? {};
+    let state0 = row.strategy_state ?? {};
+    // Запланированный запуск: пока срок не наступил, план стоит; когда наступил, начинается как обычно принятый.
+    if (state0.status === "scheduled") {
+      const startMs = Date.parse(state0.scheduledStartAt ?? "");
+      if (!Number.isFinite(startMs) || nowMs < startMs) continue;
+      state0 = { status: "running", acceptedAt: new Date(startMs).toISOString() };
+      await db.from("seller_hub_ai_findings").update({ strategy_state: state0 }).eq("id", row.id);
+    }
     if (!strategy || !state0.acceptedAt || (state0.status && state0.status !== "running")) continue;
     const product = row.nm_id ? productByNm.get(row.nm_id) : undefined;
     const facts = product?.ai?.facts;
@@ -71,7 +78,7 @@ export async function advanceStrategies(db: SupabaseClient, userId: string, prod
     if (changed) await db.from("seller_hub_ai_findings").update({ strategy_state: state }).eq("id", row.id);
     if (state.status !== "running") continue;
 
-    const due = dueProgramSteps(strategy, { doneSteps: state.doneSteps ?? [], lastPriceDoneAtMs: state.lastPriceDoneAt ? Date.parse(state.lastPriceDoneAt) : null, acceptedAtMs: Date.parse(state.acceptedAt!), nowMs, current: state.current });
+    const due = dueProgramSteps(strategy, { doneSteps: state.doneSteps ?? [], lastPriceDoneAtMs: state.lastPriceDoneAt ? Date.parse(state.lastPriceDoneAt) : null, acceptedAtMs: Date.parse(state.acceptedAt!), nowMs, current: state.current, forced: state.forcedSteps });
     for (const ref of due) {
       const action = ref.step.action;
       if (action.type === "price") {

@@ -38,6 +38,8 @@ export async function POST(request: NextRequest) {
   const chatId = typeof body.chatId === "string" ? body.chatId : null;
   if (body.action === "close" && chatId) {
     await db.from("seller_hub_ai_chats").update({ state: "closed", updated_at: new Date().toISOString() }).eq("id", chatId).eq("user_id", auth.user.id);
+    // Планы закрытого диалога, которые владелец не принял, убираем из ленты: иначе пробные постановки копятся и мешают.
+    await db.from("seller_hub_ai_findings").update({ status: "dismissed" }).eq("user_id", auth.user.id).eq("origin", "chat").eq("owner_accepted", false).like("fingerprint", `chat:${chatId}:%`);
     return NextResponse.json({ ok: true });
   }
   if (typeof body.message !== "string" || !body.message.trim()) return NextResponse.json({ ok: false, error: "Напишите задачу" }, { status: 400 });

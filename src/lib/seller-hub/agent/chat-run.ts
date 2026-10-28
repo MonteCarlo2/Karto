@@ -139,27 +139,29 @@ export async function runChatTurn(input: {
     turn.selected.map(async (sel): Promise<{ sol: Solution; verdict: PlanReview | null } | null> => {
       const draft = await draftPlan(sel);
       if (!draft) return null;
-      const first = await reviewPlan(draft).catch(() => null);
-      if (!first || first.verdict === "agree") return { sol: draft, verdict: first };
-      try {
-        const revised = await draftPlan(sel, {
-          revision: {
-            instruction: "Независимый проверяющий нашёл замечания к твоему плану. Исправь план: устрани каждое замечание по существу (замени шаг, уточни условие, добавь страховку), сохрани то, что было верно. Верни полный исправленный план в том же формате, ровно один объект в solutions.",
-            previous_plan: planForReview(draft),
-            reviewer_verdict: first.verdict,
-            reviewer_remarks: first.reason,
-            steps_reviewer_objected_to: first.blockedSteps ?? [],
-          },
-        });
-        if (!revised) return { sol: draft, verdict: first };
-        const second = await reviewPlan(revised).catch(() => null);
-        // Берём исправленную версию, если проверяющий согласился или хотя бы не отверг её целиком.
-        if (second && second.verdict !== "reject") return { sol: revised, verdict: second };
-        return { sol: draft, verdict: first };
-      } catch (error) {
-        console.error("[seller-hub-agent] доработка плана не удалась:", error instanceof Error ? error.message : String(error));
-        return { sol: draft, verdict: first };
+      let best: { sol: Solution; verdict: PlanReview | null } = { sol: draft, verdict: await reviewPlan(draft).catch(() => null) };
+      // До двух доработок: каждая устраняет замечания проверяющего, затем повторная проверка. Берём лучшую версию, не худшую по вердикту.
+      const rank = (v: PlanReview | null) => (!v ? 1 : v.verdict === "agree" ? 3 : v.verdict === "dispute" ? 2 : 0);
+      for (let attempt = 0; attempt < 2 && best.verdict && best.verdict.verdict !== "agree"; attempt += 1) {
+        try {
+          const revised = await draftPlan(sel, {
+            revision: {
+              instruction: "Независимый проверяющий нашёл замечания к твоему плану. Исправь план: устрани каждое замечание по существу (замени шаг, уточни условие, добавь страховку, исправь критерии успеха), сохрани то, что было верно. Если замечание основано на непроверяемой метрике, замени критерий на метрику из набора. Верни полный исправленный план в том же формате, ровно один объект в solutions.",
+              previous_plan: planForReview(best.sol),
+              reviewer_verdict: best.verdict.verdict,
+              reviewer_remarks: best.verdict.reason,
+              steps_reviewer_objected_to: best.verdict.blockedSteps ?? [],
+            },
+          });
+          if (!revised) break;
+          const again = await reviewPlan(revised).catch(() => null);
+          if (rank(again) >= rank(best.verdict)) best = { sol: revised, verdict: again };
+        } catch (error) {
+          console.error("[seller-hub-agent] доработка плана не удалась:", error instanceof Error ? error.message : String(error));
+          break;
+        }
       }
+      return best;
     }),
   );
   pipelines.forEach((r) => r.status === "rejected" && console.error("[seller-hub-agent] план по товару не составился:", r.reason instanceof Error ? r.reason.message : String(r.reason)));

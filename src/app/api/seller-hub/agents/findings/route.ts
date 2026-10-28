@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireSellerHubUser(request);
   if (!auth.user) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
-  const body = (await request.json().catch(() => null)) as { id?: unknown; ids?: unknown; action?: unknown; stepIndex?: unknown; status?: unknown; on?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as { id?: unknown; ids?: unknown; action?: unknown; stepIndex?: unknown; status?: unknown; on?: unknown; startAt?: unknown } | null;
   // Автопилот плана: включается только у принятого плана с шагами, которые автопилот умеет выполнять; выключить можно всегда.
   if (body && body.action === "autopilot" && typeof body.id === "string" && typeof body.on === "boolean") {
     const db1 = createServerClient();
@@ -43,6 +43,22 @@ export async function POST(request: NextRequest) {
     if (body.on) q = q.eq("owner_accepted", true);
     const { error: apError } = await q;
     return apError ? NextResponse.json({ ok: false, error: "Не удалось сохранить" }, { status: 502 }) : NextResponse.json({ ok: true });
+  }
+  // «Выполнить шаг сейчас»: шаг программы предлагается сразу, не дожидаясь своего дня и условия. Выполняется всё равно кнопкой «Выполнить» с теми же проверками.
+  if (body && body.action === "step_now" && typeof body.id === "string" && Number.isInteger(body.stepIndex)) {
+    const dbn = createServerClient();
+    const { data: row } = await dbn.from("seller_hub_ai_findings").select("strategy_state").eq("id", body.id).eq("user_id", auth.user.id).eq("owner_accepted", true).maybeSingle();
+    const state = (row?.strategy_state ?? null) as { status?: string; forcedSteps?: number[] } | null;
+    if (!row || !state || state.status !== "running") return NextResponse.json({ ok: false, error: "План сейчас не идёт: сначала примите его" }, { status: 409 });
+    const forcedSteps = [...new Set([...(state.forcedSteps ?? []), body.stepIndex as number])];
+    await dbn.from("seller_hub_ai_findings").update({ strategy_state: { ...state, forcedSteps } }).eq("id", body.id).eq("user_id", auth.user.id);
+    try {
+      const built = await composeSnapshot(new SyncStore(dbn), dbn, { userId: auth.user.id, marketplaceId: MARKETPLACE });
+      if (built) await syncAgentProposals(dbn, auth.user.id, built.snapshot);
+    } catch (e) {
+      console.error("[seller-hub-agent] пересчёт после «выполнить сейчас» не удался:", e instanceof Error ? e.message : String(e));
+    }
+    return NextResponse.json({ ok: true });
   }
   // Отметка шага, который делает человек: «сделал», «пропустил» или сброс. Без этой отметки программа не знает, выполнен ли шаг.
   if (body && body.action === "step" && typeof body.id === "string" && Number.isInteger(body.stepIndex) && (body.status === "done" || body.status === "skipped" || body.status === "reset")) {
@@ -60,7 +76,9 @@ export async function POST(request: NextRequest) {
   if (!body || (typeof body.id !== "string" && !(ids && ids.length > 0)) || (body.action !== "dismiss" && body.action !== "accept" && body.action !== "unaccept")) return NextResponse.json({ ok: false, error: "Неверный запрос" }, { status: 400 });
   const db = createServerClient();
   // Принятие запускает стратегию с этого момента: срок пересмотра и шаги цены отсчитываются от него. Снятие принятия останавливает ведение.
-  const patch = body.action === "dismiss" ? { status: "dismissed" } : body.action === "accept" ? { owner_accepted: true, strategy_state: { status: "running", acceptedAt: new Date().toISOString() } } : { owner_accepted: false, autopilot: false, strategy_state: {} };
+  const startMs = typeof body.startAt === "string" ? Date.parse(body.startAt) : NaN;
+  const scheduled = body.action === "accept" && Number.isFinite(startMs) && startMs > Date.now() + 60_000 && startMs < Date.now() + 60 * 86_400_000;
+  const patch = body.action === "dismiss" ? { status: "dismissed" } : body.action === "accept" ? { owner_accepted: true, strategy_state: scheduled ? { status: "scheduled", scheduledStartAt: new Date(startMs).toISOString() } : { status: "running", acceptedAt: new Date().toISOString() } } : { owner_accepted: false, autopilot: false, strategy_state: {} };
   const { error } = await db.from("seller_hub_ai_findings").update(patch).in("id", ids && ids.length > 0 ? ids : [body.id as string]).eq("user_id", auth.user.id);
   if (error) return NextResponse.json({ ok: false, error: "Не удалось сохранить" }, { status: 502 });
   // Предложение должно появиться сразу, а не через 15 минут: пересчитываем по свежему снимку (сбой не отменяет принятие).

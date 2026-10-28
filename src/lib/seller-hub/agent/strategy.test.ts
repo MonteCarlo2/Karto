@@ -399,3 +399,18 @@ describe("сводка плана перед принятием", () => {
     assert.equal(b.horizonDays, 14);
   });
 });
+
+describe("«выполнить шаг сейчас»", () => {
+  it("принудительный шаг предлагается до своего срока и без условия", () => {
+    const s = parseStrategy(base({ steps: [{ day: 10, when: "через 10 дней", by: "program", step: "Поднять цену", action: { type: "price", direction: "raise", stepPercent: 2, reason: "r" }, if: { metric: "oos_days", op: "<=", value: 14 } }] }))!;
+    const input = { doneSteps: [], lastPriceDoneAtMs: null, acceptedAtMs: Date.parse("2026-10-01T00:00:00Z"), nowMs: Date.parse("2026-10-02T00:00:00Z"), current: { oos_days: 90 } };
+    assert.equal(dueProgramSteps(s, input).length, 0);
+    assert.equal(dueProgramSteps(s, { ...input, forced: [0] }).length, 1);
+  });
+  it("но шаг цены по-прежнему не чаще раза в сутки", () => {
+    const s = parseStrategy(base({ steps: [{ day: 5, when: "", by: "program", step: "цена", action: { type: "price", direction: "raise", stepPercent: 1, reason: "r" } }] }))!;
+    const nowMs = Date.parse("2026-10-02T12:00:00Z");
+    const input = { doneSteps: [], lastPriceDoneAtMs: nowMs - 3_600_000, acceptedAtMs: Date.parse("2026-10-01T00:00:00Z"), nowMs, forced: [0] };
+    assert.equal(dueProgramSteps(s, input).length, 0);
+  });
+});

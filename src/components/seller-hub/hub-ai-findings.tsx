@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { acceptSellerHubAiFinding, dismissSellerHubAiFinding, loadSellerHubAiFeed, markSellerHubPlanStep, setSellerHubPlanAutopilot, type AiFeedItem } from "@/lib/seller-hub/client-api";
+import { acceptSellerHubAiFinding, runSellerHubPlanStepNow, dismissSellerHubAiFinding, loadSellerHubAiFeed, markSellerHubPlanStep, setSellerHubPlanAutopilot, type AiFeedItem } from "@/lib/seller-hub/client-api";
 import { planBrief, describeCondition, describePlanAction, effectReport, evidenceLabel, stepCompliance, stepProgress } from "@/lib/seller-hub/agent/strategy";
 import { writeHubCardSeed } from "@/lib/seller-hub/card-seed";
 import { HubBadge, HubButton, HubPanel, hub } from "./hub-ui";
@@ -44,6 +44,7 @@ export function HubAiFindings({ titleByNm, cardByNm, chatId, reloadKey }: { titl
   const [items, setItems] = useState<AiFeedItem[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [startAtById, setStartAtById] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     const res = await loadSellerHubAiFeed();
@@ -130,6 +131,23 @@ export function HubAiFindings({ titleByNm, cardByNm, chatId, reloadKey }: { titl
                           ) : (
                             <span className="ml-1.5 text-[11px]" style={{ color: hub.textMuted }}>(это делаете вы{prog?.status === "done" ? ": отмечено «сделал»" : prog?.status === "skipped" ? ": пропущено" : ""})</span>
                           )}
+                          {p.action && running && prog && prog.status !== "done" ? (
+                            <button
+                              type="button"
+                              className="ml-2 rounded border px-2 py-0.5 align-middle text-[11px]"
+                              style={{ borderColor: hub.borderSoft, color: hub.text }}
+                              disabled={busy === f.id}
+                              title="Не ждать срока и условия: шаг сразу появится в «Предложениях» с кнопкой «Выполнить»"
+                              onClick={async () => {
+                                setBusy(f.id);
+                                const res = await runSellerHubPlanStepNow(f.id, i);
+                                if (res.ok) await load();
+                                setBusy(null);
+                              }}
+                            >
+                              Предложить сейчас
+                            </button>
+                          ) : null}
                           {p.flow && f.nmId ? (
                             <a
                               className="ml-2 inline-block rounded border px-2 py-0.5 align-middle text-[11px] font-semibold"
@@ -198,7 +216,7 @@ export function HubAiFindings({ titleByNm, cardByNm, chatId, reloadKey }: { titl
                   {f.ownerAccepted && state ? (
                     <div className="mt-2 rounded-md px-2.5 py-2" style={{ background: hub.borderSoft }}>
                       <p className="text-[12px] font-semibold" style={{ color: hub.text }}>
-                        {state.status === "worked" ? "Сработало" : state.status === "not_worked" ? "Не сработало" : state.status === "observed" ? "Наблюдение завершено" : "Ведётся"}
+                        {state.status === "scheduled" ? `Запланирован на ${state.scheduledStartAt ? fmtDate(state.scheduledStartAt) : "позже"}` : state.status === "worked" ? "Сработало" : state.status === "not_worked" ? "Не сработало" : state.status === "observed" ? "Наблюдение завершено" : "Ведётся"}
                         {state.acceptedAt ? <span className="font-normal" style={{ color: hub.textMuted }}> · принято {fmtDate(state.acceptedAt)}</span> : null}
                       </p>
                       {f.autopilot ? <p className="text-[12px] leading-4" style={{ color: hub.greenDark }}>Автопилот включён: безопасные шаги плана (пауза, убрать из кампании, минус-фразы, пополнение в лимите) выполняются сами, если это разрешено в общих правилах. Остальное по вашей кнопке.</p> : null}
@@ -301,19 +319,32 @@ export function HubAiFindings({ titleByNm, cardByNm, chatId, reloadKey }: { titl
                       {f.autopilot ? "Выключить автопилот" : "Включить автопилот"}
                     </HubButton>
                   ) : null}
+                  {st && !f.ownerAccepted ? (
+                    <label className="flex items-center gap-1 text-[11px]" style={{ color: hub.textMuted }}>
+                      Запустить позже:
+                      <input
+                        type="datetime-local"
+                        value={startAtById[f.id] ?? ""}
+                        min={new Date(Date.now() + 5 * 60_000).toISOString().slice(0, 16)}
+                        onChange={(e) => setStartAtById((prev) => ({ ...prev, [f.id]: e.target.value }))}
+                        className="rounded border px-1 py-0.5 text-[11px]"
+                        style={{ borderColor: hub.borderSoft, color: hub.text, background: "transparent" }}
+                      />
+                    </label>
+                  ) : null}
                   {(st || (f.action && f.second === "agree")) && state?.status !== "worked" ? (
                     <HubButton
                       variant={running ? "secondary" : "primary"}
                       disabled={busy === f.id}
                       onClick={async () => {
                         setBusy(f.id);
-                        const res = await acceptSellerHubAiFinding(f.id, !f.ownerAccepted);
+                        const res = await acceptSellerHubAiFinding(f.id, !f.ownerAccepted, !f.ownerAccepted && startAtById[f.id] ? new Date(startAtById[f.id]!).toISOString() : undefined);
                         // Сервер уже пересчитал предложения: перечитываем ленту, чтобы увидеть ход стратегии.
                         if (res.ok) await load();
                         setBusy(null);
                       }}
                     >
-                      {f.ownerAccepted ? "Остановить ведение" : st ? "Принять стратегию" : "Принять к выполнению"}
+                      {f.ownerAccepted ? "Остановить ведение" : st ? (startAtById[f.id] ? "Принять и запустить позже" : "Принять стратегию") : "Принять к выполнению"}
                     </HubButton>
                   ) : null}
                   <HubButton

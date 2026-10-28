@@ -409,7 +409,11 @@ export type StrategyCheckpoint = {
 };
 
 export type StrategyState = {
-  status?: "running" | "worked" | "not_worked" | "observed";
+  status?: "scheduled" | "running" | "worked" | "not_worked" | "observed";
+  /** Владелец принял план, но выбрал запуск позже: с этого момента (ISO) план начинает идти. */
+  scheduledStartAt?: string;
+  /** Шаги программы, которые владелец велел выполнить сейчас, не дожидаясь срока и условия. */
+  forcedSteps?: number[];
   acceptedAt?: string;
   baseline?: Metrics;
   checkpoints?: StrategyCheckpoint[];
@@ -556,13 +560,14 @@ export const programSteps = (strategy: Strategy): ProgramStepRef[] =>
  * Какие шаги программы пора предложить владельцу. Шаг считается сделанным, когда владелец выполнил предложение (шаг записан в doneSteps).
  * Шаг предлагается, когда наступил его день; следующий шаг цены не раньше чем через сутки после предыдущего выполненного шага цены.
  */
-export function dueProgramSteps(strategy: Strategy, input: { doneSteps: number[]; lastPriceDoneAtMs: number | null; acceptedAtMs: number; nowMs: number; /** Свежие значения метрик: нужны шагам с условием-триггером. */ current?: Record<string, number | null | undefined> }): ProgramStepRef[] {
+export function dueProgramSteps(strategy: Strategy, input: { doneSteps: number[]; lastPriceDoneAtMs: number | null; acceptedAtMs: number; nowMs: number; /** Шаги, которые владелец велел предложить сейчас (срок и условие не проверяются). */ forced?: number[]; /** Свежие значения метрик: нужны шагам с условием-триггером. */ current?: Record<string, number | null | undefined> }): ProgramStepRef[] {
   const out: ProgramStepRef[] = [];
   let priceTaken = false;
   for (const ref of programSteps(strategy)) {
     if (input.doneSteps.includes(ref.index)) continue;
-    if (input.nowMs < input.acceptedAtMs + ref.step.day * DAY_MS) continue;
-    if (ref.step.onlyIf && !(input.current?.[ref.step.onlyIf.metric] != null && criterionMet(input.current, ref.step.onlyIf))) continue;
+    const forced = input.forced?.includes(ref.index) === true;
+    if (!forced && input.nowMs < input.acceptedAtMs + ref.step.day * DAY_MS) continue;
+    if (!forced && ref.step.onlyIf && !(input.current?.[ref.step.onlyIf.metric] != null && criterionMet(input.current, ref.step.onlyIf))) continue;
     if (PRICE_LIKE.has(ref.step.action.type)) {
       // Цена меняется не чаще раза в сутки и по одному шагу за раз: следующий шаг цены ждёт, пока выполнен предыдущий.
       if (priceTaken) continue;

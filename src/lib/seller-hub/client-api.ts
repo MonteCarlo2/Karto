@@ -1577,8 +1577,16 @@ export async function dismissSellerHubAiFinding(id: string): Promise<{ ok: boole
 }
 
 /** Принять действие из находки ИИ (или снять принятие): оно станет предложением «Выполнить» в разделе «Агенты». */
-export async function acceptSellerHubAiFinding(id: string, accept: boolean): Promise<{ ok: boolean; error?: string }> {
-  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: accept ? "accept" : "unaccept" }), timeoutMs: 40_000 });
+/** Выполнить шаг программы сейчас, не дожидаясь срока и условия: шаг сразу появится как предложение «Выполнить». */
+export async function runSellerHubPlanStepNow(id: string, stepIndex: number): Promise<{ ok: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: "step_now", stepIndex }), timeoutMs: 40_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+}
+
+/** startAt (ISO) — запустить план позже, в указанный момент; без него план начинается сразу. */
+export async function acceptSellerHubAiFinding(id: string, accept: boolean, startAt?: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: accept ? "accept" : "unaccept", ...(startAt ? { startAt } : {}) }), timeoutMs: 40_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
   return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
 }
