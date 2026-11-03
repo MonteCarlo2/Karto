@@ -59,6 +59,9 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "10mb",
     },
+    // Прокси Next обрезает тело запроса на 10 МБ по умолчанию: JSON с фото в base64 ломался («Unterminated string in JSON»),
+    // а кредиты уже были списаны. Клиент теперь уменьшает фото, лимит повышен как запас.
+    proxyClientMaxBodySize: "30mb",
   },
 };
 

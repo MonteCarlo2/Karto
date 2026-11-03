@@ -39,6 +39,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  /** Возврат кредитов: срабатывает один раз и только если они уже списаны. Любая ошибка после списания должна возвращать деньги клиенту. */
+  let refund: (() => Promise<void>) | null = null;
+
   try {
     const authHeader = request.headers.get("authorization");
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
@@ -54,6 +57,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: "Войдите в аккаунт для генерации" },
         { status: 401 }
+      );
+    }
+
+    // Тело читаем ДО списания кредитов: если запрос пришёл битым или обрезанным (картинка больше лимита), клиент ничего не теряет.
+    let body: {
+      prompt?: string | null;
+      aspectRatio?: "3:4" | "4:3" | "9:16" | "1:1";
+      scenario?: "studio" | "lifestyle" | "macro" | "with-person" | null;
+      productImage?: string | null;
+    };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Фото слишком большое или не дошло до сервера целиком. Уменьшите изображение (достаточно 2000 px по длинной стороне) и попробуйте снова. Кредиты не списаны.",
+          code: "REQUEST_TOO_LARGE",
+        },
+        { status: 413 }
+      );
+    }
+    const { prompt, aspectRatio = "3:4", scenario, productImage } = body;
+
+    // Промпт обязателен только если не выбран сценарий
+    if (!scenario && (!prompt || !prompt.trim())) {
+      return NextResponse.json(
+        { success: false, error: "Выберите сценарий или введите описание для генерации" },
+        { status: 400 }
       );
     }
 
@@ -91,27 +123,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
-    const {
-      prompt,
-      aspectRatio = "3:4",
-      scenario,
-      productImage,
-    }: {
-      prompt: string | null;
-      aspectRatio?: "3:4" | "4:3" | "9:16" | "1:1";
-      scenario?: "studio" | "lifestyle" | "macro" | "with-person" | null;
-      productImage?: string | null;
-    } = body;
-
-    // Промпт обязателен только если не выбран сценарий
-    if (!scenario && (!prompt || !prompt.trim())) {
+    // После списания любая ошибка возвращает кредиты (один раз).
+    let refunded = false;
+    refund = async () => {
+      if (refunded) return;
+      refunded = true;
       await addCredits(supabase as any, user.id, CREDIT_PHOTO_4K);
-      return NextResponse.json(
-        { success: false, error: "Выберите сценарий или введите описание для генерации" },
-        { status: 400 }
-      );
-    }
+    };
 
     // Подготовка изображения товара (base64 "data:" или URL)
     let imageForApi: string | undefined;
@@ -137,7 +155,12 @@ export async function POST(request: NextRequest) {
             imageForApi = productImage;
           }
         } else {
-          console.warn("[generate-for-product] Изображение слишком большое, продолжаем без него");
+          // Раньше фото молча отбрасывалось, и клиент платил за снимок без своего товара. Теперь отказываем и возвращаем кредиты.
+          await refund?.();
+          return NextResponse.json(
+            { success: false, error: "Фото слишком большое. Уменьшите изображение (достаточно 2000 px по длинной стороне) и попробуйте снова. Кредиты возвращены.", code: "REQUEST_TOO_LARGE" },
+            { status: 413 }
+          );
         }
       } else if (productImage.startsWith("http://") || productImage.startsWith("https://")) {
         imageForApi = productImage;
@@ -217,7 +240,6 @@ export async function POST(request: NextRequest) {
         imageUrl = out.imageUrl;
       }
     } catch (genErr) {
-      await addCredits(supabase as any, user.id, CREDIT_PHOTO_4K);
       throw genErr;
     }
 
@@ -231,6 +253,11 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: unknown) {
     console.error("[generate-for-product] Ошибка:", error);
+    try {
+      await refund?.();
+    } catch (refundErr) {
+      console.error("[generate-for-product] Не удалось вернуть кредиты:", refundErr);
+    }
     if (provider === "evolink" || provider === "wavespeed") {
       const msg = error instanceof Error ? error.message : String(error);
       const providerName = provider === "wavespeed" ? "WaveSpeed" : "EvoLink";

@@ -1,5 +1,6 @@
 "use client";
 
+import { prepareImageDataUrl } from "@/lib/image-upload";
 import { useState, useEffect, useRef, useMemo, type Dispatch, type SetStateAction } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -1609,15 +1610,22 @@ export default function FreeGeneration() {
 
   // Обработчик загрузки фото товара
   const handleProductPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setProductPhoto(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProductPhotoPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
+    const input = e.target;
+    const file = input.files?.[0];
+    // Сбрасываем выбор, чтобы тот же файл (например, результат прошлой генерации) можно было загрузить повторно: иначе браузер не вызовет onChange.
+    const done = () => {
+      input.value = "";
+    };
+    if (!file) return;
+    setProductPhoto(file);
+    // Крупное фото (4K-результат, экспорт из Figma) уменьшаем до отправки: иначе запрос больше 10 МБ обрезается сервером и генерация падает.
+    prepareImageDataUrl(file)
+      .then((dataUrl) => setProductPhotoPreview(dataUrl))
+      .catch((err: unknown) => {
+        setProductPhoto(null);
+        showToast({ type: "error", title: "Фото не загрузилось", message: err instanceof Error ? err.message : "Не удалось подготовить изображение. Попробуйте другое фото." });
+      })
+      .finally(done);
   };
 
   // Сжимаем референс на клиенте (max 1200px, JPEG), чтобы KIE upload не падал по таймауту

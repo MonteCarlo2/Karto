@@ -54,6 +54,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  /** Возврат кредитов: один раз и только если они уже списаны. Любая ошибка после списания возвращает деньги клиенту. */
+  let refund: (() => Promise<void>) | null = null;
+
   try {
     const authHeader = request.headers.get("authorization");
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
@@ -69,6 +72,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: "Войдите в аккаунт для генерации" },
         { status: 401 }
+      );
+    }
+
+    // Тело читаем ДО списания кредитов: битый или обрезанный запрос не должен стоить клиенту денег.
+    let body: { prompt?: string; aspectRatio?: string; referenceImages?: unknown };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, error: "Запрос не дошёл до сервера целиком (возможно, слишком большое фото). Уменьшите изображение и попробуйте снова. Кредиты не списаны.", code: "REQUEST_TOO_LARGE" },
+        { status: 413 }
+      );
+    }
+    const { prompt, aspectRatio = "3:4", referenceImages } = body;
+    if (!prompt || !prompt.trim()) {
+      return NextResponse.json(
+        { success: false, error: "Требуется промпт для генерации" },
+        { status: 400 }
       );
     }
 
@@ -106,20 +127,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
-    const {
-      prompt,
-      aspectRatio = "3:4", // "3:4" | "4:3" | "9:16" | "1:1"
-      referenceImages,
-    } = body;
-
-    if (!prompt || !prompt.trim()) {
+    // После списания любая ошибка возвращает кредиты (один раз).
+    let refunded = false;
+    refund = async () => {
+      if (refunded) return;
+      refunded = true;
       await addCredits(supabase as any, user.id, CREDIT_PHOTO_4K);
-      return NextResponse.json(
-        { success: false, error: "Требуется промпт для генерации" },
-        { status: 400 }
-      );
-    }
+    };
 
     const providerLabel =
       provider === "evolink"
@@ -169,7 +183,6 @@ export async function POST(request: NextRequest) {
         referenceUsed = out.referenceUsed;
       }
     } catch (genErr) {
-      await addCredits(supabase as any, user.id, CREDIT_PHOTO_4K);
       throw genErr;
     }
 
@@ -188,6 +201,11 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error("❌ [FREE GENERATION] Ошибка:", error);
+    try {
+      await refund?.();
+    } catch (refundErr) {
+      console.error("[generate-free] Не удалось вернуть кредиты:", refundErr);
+    }
     if (provider === "evolink" || provider === "wavespeed") {
       const msg = error instanceof Error ? error.message : String(error);
       const providerName = provider === "wavespeed" ? "WaveSpeed" : "EvoLink";
