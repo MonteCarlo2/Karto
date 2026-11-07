@@ -10,7 +10,7 @@ import { resilientFetch } from "@/lib/supabase/resilient-fetch";
 const WINDOW_MS = 10 * 60_000;
 const MAX_PAIR = 6;
 const MAX_IP = 30;
-const MAX_EMAIL = 40;
+const MAX_EMAIL = 20;
 const MAX_KEYS = 5000;
 const fails = new Map<string, number[]>();
 
@@ -21,18 +21,27 @@ function blocked(keys: Array<[string, number]>): boolean {
   const now = Date.now();
   return keys.some(([k, max]) => recent(k, now).length >= max);
 }
-function recordFail(keys: string[]) {
+/** Резервируем попытку ДО запроса в Supabase (параллельные запросы не обходят лимит); при успехе резерв снимаем. */
+function reserve(keys: string[]): boolean {
   const now = Date.now();
+  if (fails.size >= MAX_KEYS) {
+    for (const [k, v] of fails) if (v.every((t) => now - t >= WINDOW_MS)) fails.delete(k);
+  }
+  // Таблица забита живыми записями: новые ключи не принимаем (закрыто по умолчанию), записи в окне не вытесняем.
+  if (fails.size >= MAX_KEYS && keys.some((k) => !fails.has(k))) return false;
   for (const k of keys) {
     const list = recent(k, now);
     list.push(now);
-    fails.delete(k);
-    fails.set(k, list); // порядок вставки = давность: самые старые ключи вытесняем первыми
+    fails.set(k, list);
   }
-  while (fails.size > MAX_KEYS) {
-    const oldest = fails.keys().next().value;
-    if (oldest === undefined) break;
-    fails.delete(oldest);
+  return true;
+}
+function release(keys: string[]) {
+  for (const k of keys) {
+    const list = fails.get(k);
+    if (!list) continue;
+    list.pop();
+    if (list.length === 0) fails.delete(k);
   }
 }
 
@@ -72,7 +81,8 @@ export async function POST(request: NextRequest) {
   const pairKey = `pair:${ip}|${emailKey}`;
   const ipKey = `ip:${ip}`;
   const mailKey = `email:${emailKey}`;
-  if (blocked([[pairKey, MAX_PAIR], [ipKey, MAX_IP], [mailKey, MAX_EMAIL]])) {
+  const allKeys = [pairKey, ipKey, mailKey];
+  if (blocked([[pairKey, MAX_PAIR], [ipKey, MAX_IP], [mailKey, MAX_EMAIL]]) || !reserve(allKeys)) {
     return NextResponse.json({ ok: false, message: "Слишком много попыток входа. Подождите несколько минут и попробуйте снова." }, { status: 429 });
   }
 
@@ -84,7 +94,6 @@ export async function POST(request: NextRequest) {
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error || !data.session) {
-      recordFail([pairKey, ipKey, mailKey]);
       return NextResponse.json({
         ok: false,
         // Наружу отдаём только код «email не подтверждён» (нужен форме входа), остальное обобщаем.
@@ -92,8 +101,7 @@ export async function POST(request: NextRequest) {
         message: (error as { code?: string } | null)?.code === "email_not_confirmed" ? "Email not confirmed" : "Invalid login credentials",
       });
     }
-    fails.delete(pairKey);
-    fails.delete(mailKey);
+    release(allKeys); // успешный вход не считается попыткой подбора
     return NextResponse.json({
       ok: true,
       access_token: data.session.access_token,
