@@ -2,21 +2,45 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { resilientFetch } from "@/lib/supabase/resilient-fetch";
 
-/** Ограничение попыток: считаем в памяти сервера (одно приложение), окно 10 минут. Против подбора пароля через этот маршрут. */
+/**
+ * Ограничение только НЕУДАЧНЫХ попыток (успешный вход счётчик сбрасывает), окно 10 минут, счётчик в памяти (одно приложение).
+ * Строго по паре «IP + email», мягче по одному IP и по одному email: чужой человек не может заблокировать вход владельцу аккаунта
+ * со своего адреса, а подбор пароля упирается в лимит.
+ */
 const WINDOW_MS = 10 * 60_000;
-const MAX_PER_IP = 20;
-const MAX_PER_EMAIL = 8;
-const hits = new Map<string, number[]>();
+const MAX_PAIR = 6;
+const MAX_IP = 30;
+const MAX_EMAIL = 40;
+const MAX_KEYS = 5000;
+const fails = new Map<string, number[]>();
 
-function tooMany(key: string, max: number): boolean {
+function recent(key: string, now: number): number[] {
+  return (fails.get(key) ?? []).filter((t) => now - t < WINDOW_MS);
+}
+function blocked(keys: Array<[string, number]>): boolean {
   const now = Date.now();
-  const list = (hits.get(key) ?? []).filter((t) => now - t < WINDOW_MS);
-  list.push(now);
-  hits.set(key, list);
-  if (hits.size > 5000) {
-    for (const [k, v] of hits) if (v.every((t) => now - t >= WINDOW_MS)) hits.delete(k);
+  return keys.some(([k, max]) => recent(k, now).length >= max);
+}
+function recordFail(keys: string[]) {
+  const now = Date.now();
+  for (const k of keys) {
+    const list = recent(k, now);
+    list.push(now);
+    fails.delete(k);
+    fails.set(k, list); // порядок вставки = давность: самые старые ключи вытесняем первыми
   }
-  return list.length > max;
+  while (fails.size > MAX_KEYS) {
+    const oldest = fails.keys().next().value;
+    if (oldest === undefined) break;
+    fails.delete(oldest);
+  }
+}
+
+/** Адрес клиента: последний элемент X-Forwarded-For добавляет наш прокси, ему можно верить; левые элементы подделывает клиент. */
+function clientIp(request: NextRequest): string {
+  const parts = (request.headers.get("x-forwarded-for") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  const candidate = parts[parts.length - 1] ?? request.headers.get("x-real-ip")?.trim() ?? "";
+  return /^[0-9a-fA-F:.]{3,45}$/.test(candidate) ? candidate : "unknown";
 }
 
 /**
@@ -43,8 +67,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, message: "Введите email и пароль" }, { status: 400 });
   }
 
-  const ip = (request.headers.get("x-forwarded-for")?.split(",")[0] ?? request.headers.get("x-real-ip") ?? "unknown").trim();
-  if (tooMany(`ip:${ip}`, MAX_PER_IP) || tooMany(`email:${email.toLowerCase()}`, MAX_PER_EMAIL)) {
+  const ip = clientIp(request);
+  const emailKey = email.toLowerCase();
+  const pairKey = `pair:${ip}|${emailKey}`;
+  const ipKey = `ip:${ip}`;
+  const mailKey = `email:${emailKey}`;
+  if (blocked([[pairKey, MAX_PAIR], [ipKey, MAX_IP], [mailKey, MAX_EMAIL]])) {
     return NextResponse.json({ ok: false, message: "Слишком много попыток входа. Подождите несколько минут и попробуйте снова." }, { status: 429 });
   }
 
@@ -56,6 +84,7 @@ export async function POST(request: NextRequest) {
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error || !data.session) {
+      recordFail([pairKey, ipKey, mailKey]);
       return NextResponse.json({
         ok: false,
         // Наружу отдаём только код «email не подтверждён» (нужен форме входа), остальное обобщаем.
@@ -63,6 +92,8 @@ export async function POST(request: NextRequest) {
         message: (error as { code?: string } | null)?.code === "email_not_confirmed" ? "Email not confirmed" : "Invalid login credentials",
       });
     }
+    fails.delete(pairKey);
+    fails.delete(mailKey);
     return NextResponse.json({
       ok: true,
       access_token: data.session.access_token,
