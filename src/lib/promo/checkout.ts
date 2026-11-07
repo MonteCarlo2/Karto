@@ -38,6 +38,10 @@ type CampaignRow = {
   active: boolean;
   starts_at: string;
   ends_at: string | null;
+  /** Действует на любой вид услуги, в том числе будущие. */
+  applies_to_all?: boolean | null;
+  /** Один человек может применять код много раз. */
+  reusable?: boolean | null;
 };
 
 function promoKindsMatch(
@@ -84,7 +88,7 @@ export async function validatePromoForCheckout(
     const res = await supabase
       .from("promo_campaigns")
       .select(
-        "id, discount_percent, discount_rub, payment_kind, tariff_indices, restrict_to_recipients, active, starts_at, ends_at"
+        "id, discount_percent, discount_rub, payment_kind, tariff_indices, restrict_to_recipients, active, starts_at, ends_at, applies_to_all, reusable"
       )
       .eq("active", true)
       .eq("code", code)
@@ -108,7 +112,7 @@ export async function validatePromoForCheckout(
     return { ok: false, error: "Промокод не найден или недействителен" };
   }
 
-  if (!promoKindsMatch(c.payment_kind, params.paymentKind)) {
+  if (!c.applies_to_all && !promoKindsMatch(c.payment_kind, params.paymentKind)) {
     return { ok: false, error: "Промокод не действует на выбранный тип услуги" };
   }
 
@@ -139,15 +143,17 @@ export async function validatePromoForCheckout(
     }
   }
 
-  const { data: redeemed, error: redErr } = await supabase
-    .from("promo_redemptions")
-    .select("id")
-    .eq("campaign_id", c.id)
-    .eq("user_id", params.userId)
-    .maybeSingle();
+  if (!c.reusable) {
+    const { data: redeemed, error: redErr } = await supabase
+      .from("promo_redemptions")
+      .select("id")
+      .eq("campaign_id", c.id)
+      .eq("user_id", params.userId)
+      .limit(1);
 
-  if (!redErr && redeemed) {
-    return { ok: false, error: "Вы уже использовали этот промокод" };
+    if (!redErr && redeemed && redeemed.length > 0) {
+      return { ok: false, error: "Вы уже использовали этот промокод" };
+    }
   }
 
   const originalRub = basePriceRub(params.paymentKind, params.tariffIndex);

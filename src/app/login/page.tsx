@@ -272,12 +272,45 @@ function LoginContent() {
       const supabase = createBrowserClient();
 
       if (isLogin) {
-        const { data, error: signInErr } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        let signInResult: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>;
+        try {
+          signInResult = await supabase.auth.signInWithPassword({ email, password });
+        } catch (netErr) {
+          signInResult = {
+            data: { user: null, session: null },
+            error: { message: netErr instanceof Error ? netErr.message : "Failed to fetch", status: 0 },
+          } as unknown as typeof signInResult;
+        }
+        let { data, error: signInErr } = signInResult;
+
+        // Браузер не достучался до Supabase (сеть, расширение, провайдер): входим через наш сервер, он проверит пароль сам.
+        if (signInErr && /failed to fetch|networkerror|load failed|network request failed/i.test(signInErr.message || "")) {
+          try {
+            const res = await fetch("/api/auth/password-login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email, password }),
+            });
+            const fb = (await res.json().catch(() => ({}))) as { ok?: boolean; access_token?: string; refresh_token?: string; code?: string; message?: string };
+            if (fb.ok && fb.access_token && fb.refresh_token) {
+              const set = await supabase.auth.setSession({ access_token: fb.access_token, refresh_token: fb.refresh_token });
+              if (!set.error && set.data.user) {
+                data = { user: set.data.user, session: set.data.session } as typeof data;
+                signInErr = null;
+              }
+            } else if (fb.message) {
+              signInErr = { message: fb.message, code: fb.code ?? undefined, status: 400 } as unknown as typeof signInErr;
+            }
+          } catch {
+            /* оставляем исходную ошибку сети */
+          }
+        }
 
         if (signInErr) {
+          if (/failed to fetch|networkerror|load failed|network request failed/i.test(signInErr.message || "")) {
+            setError("Не получилось подключиться к серверу. Проверьте интернет или отключите VPN и расширения и нажмите «Войти» ещё раз.");
+            return;
+          }
           const code = (signInErr as { code?: string }).code;
           const msg = (signInErr.message || "").toLowerCase();
           if (

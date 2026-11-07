@@ -148,7 +148,16 @@ function getVariationConcept(variationIndex: number, productName: string): strin
 /**
  * Генерация карточки товара через Nanobanana Pro
  */
-export async function POST(request: NextRequest) {
+/**
+ * Прямой HTTP-вызов закрыт: он не проверял сессию Потока и не списывал кредиты, любой вошедший пользователь мог бесплатно
+ * гонять платную генерацию (в том числе 4K). Интерфейс его не использует: батч вызывает runFlowGenerateCardForBatch,
+ * а кредиты там уже списаны выше по цепочке.
+ */
+export async function POST() {
+  return NextResponse.json({ success: false, error: "Метод недоступен", code: "GONE" }, { status: 410 });
+}
+
+async function generateCardInternal(request: NextRequest) {
   // Проверяем наличие API ключа
   if (!isFlowImageProviderConfigured()) {
     return NextResponse.json({
@@ -687,7 +696,7 @@ ${finalTextPresentation}
 export async function runFlowGenerateCardForBatch(
   body: Record<string, unknown>
 ): Promise<{ url: string | null; error?: string; code?: string }> {
-  const response = await POST({ json: async () => body } as NextRequest);
+  const response = await generateCardInternal({ json: async () => body } as NextRequest);
   const data = (await response.json()) as {
     success?: boolean;
     imageUrl?: string;

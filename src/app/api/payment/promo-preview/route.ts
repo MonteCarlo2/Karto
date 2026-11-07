@@ -31,7 +31,9 @@ export async function POST(request: NextRequest) {
     const paymentKind: PromoPaymentKind =
       rawKind === "auto_replies"
         ? "auto_replies"
-        : rawKind === "video_tokens"
+        : rawKind === "credits"
+          ? "credits"
+          : rawKind === "video_tokens"
           ? "video_tokens"
           : rawKind === "creative"
             ? "creative"
@@ -52,8 +54,9 @@ export async function POST(request: NextRequest) {
       AUTO_REPLY_PACKAGES.length - 1,
       Math.max(0, Number(body?.tariffIndex) || 0)
     );
+    // Пакеты кредитов: четыре тарифа (0–3), как при создании платежа; для Потока допустимо только 0–2.
     const tariffIdx =
-      paymentKind === "video_tokens"
+      paymentKind === "video_tokens" || paymentKind === "creative" || paymentKind === "credits"
         ? tariffVideo
         : paymentKind === "auto_replies"
           ? tariffAutoReplies
