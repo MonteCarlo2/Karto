@@ -64,3 +64,8 @@ hero.mp4
 public/hero.mp4
 karto-slide-*.png
 dummy.ipynb
+
+# Временные файлы генерации и неиспользуемые видео: раздувают образ, из-за этого деплой упирался в лимит времени
+public/temp
+public/Video_Vapor_Removal_HVNV8Pd.mp4
+public/fed43aba167d0c1b1398a0b84feb5295_1773418511_8b66ag6q.mp4
