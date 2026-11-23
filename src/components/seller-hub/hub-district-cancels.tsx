@@ -1,46 +1,40 @@
 "use client";
 
 import { useMemo } from "react";
-import { districtCancels, MIN_DISTRICT_ORDERS } from "@/lib/seller-hub/district-cancels";
+import { districtCancels } from "@/lib/seller-hub/district-cancels";
 import type { SellerRegionOrdersRow } from "@/lib/seller-hub/types";
+import { FCard as Card } from "./hub-fulfillment-ui";
 import { formatInt, hub, hubSans } from "./hub-ui";
 
 const pct = (v: number) => `${(v * 100).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`;
 
-/** Где покупатели отменяют заказы чаще: доля отмен по округам против среднего по магазину. */
+/** Где покупатели отменяют заказы чаще: доля отмен по округам против среднего по магазину. Плитки: красные там, где отмен заметно больше. */
 export function HubDistrictCancels({ rows }: { rows: SellerRegionOrdersRow[] }) {
   const { shopShare, districts } = useMemo(() => districtCancels(rows), [rows]);
   if (shopShare == null || districts.length === 0) return null;
   const hot = districts.filter((d) => d.high);
   return (
-    <div className="rounded-2xl p-4" style={{ backgroundColor: hub.surface }}>
-      <p className="text-[14px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-        Где чаще отменяют заказы
-      </p>
-      <p className="mb-3 mt-0.5 text-[12.5px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
-        В среднем по магазину отменяют {pct(shopShare)} заказов.{" "}
-        {hot.length > 0
-          ? `Заметно выше в округах: ${hot.map((d) => `${d.district} (${pct(d.cancelShare)})`).join(", ")}. WB не называет причину отмены: чаще всего это долгая доставка в округ или долгое ожидание отгрузки.`
-          : "Явных перекосов по округам нет."}
-      </p>
-      <ul className="space-y-1.5">
-        {districts.slice(0, 8).map((d) => (
-          <li key={d.district} className="grid grid-cols-[150px_1fr_130px] items-center gap-3">
-            <span className="truncate text-[13px] font-medium" style={{ ...hubSans, color: hub.text }}>
-              {d.district}
-            </span>
-            <div className="h-2.5 rounded-full" style={{ backgroundColor: hub.canvas }}>
-              <div className="h-2.5 rounded-full" style={{ width: `${Math.max(2, Math.min(100, d.cancelShare * 100))}%`, backgroundColor: d.high ? hub.danger : hub.blue }} />
-            </div>
-            <span className="text-right text-[12.5px] tabular-nums" style={{ ...hubSans, color: d.high ? hub.danger : hub.textMuted }}>
-              {pct(d.cancelShare)} · {formatInt(d.cancelled)} из {formatInt(d.orders)}
-            </span>
-          </li>
-        ))}
+    <Card
+      title="Где чаще отменяют заказы"
+      hint={`В среднем по магазину отменяют ${pct(shopShare)} заказов. ${hot.length > 0 ? `Заметно выше в округах: ${hot.map((d) => d.district).join(", ")}.` : "Явных перекосов по округам нет."}`}
+    >
+      <ul className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {districts.slice(0, 8).map((d) => {
+          return (
+            <li key={d.district} className="rounded-[18px] px-4 py-3.5" style={{ backgroundColor: d.high ? "rgba(200, 69, 63, 0.07)" : "transparent", border: `1px solid ${d.high ? "rgba(200, 69, 63, 0.4)" : "rgba(1, 20, 8, 0.12)"}` }}>
+              <p className="text-[15px] font-medium leading-tight [overflow-wrap:anywhere]" style={{ ...hubSans, color: hub.text }}>
+                {d.district}
+              </p>
+              <p className="mt-4 text-[32px] font-semibold leading-none" style={{ fontFamily: "var(--font-geist-mono), ui-monospace, monospace", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.05em", color: d.high ? "#B42323" : hub.text }}>
+                {pct(d.cancelShare)}
+              </p>
+              <p className="mt-3 text-[14px]" style={{ ...hubSans, color: hub.textMuted }}>
+                {formatInt(d.cancelled)} из {formatInt(d.orders)} заказов
+              </p>
+            </li>
+          );
+        })}
       </ul>
-      <p className="mt-2 text-[11.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
-        Округа, где меньше {MIN_DISTRICT_ORDERS} заказов за период, не оцениваются: доля там случайна.
-      </p>
-    </div>
+    </Card>
   );
 }

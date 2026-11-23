@@ -1,4 +1,5 @@
 import type { AdsNmRow } from "@/lib/seller-hub/ads-metrics";
+import { MIN_COVER_FOR_GROWTH_DAYS } from "@/lib/seller-hub/task-engine/promo";
 import type { SellerAdCampaignRow, SellerAdCampaignStats } from "@/lib/seller-hub/types";
 
 export type AdvisorProduct = {
@@ -12,6 +13,8 @@ export type AdvisorProduct = {
   stock: number | null;
   /** Заказы за 28 дней по воронке WB. */
   orders28: number | null;
+  /** На сколько дней хватит остатка при текущих продажах. null — не знаем. */
+  coverDays?: number | null;
 };
 
 export type AdAdviceKind = "budget_low" | "no_orders" | "margin_eaten" | "candidate";
@@ -57,7 +60,7 @@ const pct = (value: number) => `${value.toLocaleString("ru-RU", { maximumFractio
 export function buildAdAdvice(input: {
   days: number;
   campaigns: SellerAdCampaignRow[];
-  campaignStats: Pick<SellerAdCampaignStats, "advertId" | "spend">[];
+  campaignStats: Array<Pick<SellerAdCampaignStats, "advertId" | "spend"> & Partial<Pick<SellerAdCampaignStats, "orders" | "orderSum">>>;
   products: AdvisorProduct[];
   adsByProduct: AdsNmRow[];
   /** Средняя цена заказа по всей рекламе магазина за период (расход ÷ заказы), ₽. Мерка, когда маржа товара неизвестна. */
@@ -66,6 +69,16 @@ export function buildAdAdvice(input: {
   const advice: AdAdvice[] = [];
   const productByNm = new Map(input.products.map((p) => [p.nmId, p]));
   const spendByCampaign = new Map(input.campaignStats.map((c) => [c.advertId, c.spend]));
+  const statByCampaign = new Map(input.campaignStats.map((c) => [c.advertId, c]));
+  /** Кампания не окупается: ДРР выше средней маржи её товаров, либо деньги потрачены на сумму заказа и заказов нет. Доливать в неё бюджет нельзя. */
+  const losing = (campaign: SellerAdCampaignRow): boolean => {
+    const stat = statByCampaign.get(campaign.id);
+    if (!stat || stat.orders == null || stat.orderSum == null) return false;
+    const margins = (campaign.bids ?? []).map((b) => productByNm.get(b.nmId)?.marginPercent).filter((m): m is number => m != null);
+    const avg = margins.length > 0 ? margins.reduce((a, m) => a + m, 0) / margins.length : null;
+    if (stat.orders > 0 && stat.orderSum > 0 && avg != null) return (stat.spend / stat.orderSum) * 100 > avg;
+    return stat.orders === 0 && input.storeCpo != null && stat.spend >= input.storeCpo;
+  };
   /** Пауза всей кампании честна только если в ней один товар и он единственная кампания с этим товаром. */
   const pauseFixFor = (nmId: string): AdAdviceFix | undefined => {
     const holders = input.campaigns.filter((c) => c.status === 9 && (c.bids ?? []).some((b) => b.nmId === nmId));
@@ -81,6 +94,20 @@ export function buildAdAdvice(input: {
     if (campaign.status !== 9 || campaign.budget == null) continue;
     const name = campaign.name ?? campaign.id;
     const avgDaily = (spendByCampaign.get(campaign.id) ?? 0) / Math.max(1, input.days);
+    if (losing(campaign)) {
+      // Бюджет заканчивается, но кампания не окупается: честный совет не пополнять, а сначала снизить расходы.
+      if (campaign.budget <= 0 || (avgDaily > 0 && campaign.budget / avgDaily < 2)) {
+        advice.push({
+          id: `budget-${campaign.id}`,
+          kind: "budget_low",
+          level: "important",
+          title: `Бюджет кампании «${name}» на исходе, но она не окупается`,
+          facts: [campaign.budget <= 0 ? "Остаток бюджета 0 ₽, показы не идут." : `Остаток ${rub(campaign.budget)}, хватит меньше чем на 2 дня.`, "ДРР кампании выше маржи её товаров: каждый заказ обходится дороже, чем приносит."],
+          action: "Не пополняйте бюджет, пока кампания не окупается. Сначала снизьте ставку или уберите товары, которые тратят без заказов, потом решайте о пополнении.",
+        });
+      }
+      continue;
+    }
     if (campaign.budget <= 0) {
       advice.push({
         id: `budget-${campaign.id}`,
@@ -112,7 +139,15 @@ export function buildAdAdvice(input: {
     }
   }
 
-  for (const row of input.adsByProduct) {
+  /**
+   * Статистика WB идёт по артикулам, которые участвовали в периоде, а состав кампании продавец мог поменять.
+   * Если у всех действующих кампаний известен список товаров, советуем только по тем, что рекламируются сейчас.
+   */
+  const active = input.campaigns.filter((c) => c.status === 9 || c.status === 4 || c.status === 11);
+  const live = new Set(active.flatMap((c) => (c.bids ?? []).map((b) => b.nmId)));
+  const knowsMembership = active.length > 0 && active.every((c) => (c.bids?.length ?? 0) > 0);
+
+  for (const row of knowsMembership ? input.adsByProduct.filter((r) => live.has(r.nmId)) : input.adsByProduct) {
     if (!(row.spend > 0)) continue;
     const product = productByNm.get(row.nmId);
     const title = product?.title || row.name || row.nmId;
@@ -182,7 +217,7 @@ export function buildAdAdvice(input: {
     }
   }
 
-  const advertised = new Set(input.adsByProduct.filter((row) => row.spend > 0).map((row) => row.nmId));
+  const advertised = knowsMembership ? live : new Set(input.adsByProduct.filter((row) => row.spend > 0).map((row) => row.nmId));
   const candidates = input.products
     .filter(
       (p) =>
@@ -190,7 +225,8 @@ export function buildAdAdvice(input: {
         p.marginRub != null &&
         p.marginRub > 0 &&
         p.stock != null &&
-        p.stock > 0 &&
+        p.stock >= AD_TEST_BUDGET_SALES &&
+        (p.coverDays == null || p.coverDays >= MIN_COVER_FOR_GROWTH_DAYS) &&
         p.orders28 === 0,
     )
     .sort((a, b) => (b.marginRub ?? 0) - (a.marginRub ?? 0))

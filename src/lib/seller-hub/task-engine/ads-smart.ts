@@ -72,21 +72,21 @@ export function ruleAdEfficiencyDrop(fact: TaskFact): TaskDraft | null {
   if (zCtr != null && zCtr <= Z_CTR) {
     causes.push({
       key: "ctr",
-      line: `доля кликов от показов ${adPct(ctrPrev * 100)} → ${adPct(ctrNow * 100)}`,
+      line: `доля кликов от показов было ${adPct(ctrPrev * 100)}, стало ${adPct(ctrNow * 100)}`,
       fix: "карточку стали реже открывать из рекламы: проверьте главное фото, цену и рейтинг, возможно, появились более сильные конкуренты",
     });
   }
   if (zCr != null && zCr <= Z_CR) {
     causes.push({
       key: "cr",
-      line: `заказов на 100 кликов ${adPct(crPrev * 100)} → ${adPct(crNow * 100)}`,
+      line: `заказов на 100 кликов было ${adPct(crPrev * 100)}, стало ${adPct(crNow * 100)}`,
       fix: "кликают, но реже заказывают: проверьте цену и скидку, свежие отзывы, наличие размеров и вариантов",
     });
   }
   if (cpcPrev > 0 && cpcNow / cpcPrev >= CPC_RISE) {
     causes.push({
       key: "cpc",
-      line: `цена клика ${adRub(cpcPrev)} → ${adRub(cpcNow)}`,
+      line: `цена клика было ${adRub(cpcPrev)}, стало ${adRub(cpcNow)}`,
       fix: "клик подорожал: выросла ставка или конкуренция в выдаче, сверьте ставку с рекомендованной WB",
     });
   }

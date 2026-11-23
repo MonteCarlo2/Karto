@@ -3,7 +3,7 @@ import type { InboxFeedTab, InboxReviewItem } from "@/lib/auto-replies/inbox-dem
 import type { AutoRepliesMarketplaceSettings, AutoRepliesShopSettings } from "@/lib/auto-replies/settings-types";
 import type { AutoRepliesUsageId } from "@/lib/auto-replies/types";
 import { extractYandexProducts, mapYandexFeedbacksToInbox } from "@/lib/auto-replies/yandex-inbox";
-import { mergeInboxReviewLists } from "@/lib/auto-replies/inbox-item-merge";
+import { mergeInboxReviewLists, reconcileAnsweredElsewhere } from "@/lib/auto-replies/inbox-item-merge";
 import { sortInboxItemsByReviewDate } from "@/lib/auto-replies/inbox-review-scope";
 import { finishInboxSyncPipeline, type InboxSyncMode } from "@/lib/auto-replies/inbox-sync-finish";
 import {
@@ -115,7 +115,7 @@ export async function runYandexInboxSync(input: {
     existingItems: staleItems,
   });
 
-  const merged = sortInboxItemsByReviewDate(mergeInboxItems(staleItems, freshItems));
+  const merged = sortInboxItemsByReviewDate(mergeInboxItems(reconcileAnsweredElsewhere(staleItems, freshItems, { complete: false, marketplaceId: "yandex" }), freshItems));
 
   const pipeline = await finishInboxSyncPipeline({
     items: merged,

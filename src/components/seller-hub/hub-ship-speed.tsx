@@ -2,137 +2,223 @@
 
 import type { ShipSpeed } from "@/lib/seller-hub/ship-speed";
 import { WEEKDAY_SHORT } from "@/lib/seller-hub/weekday-profile";
-import { formatInt, hub, HubPanel, HubPanelHeader, hubSans } from "./hub-ui";
+import { formatInt, hub, hubSans } from "./hub-ui";
+import { LoadingBlock } from "./hub-analytics-ui";
+import { HubPanel, HubPanelHeader } from "./hub-fulfillment-ui";
 
 const hours = (h: number) => `${h.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} ч`;
 const day = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }).replace(".", "");
 
-function Kpi({ label, value, sub }: { label: string; value: string; sub: string }) {
-  return (
-    <div>
-      <p className="text-[12px] font-semibold uppercase tracking-[0.06em]" style={{ ...hubSans, color: hub.textSubtle }}>
-        {label}
-      </p>
-      <p className="mt-1 text-[20px] font-semibold tabular-nums" style={{ ...hubSans, color: hub.text }}>
-        {value}
-      </p>
-      <p className="text-[12px]" style={{ ...hubSans, color: hub.textMuted }}>
-        {sub}
-      </p>
-    </div>
-  );
-}
 
 /** Скорость отгрузки: от появления заказа до передачи поставки в доставку, по реальным датам WB. */
+const ZONES = [
+  { to: 6, color: "#5BBF8A", label: "до 6 ч" },
+  { to: 24, color: "#E8C45A", label: "6–24 ч" },
+  { to: 48, color: "#EE9A55", label: "1–2 суток" },
+  { to: Infinity, color: "#D9605A", label: "дольше 2 суток" },
+] as const;
+const mono = { fontFamily: "var(--font-geist-mono), ui-monospace, monospace", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.05em" } as const;
+const BUCKET_COLORS = ["#5BBF8A", "#9CCB6A", "#E8C45A", "#EE9A55", "#D9605A"];
+const severity = (h: number) => (h < 6 ? "#2E9E6B" : h < 24 ? "#B8902A" : h < 48 ? "#C46A22" : "#C0443E");
+
 export function HubShipSpeed({ speed, loading, error, suppliesTotal, coverage }: { speed: ShipSpeed | null; loading: boolean; error?: string; suppliesTotal: number; coverage?: { read: number; total: number } | null }) {
   if (suppliesTotal === 0) return null;
-  const maxBucket = Math.max(1, ...(speed?.buckets ?? []).map((b) => b.count));
-  return (
-    <HubPanel>
-      <HubPanelHeader
-        title="Скорость отгрузки"
-        hint="Сколько проходит от появления заказа до передачи поставки в доставку. Считается по датам WB: дата заказа и дата закрытия поставки."
-      />
-      <div className="space-y-4 px-5 py-4 sm:px-6">
+  if (loading || (error && !speed) || !speed) {
+    return (
+      <HubPanel>
         {loading ? (
-          <p className="text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
-            Читаю состав последних поставок…
-          </p>
-        ) : error && !speed ? (
-          <p className="text-[13px]" style={{ ...hubSans, color: hub.danger }}>
-            {error}. WB ограничивает частоту запросов: попробуйте открыть вкладку позже.
-          </p>
-        ) : !speed ? (
-          <p className="text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
-            В закрытых поставках не нашлось заказов с датой: посчитать скорость не из чего.
-          </p>
+          <div className="p-5">
+            <LoadingBlock title="Считаю скорость отгрузки по последним поставкам" height={220} />
+          </div>
         ) : (
-          <>
-            <div className="grid gap-4 sm:grid-cols-4">
-              <Kpi label="Типично" value={hours(speed.medianHours)} sub="половина заказов уходит быстрее" />
-              <Kpi label="В среднем" value={hours(speed.avgHours)} sub={`по ${formatInt(speed.orders)} заказам`} />
-              <Kpi label="Медленные 10%" value={hours(speed.p90Hours)} sub="столько ждут самые долгие" />
-              <Kpi label="Дольше суток" value={`${Math.round(speed.over24Share * 100)}%`} sub="доля заказов" />
+          <p className="px-6 py-12 text-center text-[15.5px]" style={{ ...hubSans, color: error ? hub.danger : hub.textMuted }}>
+            {error ? `${error}. WB ограничивает частоту запросов: попробуйте открыть вкладку позже.` : "В закрытых поставках не нашлось заказов с датой: посчитать скорость не из чего."}
+          </p>
+        )}
+      </HubPanel>
+    );
+  }
+
+  const scaleMax = Math.max(48, Math.ceil((speed.p90Hours * 1.12) / 12) * 12);
+  const pos = (h: number) => `${Math.min(100, (Math.max(0, h) / scaleMax) * 100)}%`;
+  const markers = [
+    { key: "med", label: "Типично", value: speed.medianHours, above: true },
+    { key: "avg", label: "В среднем", value: speed.avgHours, above: false },
+    { key: "p90", label: "Медленные 10%", value: speed.p90Hours, above: true },
+  ];
+  const totalBuckets = Math.max(1, speed.buckets.reduce((a, b) => a + b.count, 0));
+  const maxAvg = Math.max(1, ...speed.perSupply.slice(0, 8).map((s) => s.maxHours));
+
+  return (
+    <div className="space-y-3">
+      <div data-evidence="speed-gauge" className="rounded-[18px]">
+      <HubPanel>
+        <HubPanelHeader title="Скорость отгрузки" hint={`От появления заказа до передачи поставки в доставку, по ${formatInt(speed.orders)} заказам из ${speed.supplies} последних поставок`} />
+        <div className="px-6 pb-7 pt-4 sm:px-8">
+          <div className="relative mx-2 pb-[78px] pt-[70px]">
+            <div className="relative h-[14px] w-full overflow-hidden rounded-full" style={{ display: "flex", gap: 2 }}>
+              {ZONES.map((z, i) => {
+                const from = i === 0 ? 0 : ZONES[i - 1]!.to;
+                const to = Math.min(z.to, scaleMax);
+                const w = Math.max(0, ((to - from) / scaleMax) * 100);
+                return w > 0 ? <div key={z.label} style={{ width: `${w}%`, backgroundColor: z.color, opacity: 0.85 }} title={z.label} /> : null;
+              })}
             </div>
+            <div className="absolute inset-x-0 top-[96px] flex justify-between px-0.5 text-[12.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+              {[0, scaleMax / 4, scaleMax / 2, (scaleMax * 3) / 4, scaleMax].map((h) => (
+                <span key={h}>{Math.round(h)} ч</span>
+              ))}
+            </div>
+            {markers.map((m) => (
+              <div key={m.key} className="absolute -translate-x-1/2" style={{ left: pos(m.value), top: m.above ? 0 : 118 }}>
+                <div className="flex flex-col items-center" style={{ flexDirection: m.above ? "column" : "column-reverse" }}>
+                  <div className="whitespace-nowrap text-center">
+                    <p className="text-[24px] font-medium leading-none" style={{ ...mono, color: severity(m.value) }}>
+                      {hours(m.value)}
+                    </p>
+                    <p className="mt-1 text-[13.5px] font-medium" style={{ ...hubSans, color: hub.textMuted }}>
+                      {m.label}
+                    </p>
+                  </div>
+                  <span className="my-1 block w-[2px]" style={{ height: m.above ? 14 : 14, backgroundColor: "rgba(1, 20, 8, 0.35)" }} />
+                </div>
+              </div>
+            ))}
+            {markers.map((m) => (
+              <span key={`${m.key}-dot`} className="absolute top-[70px] -translate-x-1/2 -translate-y-[-1px] rounded-full border-2 bg-white" style={{ left: pos(m.value), width: 16, height: 16, borderColor: "#1D2A22", marginTop: -1 }} />
+            ))}
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-8 gap-y-2 border-t pt-4" style={{ borderColor: "rgba(1, 20, 8, 0.08)" }}>
+            <p className="text-[15.5px]" style={{ ...hubSans, color: hub.text }}>
+              <span className="font-semibold" style={{ color: severity(speed.over24Share >= 0.3 ? 30 : 12) }}>
+                {Math.round(speed.over24Share * 100)}%
+              </span>{" "}
+              заказов ждут дольше суток
+            </p>
             {speed.trend ? (
-              <p className="text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
-                Типичное время за последние 7 дней {hours(speed.trend.recentMedian)}, неделей раньше было {hours(speed.trend.previousMedian)}.
+              <p className="text-[15.5px]" style={{ ...hubSans, color: hub.text }}>
+                За последние 7 дней типично {hours(speed.trend.recentMedian)}, неделей раньше было {hours(speed.trend.previousMedian)}{" "}
+                <span className="font-semibold" style={{ color: speed.trend.recentMedian > speed.trend.previousMedian ? "#C0443E" : "#2E9E6B" }}>
+                  {speed.trend.recentMedian > speed.trend.previousMedian ? "↑ медленнее" : "↓ быстрее"}
+                </span>
               </p>
             ) : null}
-            <ul className="space-y-1.5">
-              {speed.buckets.map((b) => (
-                <li key={b.id} className="grid grid-cols-[110px_1fr_70px] items-center gap-3">
-                  <span className="text-[12.5px]" style={{ ...hubSans, color: hub.textMuted }}>
-                    {b.label}
-                  </span>
-                  <div className="h-2.5 rounded-full" style={{ backgroundColor: hub.canvas }}>
-                    <div className="h-2.5 rounded-full" style={{ width: `${b.count === 0 ? 0 : Math.max(2, (b.count / maxBucket) * 100)}%`, backgroundColor: b.id === "over" || b.id === "h48" ? hub.warn : hub.blue }} />
-                  </div>
-                  <span className="text-right text-[12.5px] tabular-nums" style={{ ...hubSans, color: hub.text }}>
-                    {formatInt(b.count)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <div>
-              <p className="text-[13px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-                Ритм по дням недели
-              </p>
-              <p className="mb-2 mt-0.5 text-[12px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
-                В какие дни вы закрывали поставки и сколько типично ждали заказы, пришедшие в этот день (по Москве). Дни без отправок подсвечены.
-              </p>
-              <div className="grid grid-cols-7 gap-1.5">
-                {speed.weekdays.map((d) => {
-                  const noShip = d.suppliesClosed === 0;
-                  return (
-                    <div key={d.index} className="rounded-lg border px-2 py-2 text-center" style={{ borderColor: noShip ? hub.warn : hub.borderSoft, backgroundColor: noShip ? hub.warnSoft : "transparent" }}>
-                      <p className="text-[12px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-                        {WEEKDAY_SHORT[d.index]}
-                      </p>
-                      <p className="mt-1 text-[11px]" style={{ ...hubSans, color: hub.textMuted }}>
-                        отправок: {d.suppliesClosed}
-                      </p>
-                      <p className="text-[11px]" style={{ ...hubSans, color: hub.textMuted }}>
-                        заказов: {d.ordersCreated}
-                      </p>
-                      <p className="mt-0.5 text-[12px] font-semibold tabular-nums" style={{ ...hubSans, color: d.medianWait != null && d.medianWait >= 24 ? hub.danger : hub.text }}>
-                        {d.medianWait == null ? "—" : hours(d.medianWait)}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse text-left">
-                <thead style={{ backgroundColor: hub.surfaceMuted }}>
-                  <tr>
-                    {["Поставка", "Передана", "Заказов", "В среднем", "Дольше всех"].map((label) => (
-                      <th key={label} className="border-b px-3 py-2 text-[11.5px] font-bold uppercase tracking-[0.06em]" style={{ ...hubSans, color: hub.textSubtle, borderColor: hub.borderSoft }}>
-                        {label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {speed.perSupply.slice(0, 8).map((s) => (
-                    <tr key={s.supplyId} className="border-b" style={{ borderColor: hub.borderSoft }}>
-                      <td className="px-3 py-2 font-mono text-[12.5px]">{s.supplyName ? `${s.supplyName} · ${s.supplyId}` : s.supplyId}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-[13px]">{day(s.closedAt)}</td>
-                      <td className="px-3 py-2 text-[13px] tabular-nums">{formatInt(s.orders)}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-[13px] tabular-nums">{hours(s.avgHours)}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-[13px] tabular-nums">{hours(s.maxHours)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-[11.5px] leading-4" style={{ ...hubSans, color: hub.textSubtle }}>
-              {coverage && coverage.read < coverage.total ? `WB отдал состав только ${coverage.read} из ${coverage.total} последних поставок (возможно, лимит запросов), поэтому цифры посчитаны по части данных. ` : ""}
-              Взяты последние {speed.supplies} закрытых поставок FBS. WB не публикует «правильных» сроков в этих данных, поэтому оценки «хорошо/плохо» здесь нет: ориентируйтесь на свой порог и динамику.
-            </p>
-          </>
-        )}
+          </div>
+        </div>
+      </HubPanel>
       </div>
-    </HubPanel>
+
+      <HubPanel>
+        <HubPanelHeader title="Как распределились заказы" hint="Доля заказов по времени ожидания" />
+        <div className="px-6 pb-6 pt-5 sm:px-8">
+          <div className="flex h-[22px] w-full gap-[3px]">
+            {speed.buckets.map((b, i) =>
+              b.count > 0 ? (
+                <div key={b.id} className="h-full rounded-[7px]" style={{ width: `${(b.count / totalBuckets) * 100}%`, backgroundColor: BUCKET_COLORS[Math.min(i, BUCKET_COLORS.length - 1)], minWidth: 10 }} title={`${b.label}: ${b.count}`} />
+              ) : null,
+            )}
+          </div>
+          <ul className="mt-6 grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-3 xl:grid-cols-5">
+            {speed.buckets.map((b, i) => (
+              <li key={b.id}>
+                <p className="flex items-center gap-2 text-[14px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                  <span className="h-2.5 w-2.5 rounded-[3px]" style={{ backgroundColor: BUCKET_COLORS[Math.min(i, BUCKET_COLORS.length - 1)] }} aria-hidden />
+                  {b.label}
+                </p>
+                <p className="mt-2 text-[28px] font-medium leading-none" style={{ ...mono, color: b.count === 0 ? hub.textSubtle : hub.text }}>
+                  {formatInt(b.count)}
+                </p>
+                <p className="mt-1.5 text-[13.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                  {Math.round((b.count / totalBuckets) * 100)}% заказов
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </HubPanel>
+
+      <div data-evidence="weekday-rhythm" className="rounded-[18px]">
+      <HubPanel>
+        <HubPanelHeader title="Ритм по дням недели" hint="Как долго ждали заказы, пришедшие в этот день, и сколько поставок вы в него отправили. Пунктир — отправок не было" />
+        <div className="grid grid-cols-7 gap-2 p-4 sm:gap-3 sm:p-6">
+          {speed.weekdays.map((d) => {
+            const noShip = d.suppliesClosed === 0;
+            const color = d.medianWait == null ? hub.textSubtle : severity(d.medianWait);
+            return (
+              <div key={d.index} className="flex flex-col items-center rounded-[16px] border px-1 py-4 text-center" style={{ borderStyle: noShip ? "dashed" : "solid", borderColor: noShip ? "rgba(1, 20, 8, 0.28)" : "rgba(1, 20, 8, 0.12)" }}>
+                <p className="text-[14.5px] font-semibold" style={{ ...hubSans, color: hub.textMuted }}>
+                  {WEEKDAY_SHORT[d.index]}
+                </p>
+                <p className="mt-3 whitespace-nowrap text-[clamp(17px,2.1vw,26px)] font-medium leading-none" style={{ ...mono, color }}>
+                  {d.medianWait == null ? "—" : d.medianWait.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}
+                </p>
+                <p className="mt-1 text-[12.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                  часов
+                </p>
+                <span className="my-3 block h-px w-8" style={{ backgroundColor: "rgba(1, 20, 8, 0.12)" }} />
+                <p className="text-[13px] leading-tight" style={{ ...hubSans, color: noShip ? "#B4500A" : hub.textMuted, fontWeight: noShip ? 600 : 400 }}>
+                  {noShip ? "не отправляли" : `отправок: ${d.suppliesClosed}`}
+                </p>
+                <p className="mt-0.5 text-[13px] leading-tight" style={{ ...hubSans, color: hub.textSubtle }}>
+                  заказов: {d.ordersCreated}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </HubPanel>
+      </div>
+
+      <HubPanel>
+        <HubPanelHeader title="Последние поставки" hint="Сколько заказов было в поставке и как долго они ждали передачи в доставку" />
+        <div className="hidden items-center gap-x-6 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.07em] lg:grid lg:grid-cols-[minmax(0,1.3fr)_96px_80px_minmax(0,1.6fr)]" style={{ ...hubSans, color: hub.textSubtle, backgroundColor: "rgba(1, 20, 8, 0.045)" }}>
+          <span>Поставка</span>
+          <span>Передана</span>
+          <span className="text-right">Заказов</span>
+          <span>Ожидание: в среднем и дольше всех</span>
+        </div>
+        <ul>
+          {speed.perSupply.slice(0, 8).map((s) => (
+            <li key={s.supplyId} className="grid items-center gap-x-6 gap-y-3 border-b px-5 py-4 sm:px-6 lg:grid-cols-[minmax(0,1.3fr)_96px_80px_minmax(0,1.6fr)]" style={{ borderColor: "rgba(1, 20, 8, 0.07)" }}>
+              <div className="min-w-0">
+                <p className="text-[15.5px] font-semibold" style={{ ...hubSans, color: hub.text }}>
+                  {s.supplyName ?? "Поставка"}
+                </p>
+                <p className="font-mono text-[13px]" style={{ color: hub.textSubtle }}>
+                  {s.supplyId}
+                </p>
+              </div>
+              <p className="text-[15.5px]" style={{ ...hubSans, color: hub.text }}>
+                {day(s.closedAt)}
+              </p>
+              <p className="text-[19px] font-medium lg:text-right" style={{ ...mono, color: hub.text }}>
+                {formatInt(s.orders)} <span className="text-[13px] lg:hidden" style={{ ...hubSans, letterSpacing: 0, color: hub.textSubtle }}>заказов</span>
+              </p>
+              <div>
+                <div className="relative h-[10px] rounded-full" style={{ backgroundColor: "rgba(1, 20, 8, 0.07)" }}>
+                  <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${Math.max(3, (s.maxHours / maxAvg) * 100)}%`, backgroundColor: `${severity(s.maxHours)}55` }} />
+                  <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${Math.max(3, (s.avgHours / maxAvg) * 100)}%`, backgroundColor: severity(s.avgHours) }} />
+                </div>
+                <p className="mt-2 flex flex-wrap gap-x-5 text-[14px]" style={{ ...hubSans, color: hub.textMuted }}>
+                  <span>
+                    в среднем <b className="font-semibold" style={{ ...mono, color: severity(s.avgHours) }}>{hours(s.avgHours)}</b>
+                  </span>
+                  <span>
+                    дольше всех <b className="font-semibold" style={{ ...mono, color: severity(s.maxHours) }}>{hours(s.maxHours)}</b>
+                  </span>
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </HubPanel>
+
+      {coverage && coverage.read < coverage.total ? (
+        <p className="text-[14px] leading-[1.5]" style={{ ...hubSans, color: hub.warn }}>
+          WB отдал состав только {coverage.read} из {coverage.total} последних поставок, поэтому цифры посчитаны по части данных.
+        </p>
+      ) : null}
+    </div>
   );
 }

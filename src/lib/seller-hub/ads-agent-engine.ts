@@ -121,7 +121,7 @@ export type AgentAction =
   | { type: "add_nm"; campaignId: string; nmId: string }
   /** previousBidRub — ставка до изменения: по ней строится откат. */
   | { type: "bid"; advertId: string; nmId: string; bidRub: number; previousBidRub?: number | null }
-  | { type: "create_campaign"; nmId: string; name: string }
+  | { type: "create_campaign"; nmId: string; name: string; /** Оплата за клики; по умолчанию за показы. */ paymentType?: "cpm" | "cpc" }
   /** Правка названия или описания карточки WB. previousText нужен для отката и для показа «было → станет». */
   /** Выход товара из акции WB (календарной): прежние условия участия вернуть через API нельзя, повторный вход делается вручную на странице акции. */
   | { type: "promo_exit"; promoId: string; promoName: string; nmId: string }

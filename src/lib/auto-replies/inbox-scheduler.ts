@@ -18,12 +18,16 @@ export function startAutoReplyBackgroundScheduler() {
   const explicitlyOff = process.env.AUTO_REPLY_CRON === "0" || process.env.AUTO_REPLY_CRON === "false";
   const hasServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
 
-  /** Фоновый cron: prod и dev (отключить в dev: AUTO_REPLY_CRON=0). */
-  const enabled = hasServiceRole && !explicitlyOff;
+  /**
+   * Фоновый cron: в продакшене включён, в dev выключен по умолчанию (включить: AUTO_REPLY_CRON=1).
+   * Локальный сервер смотрит в ту же боевую базу и стал бы вторым исполнителем: двойные попытки отправки и списания.
+   */
+  const devOptIn = process.env.AUTO_REPLY_CRON === "1" || process.env.AUTO_REPLY_CRON === "true";
+  const enabled = hasServiceRole && !explicitlyOff && (!isDev || devOptIn);
 
   if (!enabled) {
     console.info(
-      "[auto-reply] background scheduler off (нужен SUPABASE_SERVICE_ROLE_KEY; в dev: AUTO_REPLY_CRON=0 чтобы выключить)"
+      "[auto-reply] background scheduler off (нужен SUPABASE_SERVICE_ROLE_KEY; в dev он выключен, включить: AUTO_REPLY_CRON=1)"
     );
     return;
   }

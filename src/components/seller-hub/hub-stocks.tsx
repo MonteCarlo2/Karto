@@ -391,7 +391,7 @@ export function HubStocks({
                 type="button"
                 aria-label="Как считается"
                 title="Темп — заказы за 28 дней. Если заказов не было, беру продажи отчёта. Штуки на 7 и 28 дней округлены вверх. Довезти — сколько целых штук не хватает."
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full outline-none hover:bg-black/[0.05] focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full outline-none hover:bg-black/[0.05] focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
                 style={{ color: hub.textMuted }}
               >
                 <CircleHelp className="h-4 w-4" />
@@ -407,7 +407,7 @@ export function HubStocks({
                     type="button"
                     disabled={savingEdit}
                     onClick={() => void saveEdits()}
-                    className="inline-flex h-[42px] items-center rounded-[11px] bg-[#B9FF4B] px-4 text-[14px] font-semibold text-[#0E1116] outline-none hover:bg-[#C6FF68] disabled:opacity-45"
+                    className="inline-flex h-[42px] items-center rounded-[11px] bg-[var(--hub-lime)] px-4 text-[14px] font-semibold text-[var(--hub-text)] outline-none hover:bg-[#C6FF68] disabled:opacity-45"
                     style={hubSans}
                   >
                     {savingEdit ? "Сохраняю" : "Сохранить"}
@@ -416,7 +416,7 @@ export function HubStocks({
                     type="button"
                     disabled={savingEdit}
                     onClick={discardEdit}
-                    className="inline-flex h-[42px] items-center rounded-[11px] border-2 bg-white px-4 text-[14px] font-semibold outline-none hover:bg-[#F4F6F8] disabled:opacity-45"
+                    className="inline-flex h-[42px] items-center rounded-[11px] border-2 bg-white px-4 text-[14px] font-semibold outline-none hover:bg-[var(--hub-canvas)] disabled:opacity-45"
                     style={{ ...hubSans, borderColor: hub.ink, color: hub.ink }}
                   >
                     Не сохранять
@@ -428,7 +428,7 @@ export function HubStocks({
                   disabled={!connected}
                   onClick={beginEdit}
                   title={connected ? "Изменить остаток FBS и записать его в Wildberries" : "Подключите кабинет"}
-                  className="inline-flex h-[42px] items-center rounded-[11px] border-2 bg-white px-4 text-[14px] font-semibold outline-none hover:bg-[#F4F6F8] disabled:cursor-not-allowed disabled:opacity-45"
+                  className="inline-flex h-[42px] items-center rounded-[11px] border-2 bg-white px-4 text-[14px] font-semibold outline-none hover:bg-[var(--hub-canvas)] disabled:cursor-not-allowed disabled:opacity-45"
                   style={{ ...hubSans, borderColor: hub.ink, color: hub.ink }}
                 >
                   Редактировать
@@ -448,7 +448,7 @@ export function HubStocks({
                   aria-label="Склад FBS"
                   value={selectedWarehouseId ?? warehouses[0]?.id ?? ""}
                   onChange={(e) => setSelectedWarehouseId(e.target.value ? Number(e.target.value) : undefined)}
-                  className="h-12 w-full cursor-pointer appearance-none rounded-[12px] border bg-white pl-10 pr-8 text-[16px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+                  className="h-12 w-full cursor-pointer appearance-none rounded-[12px] border bg-white pl-10 pr-8 text-[16px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
                   style={{ borderColor: hub.border, color: hub.text, ...hubSans }}
                 >
                   {warehouses.map((wh) => (
@@ -495,7 +495,7 @@ export function HubStocks({
               <button
                 type="button"
                 aria-label="Очистить поиск"
-                className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full outline-none hover:bg-black/[0.05] focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+                className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full outline-none hover:bg-black/[0.05] focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
                 style={{ color: hub.textMuted }}
                 onClick={() => {
                   setSearch("");
@@ -519,7 +519,7 @@ export function HubStocks({
                     setFilter(option.id);
                     setPage(0);
                   }}
-                  className="inline-flex min-h-[40px] items-center gap-1.5 rounded-[11px] border bg-white px-3.5 text-[14px] outline-none transition hover:bg-[#F4F6F8] focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+                  className="inline-flex min-h-[40px] items-center gap-1.5 rounded-[11px] border bg-white px-3.5 text-[14px] outline-none transition hover:bg-[var(--hub-canvas)] focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
                   style={{
                     ...hubSans,
                     borderColor: active ? hub.ink : hub.border,
@@ -583,7 +583,7 @@ export function HubStocks({
                     <td className="px-5 py-3 sm:px-6">
                       <div className="flex min-w-[280px] max-w-[420px] items-center gap-3">
                         <span
-                          className="flex h-[75px] w-[56px] shrink-0 items-center justify-center overflow-hidden bg-[#F4F6F8]"
+                          className="flex h-[75px] w-[56px] shrink-0 items-center justify-center overflow-hidden bg-[var(--hub-canvas)]"
                           style={{ boxShadow: `inset 0 0 0 1px ${hub.border}` }}
                         >
                           {wbCardPhoto(item.imageUrl) ? (

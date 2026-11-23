@@ -29,6 +29,14 @@ describe("adCreateWbBody / defaultAdCampaignName", () => {
     });
   });
 
+  it("кампания с оплатой за клик: тип оплаты уходит в WB, название помечено", () => {
+    const parsed = parseAdCreateRequest({ nmId: 5, name: "Х", confirmNmId: 5, paymentType: "cpc" });
+    assert.deepEqual(parsed, { ok: true, request: { nmId: 5, name: "Х", paymentType: "cpc" } });
+    assert.equal(adCreateWbBody({ nmId: 5, name: "Х", paymentType: "cpc" }).payment_type, "cpc");
+    assert.equal(parseAdCreateRequest({ nmId: 5, name: "Х", confirmNmId: 5, paymentType: "free" }).ok, false);
+    assert.equal(defaultAdCampaignName("Ведро", "cpc"), "KARTO клики: Ведро");
+  });
+
   it("название по умолчанию обрезается и всегда непустое", () => {
     assert.equal(defaultAdCampaignName("Ведро  10л"), "KARTO тест: Ведро 10л");
     assert.equal(defaultAdCampaignName(""), "KARTO тест: товар");

@@ -1,6 +1,8 @@
 /** Календарная дата YYYY-MM-DD по Москве: WB отдаёт дневные ряды по московскому времени. */
+/** Формат создаётся один раз: функцию зовут для каждого заказа, на тысячах заказов это было заметно. */
+const MOSCOW_DATE_FMT = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Moscow" });
 export function moscowDateKey(nowMs: number): string {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Moscow" }).format(new Date(nowMs));
+  return MOSCOW_DATE_FMT.format(new Date(nowMs));
 }
 
 /** Момент выгрузки снимка: от него считается, какой день ещё не закончился (чистая функция для рендера). */

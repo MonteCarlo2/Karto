@@ -155,7 +155,8 @@ function applyLocalRevisionHint(reply: string, hint: string): string {
   }
 
   if (/официальн|формальн|на «вы»|на вы/.test(h)) {
-    text = text.replace(/\bПривет\b/g, "Здравствуйте").replace(/\bты\b/gi, (m) => (m === "ты" ? "вы" : "Вы"));
+    // \b в JavaScript не видит границ русских слов, поэтому границы задаём через Unicode-буквы.
+    text = text.replace(/(?<![\p{L}\p{N}])Привет(?![\p{L}\p{N}])/gu, "Здравствуйте").replace(/(?<![\p{L}\p{N}])ты(?![\p{L}\p{N}])/giu, (m) => (m === "ты" ? "вы" : "Вы"));
   }
 
   if (/тепл|дружел|мягк/.test(h) && !/официальн|формальн/.test(h)) {

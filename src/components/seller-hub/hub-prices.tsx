@@ -310,7 +310,7 @@ export function HubPrices({
                 type="button"
                 onClick={() => setFilter(id)}
                 className={`rounded-[8px] px-3 py-1.5 text-[12.5px] font-semibold ${
-                  filter === id ? "bg-[#B9FF4B]/45" : ""
+                  filter === id ? "bg-[var(--hub-lime)]/45" : ""
                 }`}
                 style={{ ...hubSans, color: filter === id ? hub.text : hub.textMuted }}
               >
@@ -376,7 +376,7 @@ export function HubPrices({
                 return (
                   <tr
                     key={item.id}
-                    className={`group border-b transition-colors duration-150 ${isEditing ? "bg-[#B9FF4B]/16" : "cursor-pointer hover:bg-[#1C1915]/[0.04]"}`}
+                    className={`group border-b transition-colors duration-150 ${isEditing ? "bg-[var(--hub-lime)]/16" : "cursor-pointer hover:bg-[#1C1915]/[0.04]"}`}
                     style={{ borderColor: hub.borderSoft }}
                     onClick={isEditing ? undefined : () => setSelectedItem(item)}
                   >

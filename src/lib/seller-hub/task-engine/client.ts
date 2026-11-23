@@ -194,6 +194,24 @@ export async function loadSellerHubTasks(snapshot: SellerCatalogSnapshot): Promi
   } catch {
     // Список ниже всё равно читает то, что уже сохранено.
   }
+  return loadStoredSellerHubTasks(snapshot);
+}
+
+/** Только чтение сохранённых задач, без пересчёта: быстро, для панелей в других разделах. Пересчёт идёт в фоне на сервере и в разделе «Задачи». */
+const storedInFlight = new Map<string, Promise<SellerTask[]>>();
+
+export function loadStoredSellerHubTasks(snapshot: Pick<SellerCatalogSnapshot, "marketplaceId">): Promise<SellerTask[]> {
+  // Один запрос на кабинет, пока он не закончился: панели разных разделов не дублируют загрузку.
+  const existing = storedInFlight.get(snapshot.marketplaceId);
+  if (existing) return existing;
+  const flight = fetchStoredSellerHubTasks(snapshot).finally(() => {
+    storedInFlight.delete(snapshot.marketplaceId);
+  });
+  storedInFlight.set(snapshot.marketplaceId, flight);
+  return flight;
+}
+
+async function fetchStoredSellerHubTasks(snapshot: Pick<SellerCatalogSnapshot, "marketplaceId">): Promise<SellerTask[]> {
   const response = await autoRepliesAuthorizedFetch(
     `/api/seller-hub/tasks?marketplaceId=${encodeURIComponent(snapshot.marketplaceId)}`,
     { method: "GET", timeoutMs: 60_000 },
@@ -216,7 +234,7 @@ export async function loadSellerHubTasks(snapshot: SellerCatalogSnapshot): Promi
 export async function updateSellerHubTaskStatus(input: {
   marketplaceId: string;
   taskId: string;
-  status: "completed" | "snoozed";
+  status: "completed" | "snoozed" | "active";
   snoozeUntil?: string;
 }): Promise<SellerTask> {
   const response = await autoRepliesAuthorizedFetch(`/api/seller-hub/tasks/${encodeURIComponent(input.taskId)}`, {

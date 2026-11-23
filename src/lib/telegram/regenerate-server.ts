@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { InboxReviewItem } from "@/lib/auto-replies/inbox-demo-data";
 import type { AutoRepliesMarketplaceId } from "@/lib/auto-replies/types";
 import { generateAutoReply } from "@/lib/auto-replies/generate-auto-reply";
-import { consumeAutoReplyCredits } from "@/lib/auto-replies-balance";
+import { consumeAutoReplyCredits, hasAutoReplyCredit } from "@/lib/auto-replies-balance";
 import { listMarketplaceSecretsForUser } from "@/lib/auto-replies/server-secrets";
 import type { AutoRepliesSettingsRoot } from "@/lib/auto-replies/settings-types";
 import { patchInboxReplyDraft } from "./semi-confirm-server";
@@ -61,9 +61,9 @@ export async function regenerateTelegramReviewDraft(
   const previous = input.item.replyDraft?.trim() || "";
   const isRegeneration = previous.length >= 2;
 
-  if (!isRegeneration) {
-    const charge = await consumeAutoReplyCredits(supabase, input.userId, 1);
-    if (!charge.ok) return { ok: false, error: charge.error ?? "Недостаточно ответов" };
+  // Остаток проверяем заранее, а списываем только после того, как ИИ реально написал ответ.
+  if (!isRegeneration && !(await hasAutoReplyCredit(supabase, input.userId, 1))) {
+    return { ok: false, error: "Недостаточно ответов" };
   }
 
   try {
@@ -82,6 +82,11 @@ export async function regenerateTelegramReviewDraft(
 
     const reply = result.reply.trim();
     if (reply.length < 2) return { ok: false, error: "Пустой ответ от ИИ" };
+
+    if (!isRegeneration) {
+      const charge = await consumeAutoReplyCredits(supabase, input.userId, 1);
+      if (!charge.ok) return { ok: false, error: charge.error ?? "Недостаточно ответов" };
+    }
 
     await updateTelegramReviewDraft(supabase, input.messageRowId, reply);
     const updatedItem = await patchInboxReplyDraft(supabase, {

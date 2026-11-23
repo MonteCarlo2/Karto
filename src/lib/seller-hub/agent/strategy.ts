@@ -110,9 +110,9 @@ export type AdsCreateTestAction = { type: "ads_create_test"; reason: string };
 /** Убрать товар из рекламной кампании или вернуть/добавить его в другую кампанию магазина (кампании берутся только из данных кабинета). */
 export type AdsRemoveNmAction = { type: "ads_remove_nm"; campaignId: string; reason: string };
 export type AdsAddNmAction = { type: "ads_add_nm"; campaignId: string; reason: string };
-/** Пополнение бюджета кампании товара. Сумма только из набора ступеней: 500, 1000 или 2000 ₽ за шаг; фактический остаток на счёте проверяет исполнитель. */
-export const DEPOSIT_STEPS = [500, 1000, 2000] as const;
-export type AdsDepositAction = { type: "ads_deposit"; campaignId: string; sumRub: 500 | 1000 | 2000; reason: string };
+/** Пополнение бюджета кампании товара. Сумма только из набора ступеней: 1000, 2000 или 5000 ₽ за шаг (минимум пополнения у WB 1000 ₽); фактический остаток на счёте проверяет исполнитель. */
+export const DEPOSIT_STEPS = [1000, 2000, 5000] as const;
+export type AdsDepositAction = { type: "ads_deposit"; campaignId: string; sumRub: 1000 | 2000 | 5000; reason: string };
 
 /** Скидка WB Клуба: ступень в процентных пунктах 1–3; сумму считает программа и проверяет, что цена для участников Клуба не уходит ниже безубыточной. */
 export type ClubDiscountAction = { type: "club_discount"; direction: "lower" | "raise"; stepPercent: 1 | 2 | 3; reason: string };
@@ -212,7 +212,7 @@ const DESCRIPTION_MIN = 200;
 // Ссылки, телефоны, почта, мессенджеры: WB такие тексты в карточке не допускает.
 const FORBIDDEN_CONTACTS = /https?:\/\/|www\.|[\w.+-]+@[\w-]+\.[a-z]{2,}|(?:\+7|8)[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}|t\.me\/|whatsapp|telegram|viber|инстаграм|instagram/i;
 
-const PLACEHOLDER = /[\[\]{}<>]|\.{3}|…|TODO|подтвержд/iu;
+const PLACEHOLDER = /[\[\]{}<>]|\.{3}|…|(?<![A-Za-z])TODO(?![A-Za-z])|подтвержд/iu;
 
 // Рекламные и сравнительные слова: WB их в названии и описании не любит.  с кириллицей не работает, поэтому границы заданы явно.
 const PROMO_WORDS = /(^|[^а-яёa-z])(акци[яиюей]|скидк\p{L}*|бесплатн\p{L}*|распродаж\p{L}*|лучш\p{L}*|№\s?1|хит\s+продаж)([^а-яёa-z]|$)/iu;
@@ -255,7 +255,8 @@ export type ParseContext = {
   charcs?: Map<number, { name: string; type: number | null }> | null;
 };
 
-function parseAction(raw: unknown, ctx: ParseContext): PlanAction | null {
+/** Разбор одного действия программы с проверкой по данным товара (кампании, акции, характеристики). Нужен и плану, и чату. */
+export function parsePlanAction(raw: unknown, ctx: ParseContext): PlanAction | null {
   if (!raw || typeof raw !== "object") return null;
   const a = raw as Record<string, unknown>;
   const reason = text(a.reason, 240);
@@ -333,7 +334,7 @@ export function parseStrategy(raw: unknown, ctx: ParseContext = {}): Strategy | 
   // Шаги цены: сначала по дням, затем подрезка по общему пределу (10% в каждую сторону) и по минимальному интервалу между шагами.
   const sorted = rawSteps
     .map((p) => {
-      const action = parseAction(p.action, ctx);
+      const action = parsePlanAction(p.action, ctx);
       const day = clamp(Math.round(Number(p.day) || 0), 0, MAX_REVIEW_DAYS);
       const flow = (STEP_FLOWS as readonly string[]).includes(String(p.flow)) ? (p.flow as StepFlow) : undefined;
       const onlyIf = p.if && typeof p.if === "object" ? parseCriteria([p.if], 1)[0] : undefined;
@@ -421,6 +422,8 @@ export type StrategyState = {
   /** Шаги программы, которые владелец велел выполнить сейчас, не дожидаясь срока и условия. */
   forcedSteps?: number[];
   acceptedAt?: string;
+  /** План на паузе с этого момента (ISO): шаги не предлагаются, проверки и итог стоят. При продолжении срок плана сдвигается на время паузы. */
+  pausedAt?: string;
   baseline?: Metrics;
   checkpoints?: StrategyCheckpoint[];
   resolvedAt?: string;

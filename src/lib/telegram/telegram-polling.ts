@@ -3,7 +3,7 @@
  * bot-api импортируется динамически, чтобы не залипать на старом бандле без прокси.
  */
 import { getTelegramProxyLabel, isTelegramConfigured } from "./config";
-import { processPendingTelegramUpdates } from "./process-updates";
+import { processPendingTelegramUpdates, webhookBlockingPolling } from "./process-updates";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -46,6 +46,12 @@ function startPollingLoop() {
   );
 
   void (async () => {
+    const blocking = await webhookBlockingPolling();
+    if (blocking) {
+      console.warn(`[telegram] локальный опрос не включён: у бота стоит webhook ${blocking}. Это боевой бот, снятие webhook остановило бы сайт. Используйте отдельного тестового бота (TELEGRAM_BOT_TOKEN в .env.local).`);
+      globalThis.__kartoTelegramPollingStarted = false;
+      return;
+    }
     try {
       const { telegramDeleteWebhook } = await import("./bot-api");
       await telegramDeleteWebhook();

@@ -103,7 +103,7 @@ export function HubHealthBoard({
           <button
             type="button"
             onClick={() => onNavigate("orders")}
-            className="flex aspect-square flex-col justify-between rounded-2xl p-3 text-left outline-none transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1F4E3D]"
+            className="flex aspect-square flex-col justify-between rounded-2xl p-3 text-left outline-none transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--hub-forest)]"
             style={{ backgroundColor: hub.lime }}
           >
             <p className="text-[11px] font-semibold uppercase leading-tight tracking-[0.04em]" style={{ color: hub.greenDark }}>
@@ -115,8 +115,8 @@ export function HubHealthBoard({
           </button>
           <button
             type="button"
-            onClick={() => onNavigate("finance")}
-            className="flex flex-col justify-between rounded-2xl px-4 py-3 text-left outline-none transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1F4E3D]"
+            onClick={() => onNavigate("analytics")}
+            className="flex flex-col justify-between rounded-2xl px-4 py-3 text-left outline-none transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--hub-forest)]"
             style={{ backgroundColor: hub.greenSoft }}
           >
             <p className="text-[11px] font-semibold uppercase tracking-[0.06em]" style={{ color: hub.greenDark }}>
@@ -137,7 +137,7 @@ export function HubHealthBoard({
               key={row.label}
               type="button"
               onClick={() => onNavigate("orders")}
-              className="flex flex-1 items-center justify-between rounded-2xl px-3.5 py-2.5 text-left outline-none transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1F4E3D]"
+              className="flex flex-1 items-center justify-between rounded-2xl px-3.5 py-2.5 text-left outline-none transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--hub-forest)]"
               style={{ backgroundColor: row.tint }}
             >
               <span className="text-[13px]" style={{ color: hub.textMuted }}>
@@ -246,7 +246,7 @@ function MonitorCard({ items }: { items: AdviceItem[] }) {
               <button
                 type="button"
                 onClick={item.onClick}
-                className="flex w-full items-center justify-between gap-4 rounded-xl px-3 py-2.5 text-left outline-none transition-colors hover:brightness-[0.98] focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+                className="flex w-full items-center justify-between gap-4 rounded-xl px-3 py-2.5 text-left outline-none transition-colors hover:brightness-[0.98] focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
                 style={{ backgroundColor: hub.canvas }}
               >
                 <span className="min-w-0">
@@ -462,7 +462,7 @@ function Mini({
     <button
       type="button"
       onClick={onClick}
-      className="rounded-2xl px-3.5 py-3 text-left outline-none transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#1F4E3D]"
+      className="rounded-2xl px-3.5 py-3 text-left outline-none transition-[filter] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--hub-forest)]"
       style={{ backgroundColor: tint }}
     >
       <p className="text-[12px]" style={{ color: hub.textSubtle }}>{label}</p>
@@ -583,7 +583,7 @@ function MetricSwitch({
     <button
       type="button"
       onClick={() => onSelect(value)}
-      className="relative z-10 rounded-full text-[12px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+      className="relative z-10 rounded-full text-[12px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
       style={{ color: on ? hub.text : hub.textMuted }}
       aria-pressed={on}
     >

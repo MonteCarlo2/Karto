@@ -43,6 +43,7 @@ export type SellerEventKind =
   | "penalties_up"
   | "review_negative"
   | "access_lost"
+  | "token_expiring"
   | "access_restored"
   | "day_orders_drop"
   | "day_orders_spike"
@@ -170,6 +171,7 @@ export const EVENT_GROUP: Record<SellerEventKind, SellerEventGroup> = {
   penalties_up: "money",
   review_negative: "reviews",
   access_lost: "system",
+  token_expiring: "system",
   access_restored: "system",
   day_orders_drop: "sales",
   day_orders_spike: "sales",

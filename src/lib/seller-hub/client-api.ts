@@ -1,4 +1,5 @@
 import type { AcceptanceRow } from "@/lib/seller-hub/acceptance-slots";
+import { persistGet, persistSet } from "@/lib/seller-hub/persist";
 import type { HistoryPoint } from "@/lib/seller-hub/metric-history";
 import type { VisionResult } from "@/lib/seller-hub/card-vision-score";
 import type { TextResult } from "@/lib/seller-hub/card-text-score";
@@ -59,6 +60,7 @@ export async function manageSellerHubWbConnection(input: {
   sampleCount?: number;
   totalCards?: number | null;
   scopes?: SellerHubScopeState;
+  expiresAt?: string | null;
   error?: string;
 }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/connection", {
@@ -79,6 +81,7 @@ export async function manageSellerHubWbConnection(input: {
     sampleCount?: number;
     totalCards?: number | null;
     scopes?: SellerHubScopeState;
+    expiresAt?: string | null;
     error?: string;
   };
   if (!res.ok || !data.ok) {
@@ -86,7 +89,7 @@ export async function manageSellerHubWbConnection(input: {
       ok: false,
       keepLocal: data.keepLocal !== false,
       alreadyStored: data.alreadyStored === true,
-      error: data.error ?? `Ошибка ${res.status}`,
+      error: data.error ?? httpErrorText(res.status),
     };
   }
   return {
@@ -99,12 +102,14 @@ export async function manageSellerHubWbConnection(input: {
     sampleCount: data.sampleCount,
     totalCards: data.totalCards,
     scopes: data.scopes,
+    expiresAt: data.expiresAt ?? null,
   };
 }
 
 export async function loadSellerHubWbConnectionStatus(): Promise<{
   ok: boolean;
   connected?: boolean;
+  expiresAt?: string | null;
   error?: string;
 }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/connection", {
@@ -114,12 +119,13 @@ export async function loadSellerHubWbConnectionStatus(): Promise<{
   const data = (await res.json().catch(() => ({}))) as {
     ok?: boolean;
     connected?: boolean;
+    expiresAt?: string | null;
     error?: string;
   };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+    return { ok: false, error: data.error ?? httpErrorText(res.status) };
   }
-  return { ok: true, connected: data.connected === true };
+  return { ok: true, connected: data.connected === true, expiresAt: data.expiresAt ?? null };
 }
 
 export async function verifySellerHubConnection(input: {
@@ -139,6 +145,7 @@ export async function verifySellerHubConnection(input: {
   sampleCount?: number;
   totalCards?: number | null;
   scopes?: SellerHubScopeState;
+  expiresAt?: string | null;
   error?: string;
 }> {
   if (input.marketplaceId === "wildberries") {
@@ -162,9 +169,10 @@ export async function verifySellerHubConnection(input: {
       sampleCount?: number;
       totalCards?: number | null;
       scopes?: SellerHubScopeState;
+      expiresAt?: string | null;
     };
     if (!res.ok || !data.ok) {
-      return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+      return { ok: false, error: data.error ?? httpErrorText(res.status) };
     }
     return { ok: true, ...data };
   }
@@ -200,7 +208,7 @@ export async function verifySellerHubConnection(input: {
     scopes?: SellerHubScopeState;
   };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+    return { ok: false, error: data.error ?? httpErrorText(res.status) };
   }
   return { ok: true, ...data };
 }
@@ -248,7 +256,7 @@ export async function syncSellerHubCatalog(input: {
     warning?: string;
   };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+    return { ok: false, error: data.error ?? httpErrorText(res.status) };
   }
   return { ok: true, ...data };
 }
@@ -294,7 +302,7 @@ export async function updateSellerHubPrices(params: {
     stale?: Array<{ nmId: number; current: { price: number | null; discount: number | null } }>;
   };
   const outcome = data.outcome ?? (data.ok ? "processed" : "failed");
-  const message = data.message ?? data.error ?? (res.ok ? "Результат загрузки цены неизвестен" : `Ошибка ${res.status}`);
+  const message = data.message ?? data.error ?? (res.ok ? "Результат загрузки цены неизвестен" : httpErrorText(res.status));
   return {
     ok: outcome === "confirmed" || outcome === "processed",
     outcome,
@@ -321,7 +329,7 @@ export async function uploadSellerHubPhoto(params: {
     timeoutMs: 60_000,
   });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true };
 }
 
@@ -338,7 +346,7 @@ export async function searchSellerHubCategories(params: {
     subjects?: { id: number; name: string; parent: string }[];
     error?: string;
   };
-  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, subjects: data.subjects };
 }
 
@@ -377,7 +385,7 @@ export async function readSellerHubCard(params: {
     };
     error?: string;
   };
-  if (!res.ok || !data.ok || !data.card) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok || !data.card) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, card: data.card };
 }
 
@@ -396,7 +404,7 @@ export async function readSellerHubCardSellability(params: {
     timeoutMs: 60_000,
   });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; text?: string; error?: string };
-  if (!res.ok || !data.ok || !data.text) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok || !data.text) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, text: data.text };
 }
 
@@ -427,7 +435,7 @@ export async function updateSellerHubCard(params: {
     timeoutMs: 60_000,
   });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true };
 }
 
@@ -441,7 +449,7 @@ export async function saveSellerHubMedia(params: {
     timeoutMs: 60_000,
   });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true };
 }
 
@@ -505,7 +513,7 @@ export async function manageSellerHubPromotion(params: {
     >;
   };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}`, verified: data.verified };
+    return { ok: false, error: data.error ?? httpErrorText(res.status), verified: data.verified };
   }
   return {
     ok: true,
@@ -543,7 +551,7 @@ export async function fetchSellerHubPromotionTerms(params: {
     probe?: { status: number; rowsSeen: number; matched: number; withPlanPrice: number };
   };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+    return { ok: false, error: data.error ?? httpErrorText(res.status) };
   }
   return { ok: true, terms: data.terms, probe: data.probe };
 }
@@ -583,7 +591,7 @@ export async function fetchSellerHubPromotionRoster(params: {
     eligible?: PromoRosterRow[];
   };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}`, participating: [], eligible: [] };
+    return { ok: false, error: data.error ?? httpErrorText(res.status), participating: [], eligible: [] };
   }
   return {
     ok: true,
@@ -611,7 +619,7 @@ export async function listSellerHubWarehouses(): Promise<{
     error?: string;
   };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+    return { ok: false, error: data.error ?? httpErrorText(res.status) };
   }
   return { ok: true, warehouses: data.warehouses };
 }
@@ -647,7 +655,7 @@ export async function updateSellerHubStocks(params: {
     const message =
       data.error ??
       data.errors?.filter(Boolean).join("; ") ??
-      `Ошибка ${res.status}`;
+      httpErrorText(res.status);
     return { ok: false, error: message, errors: data.errors };
   }
   return {
@@ -708,7 +716,7 @@ export async function manageSellerHubSupply(params: {
     error?: string;
   };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+    return { ok: false, error: data.error ?? httpErrorText(res.status) };
   }
   return {
     ok: true,
@@ -735,7 +743,7 @@ export async function toggleSellerHubAd(params: {
   );
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+    return { ok: false, error: data.error ?? httpErrorText(res.status) };
   }
   return { ok: true };
 }
@@ -766,18 +774,29 @@ async function postWbCached<T>(
   const flying = wbCachedInFlight.get(key);
   if (flying) return flying as Promise<{ ok: boolean; value?: T; error?: string } & SellerHubLoadMeta>;
   const promise = (async () => {
-    const res = await autoRepliesAuthorizedFetch(path, { method: "POST", body: JSON.stringify(body), timeoutMs });
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown> & SellerHubLoadMeta & { ok?: boolean; error?: string };
-    const value = data[pick] as T | undefined;
-    if (!res.ok || !data.ok || value == null) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
-    return {
-      ok: true,
-      value,
-      loadedAt: data.loadedAt,
-      fromCache: data.fromCache,
-      stale: data.stale,
-      staleReason: data.staleReason,
+    /** Сбой не должен доходить до человека: если когда-то уже получали эти данные, показываем последние хорошие. */
+    const fallback = (error: string): { ok: boolean; value?: T; error?: string } & SellerHubLoadMeta => {
+      const last = persistGet<{ value: T; loadedAt?: string }>(key);
+      if (last) return { ok: true, value: last.value.value, loadedAt: last.value.loadedAt, stale: true, staleReason: error };
+      return { ok: false, error };
     };
+    try {
+      const res = await autoRepliesAuthorizedFetch(path, { method: "POST", body: JSON.stringify(body), timeoutMs, retries: 2 });
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown> & SellerHubLoadMeta & { ok?: boolean; error?: string };
+      const value = data[pick] as T | undefined;
+      if (!res.ok || !data.ok || value == null) return fallback(data.error ?? httpErrorText(res.status));
+      if (!data.stale) persistSet(key, { value, loadedAt: data.loadedAt });
+      return {
+        ok: true,
+        value,
+        loadedAt: data.loadedAt,
+        fromCache: data.fromCache,
+        stale: data.stale,
+        staleReason: data.staleReason,
+      };
+    } catch (e) {
+      return fallback(e instanceof Error ? e.message : "Данные временно недоступны");
+    }
   })();
   wbCachedInFlight.set(key, promise);
   void promise.finally(() => wbCachedInFlight.delete(key));
@@ -862,32 +881,32 @@ export type ActionLogRow = {
 export async function loadSellerHubActionLog(): Promise<{ ok: boolean; entries: ActionLogRow[]; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/action-log", { method: "POST", body: "{}", timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; entries?: ActionLogRow[]; error?: string };
-  if (!res.ok || !data.ok) return { ok: false, entries: [], error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, entries: [], error: data.error ?? httpErrorText(res.status) };
   return { ok: true, entries: data.entries ?? [] };
 }
 /** Добавить товар в рекламную кампанию. Запись в WB: только после подтверждения человеком. */
 export async function addSellerHubAdNm(params: { advertId: number; nmId: number }): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/ads/nm", { method: "POST", body: JSON.stringify({ action: "add", advertId: params.advertId, nmId: params.nmId, confirmNmId: params.nmId }), timeoutMs: 30_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 /** Изменить зоны показов кампании. Запись в WB: только после подтверждения человеком. */
 /** Дневной лимит расхода кампании (CPC). */
 export async function setSellerHubAdDailyLimit(params: { advertId: number; enabled: boolean; dailyLimit: number; carryOver: boolean }): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/ads/daily-limit", { method: "POST", body: JSON.stringify({ ...params, confirm: `${params.advertId}:${params.enabled}:${params.dailyLimit}` }), timeoutMs: 30_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 export async function setSellerHubAdPlacements(params: { advertId: number; search: boolean; recommendations: boolean }): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/ads/placements", { method: "POST", body: JSON.stringify({ ...params, confirm: `${params.search}:${params.recommendations}` }), timeoutMs: 30_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 /** Текущие ставки поисковых кластеров (только чтение). Ключ clusterBidKey → ставка, ₽. */
 export async function loadSellerHubClusterBids(pairs: Array<{ advertId: number; nmId: number }>): Promise<{ ok: boolean; bids: Record<string, number>; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/ads/cluster-bid", { method: "POST", body: JSON.stringify({ action: "read", pairs }), timeoutMs: 30_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; bids?: Record<string, number>; error?: string };
-  if (!res.ok || !data.ok) return { ok: false, bids: {}, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, bids: {}, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, bids: data.bids ?? {} };
 }
 
@@ -895,34 +914,34 @@ export async function loadSellerHubClusterBids(pairs: Array<{ advertId: number; 
 export async function setSellerHubClusterBid(params: { advertId: number; nmId: number; query: string; bidRub: number }): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/ads/cluster-bid", { method: "POST", body: JSON.stringify({ action: "set", ...params, confirmRub: params.bidRub }), timeoutMs: 30_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 /** Сбросить ставку кластера к ставке кампании. Запись в WB: только после подтверждения человеком. */
 export async function resetSellerHubClusterBid(params: { advertId: number; nmId: number; query: string }): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/ads/cluster-bid", { method: "POST", body: JSON.stringify({ action: "reset", ...params, confirmQuery: params.query }), timeoutMs: 30_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 /** Разбор рекламных кампаний нейросетью. saved=true — только уже сохранённый разбор (бесплатно); иначе платный вызов по команде человека. */
 export async function reviewSellerHubCampaigns(params: { facts: CampaignFacts[]; saved?: boolean }): Promise<{ ok: boolean; reviews?: CampaignReview[] | null; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/ads/review", { method: "POST", body: JSON.stringify(params), timeoutMs: 90_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; reviews?: CampaignReview[] | null; error?: string };
-  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, reviews: data.reviews ?? null };
 }
 /** План действий по товарам нейросетью. saved=true — только уже сохранённый (бесплатно); иначе платный вызов по команде человека. */
 export async function adviseSellerHubProducts(params: { facts: ProductFacts[]; saved?: boolean }): Promise<{ ok: boolean; advice?: ProductAdvice[] | null; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/product-advice", { method: "POST", body: JSON.stringify(params), timeoutMs: 90_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; advice?: ProductAdvice[] | null; error?: string };
-  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, advice: data.advice ?? null };
 }
 /** Правила агента рекламы и «пополнено сегодня» для суточного лимита. Только чтение. */
 export async function loadSellerHubAgentRules(): Promise<{ ok: boolean; rules: AgentRule[]; depositedToday: Record<string, number>; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agent-rules", { method: "POST", body: JSON.stringify({ action: "list" }), timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; rules?: AgentRule[]; depositedToday?: Record<string, number>; error?: string };
-  if (!res.ok || !data.ok || !data.rules) return { ok: false, rules: [], depositedToday: {}, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok || !data.rules) return { ok: false, rules: [], depositedToday: {}, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, rules: data.rules, depositedToday: data.depositedToday ?? {} };
 }
 
@@ -930,7 +949,7 @@ export async function loadSellerHubAgentRules(): Promise<{ ok: boolean; rules: A
 export async function loadSellerHubAgentProposals(): Promise<{ ok: boolean; proposals: ServerAgentProposal[]; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/proposals", { method: "GET", timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; proposals?: ServerAgentProposal[]; error?: string };
-  if (!res.ok || !data.ok || !data.proposals) return { ok: false, proposals: [], error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok || !data.proposals) return { ok: false, proposals: [], error: data.error ?? httpErrorText(res.status) };
   return { ok: true, proposals: data.proposals };
 }
 
@@ -938,14 +957,14 @@ export async function loadSellerHubAgentProposals(): Promise<{ ok: boolean; prop
 export async function resolveSellerHubAgentProposal(id: string, decision: "done" | "dismissed" | "failed", note?: string): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/proposals", { method: "POST", body: JSON.stringify({ id, decision, note }), timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 /** Сохранить правило агента (включено, режим, параметры). Кабинет WB не затрагивает. */
 export async function saveSellerHubAgentRule(rule: AgentRule): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agent-rules", { method: "POST", body: JSON.stringify({ action: "save", rule }), timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 /** Нейросеть решает, подходят ли запросы-кандидаты в минус-фразы товару по смыслу. Платный вызов: только по команде человека. */
 export async function checkSellerHubQueryRelevance(params: {
@@ -957,14 +976,14 @@ export async function checkSellerHubQueryRelevance(params: {
 }): Promise<{ ok: boolean; results?: QueryRelevance[]; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/ads/relevance", { method: "POST", body: JSON.stringify(params), timeoutMs: 60_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; results?: QueryRelevance[]; error?: string };
-  if (!res.ok || !data.ok || !data.results) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok || !data.results) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, results: data.results };
 }
 /** Уже сохранённые оценки текста нейросетью: бесплатно, нейросеть не вызывается. */
 export async function loadSavedCardText(nmIds: number[]): Promise<{ ok: boolean; saved: Record<string, TextResult>; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/card-text", { method: "POST", body: JSON.stringify({ saved: nmIds }), timeoutMs: 30_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; saved?: Record<string, TextResult>; error?: string };
-  if (!res.ok || !data.ok) return { ok: false, saved: {}, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, saved: {}, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, saved: data.saved ?? {} };
 }
 
@@ -980,7 +999,7 @@ export async function evaluateSellerHubCardText(params: {
 }): Promise<{ ok: boolean; result?: TextResult; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/card-text", { method: "POST", body: JSON.stringify(params), timeoutMs: 90_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: TextResult; error?: string };
-  if (!res.ok || !data.ok || !data.result) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok || !data.result) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, result: data.result };
 }
 /** Уже сохранённые оценки фото нейросетью: бесплатно, нейросеть не вызывается. */
@@ -989,7 +1008,7 @@ export async function loadSavedCardVision(
 ): Promise<{ ok: boolean; saved: Record<string, VisionResult>; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/card-vision", { method: "POST", body: JSON.stringify({ saved: items }), timeoutMs: 30_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; saved?: Record<string, VisionResult>; error?: string };
-  if (!res.ok || !data.ok) return { ok: false, saved: {}, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, saved: {}, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, saved: data.saved ?? {} };
 }
 
@@ -1005,7 +1024,7 @@ export async function evaluateSellerHubCardPhotos(params: {
 }): Promise<{ ok: boolean; result?: VisionResult; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/card-vision", { method: "POST", body: JSON.stringify(params), timeoutMs: 90_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: VisionResult; error?: string };
-  if (!res.ok || !data.ok || !data.result) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok || !data.result) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, result: data.result };
 }
 /** Заблокированные WB карточки с причинами (только чтение; серверный кэш 1 час). */
@@ -1049,13 +1068,28 @@ export function loadSellerHubAnalyticsPeriod(params: { days: number; refresh?: b
 }
 
 async function requestAnalyticsPeriod(params: { days: number; refresh?: boolean }): Promise<AnalyticsPeriodResult> {
+  const persistKey = `analytics-period|${params.days}`;
+  const fallback = (error: string): AnalyticsPeriodResult => {
+    const last = persistGet<{ funnel?: SellerFunnelSnapshot; stocksReport?: SellerStocksReportSnapshot; loadedAt?: string }>(persistKey);
+    return last ? { ok: true, ...last.value } : { ok: false, error };
+  };
+  try {
+    return await requestAnalyticsPeriodOnce(params, persistKey, fallback);
+  } catch (e) {
+    return fallback(e instanceof Error ? e.message : "Данные временно недоступны");
+  }
+}
+
+async function requestAnalyticsPeriodOnce(params: { days: number; refresh?: boolean }, persistKey: string, fallback: (error: string) => AnalyticsPeriodResult): Promise<AnalyticsPeriodResult> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/analytics/period", {
     method: "POST",
     body: JSON.stringify(params),
     timeoutMs: 170_000,
+    retries: 2,
   });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; funnel?: SellerFunnelSnapshot; stocksReport?: SellerStocksReportSnapshot; loadedAt?: string };
-  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return fallback(data.error ?? httpErrorText(res.status));
+  persistSet(persistKey, { funnel: data.funnel, stocksReport: data.stocksReport, loadedAt: data.loadedAt });
   return { ok: true, funnel: data.funnel, stocksReport: data.stocksReport, loadedAt: data.loadedAt };
 }
 
@@ -1065,7 +1099,7 @@ export type AnalyticsHistoryResult = { ok: true; series: HistoryPoint[]; missing
 export async function loadSellerHubAnalyticsHistory(opts: { readOnly?: boolean } = {}): Promise<AnalyticsHistoryResult> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/analytics/history", { method: "POST", body: JSON.stringify({ readOnly: opts.readOnly === true }), timeoutMs: 170_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; series?: HistoryPoint[]; missing?: number; notes?: string[] };
-  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, series: data.series ?? [], missing: data.missing ?? 0, notes: data.notes ?? [] };
 }
 
@@ -1075,7 +1109,7 @@ export type NewsSyncResult = { ok: true; created: number; news: number; more: bo
 export async function syncSellerHubNews(profile: { categories: string[]; brands: string[]; worksFbs: boolean; worksFbw: boolean; usesAds?: boolean; promoNames?: string[]; mutedRubrics?: string[]; warehouseNames: string[] }): Promise<NewsSyncResult> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/events/news", { method: "POST", body: JSON.stringify({ profile }), timeoutMs: 60_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; created?: number; news?: number; more?: boolean; warning?: string | null };
-  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, created: data.created ?? 0, news: data.news ?? 0, more: data.more === true, warning: data.warning ?? null };
 }
 
@@ -1089,7 +1123,7 @@ export type TaskSettingsPayload = {
 export async function loadSellerHubTaskSettings(marketplaceId = "wildberries"): Promise<{ ok: true; data: TaskSettingsPayload } | { ok: false; error: string }> {
   const res = await autoRepliesAuthorizedFetch(`/api/seller-hub/tasks/settings?marketplaceId=${encodeURIComponent(marketplaceId)}`, { method: "GET", timeoutMs: 30_000 });
   const data = (await res.json().catch(() => ({}))) as Partial<TaskSettingsPayload> & { ok?: boolean; error?: string };
-  if (!res.ok || !data.ok || !data.values) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok || !data.values) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, data: { values: data.values, defaults: data.defaults ?? {}, disabledTypes: data.disabledTypes ?? [], mutedProducts: data.mutedProducts ?? [] } };
 }
 
@@ -1100,7 +1134,7 @@ export async function saveSellerHubTaskSettings(
 ): Promise<{ ok: true } | { ok: false; error: string; errors?: Record<string, string> }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/tasks/settings", { method: "PUT", body: JSON.stringify({ marketplaceId, values, disabledTypes }), timeoutMs: 30_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; errors?: Record<string, string> };
-  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? `Ошибка ${res.status}`, errors: data.errors };
+  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? httpErrorText(res.status), errors: data.errors };
   return { ok: true };
 }
 
@@ -1108,17 +1142,17 @@ export async function saveSellerHubTaskSettings(
 export async function muteSellerHubTask(nmId: string, type: string, disabled: boolean, marketplaceId = "wildberries"): Promise<{ ok: true } | { ok: false; error: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/tasks/mute", { method: "POST", body: JSON.stringify({ nmId, type, disabled, marketplaceId }), timeoutMs: 30_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true };
 }
 
 export type TaskFromEventResult = { ok: true; taskId: string; existed: boolean } | { ok: false; error: string };
 
 /** Создать задачу из уведомления «Событий». Повторный вызов по тому же событию вернёт уже созданную задачу. */
-export async function createSellerHubTaskFromEvent(eventId: string, marketplaceId = "wildberries"): Promise<TaskFromEventResult> {
-  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/tasks/from-event", { method: "POST", body: JSON.stringify({ eventId, marketplaceId }), timeoutMs: 30_000 });
+export async function createSellerHubTaskFromEvent(eventId: string, marketplaceId = "wildberries", text?: { title: string; description: string }): Promise<TaskFromEventResult> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/tasks/from-event", { method: "POST", body: JSON.stringify({ eventId, marketplaceId, title: text?.title, description: text?.description }), timeoutMs: 30_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; taskId?: string; existed?: boolean };
-  if (!res.ok || !data.ok || !data.taskId) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok || !data.taskId) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, taskId: data.taskId, existed: data.existed === true };
 }
 
@@ -1135,7 +1169,7 @@ export async function loadMarketCommissions(categories: string[]): Promise<{ ok:
     timeoutMs: 30_000,
   });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; effectiveFrom?: string; source?: string; results?: MarketCommissionResult[] };
-  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok) return { ok: false, error: data.error ?? httpErrorText(res.status) };
   return { ok: true, effectiveFrom: data.effectiveFrom, source: data.source, results: data.results };
 }
 
@@ -1164,7 +1198,7 @@ export async function removeSellerHubAdNm(params: {
   });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+    return { ok: false, error: data.error ?? httpErrorText(res.status) };
   }
   return { ok: true };
 }
@@ -1173,6 +1207,7 @@ export async function removeSellerHubAdNm(params: {
 export async function createSellerHubAdCampaign(params: {
   nmId: number;
   name: string;
+  paymentType?: "cpm" | "cpc";
 }): Promise<{ ok: boolean; error?: string; campaignId?: number }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/ads/create", {
     method: "POST",
@@ -1181,7 +1216,7 @@ export async function createSellerHubAdCampaign(params: {
   });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; campaignId?: number };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+    return { ok: false, error: data.error ?? httpErrorText(res.status) };
   }
   return { ok: true, campaignId: data.campaignId };
 }
@@ -1199,7 +1234,7 @@ export async function changeSellerHubAdBid(params: {
   });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; bidRub?: number };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+    return { ok: false, error: data.error ?? httpErrorText(res.status) };
   }
   return { ok: true, bidRub: data.bidRub };
 }
@@ -1217,7 +1252,7 @@ export async function addSellerHubAdMinusPhrases(params: {
   });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; added?: string[] };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+    return { ok: false, error: data.error ?? httpErrorText(res.status) };
   }
   return { ok: true, added: data.added ?? [] };
 }
@@ -1235,11 +1270,19 @@ export async function depositSellerHubAdBudget(params: {
   });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; budget?: number | null };
   if (!res.ok || !data.ok) {
-    return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+    return { ok: false, error: data.error ?? httpErrorText(res.status) };
   }
   return { ok: true, budget: data.budget ?? null };
 }
 
+
+/** Что показать человеку вместо голого «Ошибка 404»: без кодов и технических слов. */
+function httpErrorText(status: number): string {
+  if (status === 401 || status === 403) return "Нужно заново войти в аккаунт";
+  if (status === 429) return "WB ограничивает частоту запросов, данные появятся через минуту";
+  if (status === 404 || status >= 500) return "Данные временно недоступны, мы попробуем ещё раз";
+  return "Не удалось получить данные, попробуйте ещё раз";
+}
 
 let realizationFlight: Promise<{ ok: boolean; realization?: SellerRealizationSnapshot; error?: string }> | null = null;
 
@@ -1249,9 +1292,11 @@ export function loadSellerHubRealization(): Promise<{
   error?: string;
 }> {
   if (realizationFlight) return realizationFlight;
-  realizationFlight = requestSellerHubRealization().finally(() => {
-    realizationFlight = null;
-  });
+  realizationFlight = requestSellerHubRealization()
+    .catch((): { ok: boolean; realization?: SellerRealizationSnapshot; error?: string } => ({ ok: false, error: "Сервер не ответил вовремя" }))
+    .finally(() => {
+      realizationFlight = null;
+    });
   return realizationFlight;
 }
 
@@ -1273,7 +1318,7 @@ async function requestSellerHubRealization(): Promise<{
   if (data.realization) {
     return { ok: Boolean(data.ok && !data.realization.error), realization: data.realization, error: data.realization.error ?? data.error };
   }
-  return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 let funnelFlight: Promise<{ ok: boolean; funnel?: SellerFunnelSnapshot; error?: string }> | null = null;
@@ -1308,7 +1353,7 @@ async function requestSellerHubFunnel(): Promise<{
   if (data.funnel) {
     return { ok: Boolean(data.ok && !data.funnel.error), funnel: data.funnel, error: data.funnel.error ?? data.error };
   }
-  return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 let stocksReportFlight: Promise<{
@@ -1351,7 +1396,7 @@ async function requestSellerHubStocksReport(): Promise<{
       error: data.stocksReport.error ?? data.error,
     };
   }
-  return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 let feedbacksFlight: Promise<{
@@ -1400,7 +1445,7 @@ async function requestSellerHubFeedbacks(options?: {
       error: data.feedbacks.error ?? data.error,
     };
   }
-  return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 let paidStorageFlight: Promise<{
@@ -1448,7 +1493,7 @@ async function requestSellerHubPaidStorage(
       error: data.paidStorage.error ?? data.error,
     };
   }
-  return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 /** Последние себестоимости с сервера (seller_hub_cost_history). */
@@ -1468,7 +1513,7 @@ export async function fetchSellerHubCostPrices(marketplaceId = "wildberries"): P
       error?: string;
     };
     if (!res.ok || !data.ok || !data.costs) {
-      return { ok: false, costs: {}, error: data.error ?? `Ошибка ${res.status}` };
+      return { ok: false, costs: {}, error: data.error ?? httpErrorText(res.status) };
     }
     return { ok: true, costs: data.costs };
   } catch (error) {
@@ -1498,7 +1543,7 @@ export async function saveSellerHubCostPrice(input: {
     });
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
     if (!res.ok || !data.ok) {
-      return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+      return { ok: false, error: data.error ?? httpErrorText(res.status) };
     }
     return { ok: true };
   } catch (error) {
@@ -1539,7 +1584,7 @@ export async function buildSellerHubDiagnosticsRemote(): Promise<{
       rawRealizationSampleRows?: number;
     };
     if (!res.ok || !data.ok) {
-      return { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+      return { ok: false, error: data.error ?? httpErrorText(res.status) };
     }
     return {
       ok: true,
@@ -1565,15 +1610,32 @@ export type AiFeedItem = import("@/lib/seller-hub/agent/feed").FeedItem & { kind
 export async function loadSellerHubAiFeed(): Promise<{ ok: boolean; items: AiFeedItem[]; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/feed", { method: "GET", timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; items?: AiFeedItem[]; error?: string };
-  if (!res.ok || !data.ok || !data.items) return { ok: false, items: [], error: data.error ?? `Ошибка ${res.status}` };
+  if (!res.ok || !data.ok || !data.items) return { ok: false, items: [], error: data.error ?? httpErrorText(res.status) };
   return { ok: true, items: data.items };
+}
+
+export type HiddenAiFinding = { id: string; nmId: string | null; severity: string; title: string; isStrategy: boolean; lastSeenAt: string };
+
+/** Скрытые находки ИИ: для вкладки «Скрытые». */
+export async function loadSellerHubHiddenAiFindings(): Promise<{ ok: true; findings: HiddenAiFinding[] } | { ok: false; error: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings?status=dismissed", { method: "GET", timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; findings?: HiddenAiFinding[]; error?: string };
+  if (!res.ok || !data.ok || !data.findings) return { ok: false, error: data.error ?? httpErrorText(res.status) };
+  return { ok: true, findings: data.findings };
+}
+
+/** Вернуть скрытую находку ИИ в список. */
+export async function restoreSellerHubAiFinding(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: "restore" }), timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 /** Скрыть находку ИИ (владелец решил, что она не нужна). */
 export async function dismissSellerHubAiFinding(id: string): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: "dismiss" }), timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 /** Принять действие из находки ИИ (или снять принятие): оно станет предложением «Выполнить» в разделе «Агенты». */
@@ -1581,43 +1643,82 @@ export async function dismissSellerHubAiFinding(id: string): Promise<{ ok: boole
 export async function runSellerHubPlanStepNow(id: string, stepIndex: number): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: "step_now", stepIndex }), timeoutMs: 40_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 /** startAt (ISO) — запустить план позже, в указанный момент; без него план начинается сразу. */
 export async function acceptSellerHubAiFinding(id: string, accept: boolean, startAt?: string): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: accept ? "accept" : "unaccept", ...(startAt ? { startAt } : {}) }), timeoutMs: 40_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 /** Принять сразу несколько планов (после одного пересчёта предложений). */
 export async function acceptSellerHubAiFindings(ids: string[], accept: boolean): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ ids, action: accept ? "accept" : "unaccept" }), timeoutMs: 60_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
-export type AiChatMessage = { role: "user" | "assistant"; text: string; at: string; questions?: string[] };
+export type AiChatBlock = import("@/lib/seller-hub/agent/chat").ChatBlock;
+export type AiChatMessage = { role: "user" | "assistant"; text: string; at: string; questionOptions?: string[][]; sources?: Array<{ title: string; url: string }>; questions?: string[]; suggestions?: string[]; blocks?: AiChatBlock[]; planIds?: string[] };
 export type AiChat = { id: string; title: string; state: "asking" | "planned" | "closed"; rounds: number; messages: AiChatMessage[]; updatedAt: string };
 
 export async function listSellerHubAiChats(): Promise<{ ok: boolean; chats: Array<Pick<AiChat, "id" | "title" | "state" | "updatedAt">>; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/chat", { method: "GET", timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; chats?: Array<Pick<AiChat, "id" | "title" | "state" | "updatedAt">>; error?: string };
-  return res.ok && data.ok && data.chats ? { ok: true, chats: data.chats } : { ok: false, chats: [], error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok && data.chats ? { ok: true, chats: data.chats } : { ok: false, chats: [], error: data.error ?? httpErrorText(res.status) };
 }
 
 export async function loadSellerHubAiChat(id: string): Promise<{ ok: boolean; chat?: AiChat; error?: string }> {
   const res = await autoRepliesAuthorizedFetch(`/api/seller-hub/agents/chat?id=${encodeURIComponent(id)}`, { method: "GET", timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; chat?: AiChat; error?: string };
-  return res.ok && data.ok && data.chat ? { ok: true, chat: data.chat } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok && data.chat ? { ok: true, chat: data.chat } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 /** Сообщение владельца в диалог: ИИ задаёт вопросы или составляет планы (долго: до пары минут). */
-export async function sendSellerHubAiChat(chatId: string | null, message: string): Promise<{ ok: boolean; chat?: AiChat; planIds?: string[]; limited?: boolean; error?: string }> {
-  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/chat", { method: "POST", body: JSON.stringify({ chatId, message }), timeoutMs: 200_000 });
-  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; chat?: AiChat; planIds?: string[]; limited?: boolean; error?: string };
-  return res.ok && data.ok && data.chat ? { ok: true, chat: data.chat, planIds: data.planIds ?? [], limited: data.limited } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+export async function sendSellerHubAiChat(chatId: string | null, message: string, onPhase?: (phase: import("@/lib/seller-hub/agent/intent").WorkKind) => void): Promise<{ ok: boolean; chat?: AiChat; planIds?: string[]; limited?: boolean; /** Связь оборвалась или шлюз не дождался: ответ мог дойти до сервера, его стоит поискать в диалоге. */ lost?: boolean; error?: string }> {
+  let res: Response;
+  try {
+    res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/chat", { method: "POST", headers: { "x-chat-stream": "1" }, body: JSON.stringify({ chatId, message }), timeoutMs: 200_000 });
+  } catch {
+    return { ok: false, lost: true, error: "Нет связи с сервером" };
+  }
+  type Reply = { ok?: boolean; chat?: AiChat; planIds?: string[]; limited?: boolean; error?: string };
+  // Ответ идёт построчно: этапы работы и в конце результат. Если шлюз отдал обычный JSON, читаем его как раньше.
+  const streamed: { v: Reply | null } = { v: null };
+  if ((res.headers.get("content-type") ?? "").includes("ndjson") && res.body) {
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    const take = (line: string) => {
+      try {
+        const o = JSON.parse(line) as { phase?: import("@/lib/seller-hub/agent/intent").WorkKind; done?: boolean; body?: Reply };
+        if (o.phase) onPhase?.(o.phase);
+        if (o.done) streamed.v = o.body ?? { ok: false };
+      } catch {
+        // неполная строка: дождёмся продолжения
+      }
+    };
+    for (;;) {
+      const { value, done } = await reader.read().catch(() => ({ value: undefined, done: true }));
+      if (value) buf += dec.decode(value, { stream: true });
+      let i = buf.indexOf("\n");
+      while (i >= 0) {
+        take(buf.slice(0, i));
+        buf = buf.slice(i + 1);
+        i = buf.indexOf("\n");
+      }
+      if (done) break;
+    }
+    if (buf.trim()) take(buf);
+  }
+  const isStream = (res.headers.get("content-type") ?? "").includes("ndjson");
+  const data: Reply = isStream ? (streamed.v ?? {}) : ((await res.json().catch(() => ({}))) as Reply);
+  if (data.ok && data.chat && (isStream || res.ok)) return { ok: true, chat: data.chat, planIds: data.planIds ?? [], limited: data.limited };
+  // Поток оборвался до результата или шлюз вернул 502/504/524: сервер мог дописать ответ, его ищем в диалоге.
+  const lost = (isStream && !streamed.v) || [502, 503, 504, 524].includes(res.status);
+  return { ok: false, lost, error: data.error ?? httpErrorText(res.status) };
 }
 
 export async function closeSellerHubAiChat(chatId: string): Promise<void> {
@@ -1640,21 +1741,21 @@ export type AiActivity = { plans: AiActivityPlan[] };
 export async function loadSellerHubAiActivity(): Promise<{ ok: boolean; data?: AiActivity; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/ai-activity", { method: "GET", timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; plans?: AiActivityPlan[]; error?: string };
-  return res.ok && data.ok ? { ok: true, data: { plans: data.plans ?? [] } } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true, data: { plans: data.plans ?? [] } } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 /** Отметить шаг плана, который делает человек: «сделал», «пропустил» или сбросить отметку. */
 export async function markSellerHubPlanStep(id: string, stepIndex: number, status: "done" | "skipped" | "reset"): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: "step", stepIndex, status }), timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 /** Скидка WB Клуба по товару (целые проценты). */
 export async function updateSellerHubClubDiscount(params: { nmId: number; clubDiscount: number }): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/wildberries/prices/club", { method: "POST", body: JSON.stringify({ updates: [params] }), timeoutMs: 90_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 export type AutopilotSettingsView = { enabled: boolean; allowedTypes: string[]; maxActionsPerDay: number; maxDepositPerDayRub: number; routines: string[] };
@@ -1663,20 +1764,27 @@ export type AutopilotView = { settings: AutopilotSettingsView; types: string[]; 
 export async function loadSellerHubAutopilot(): Promise<{ ok: boolean; data?: AutopilotView; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/autopilot", { method: "GET", timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; settings?: AutopilotSettingsView; types?: string[]; routines?: AutopilotView["routines"]; recent?: AutopilotView["recent"]; error?: string };
-  return res.ok && data.ok && data.settings ? { ok: true, data: { settings: data.settings, types: data.types ?? [], routines: data.routines ?? [], recent: data.recent ?? [] } } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok && data.settings ? { ok: true, data: { settings: data.settings, types: data.types ?? [], routines: data.routines ?? [], recent: data.recent ?? [] } } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 export async function saveSellerHubAutopilot(settings: AutopilotSettingsView): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/autopilot", { method: "POST", body: JSON.stringify(settings), timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 /** Включить или выключить автопилот у принятого плана. */
+/** Поставить принятый план на паузу или продолжить его. */
+export async function pauseSellerHubPlan(id: string, pause: boolean): Promise<{ ok: boolean; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: pause ? "pause" : "resume" }), timeoutMs: 40_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
+}
+
 export async function setSellerHubPlanAutopilot(id: string, on: boolean): Promise<{ ok: boolean; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/findings", { method: "POST", body: JSON.stringify({ id, action: "autopilot", on }), timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true } : { ok: false, error: data.error ?? httpErrorText(res.status) };
 }
 
 export type AgentReportView = { id: string; period_start: string; period_end: string; payload: import("@/lib/seller-hub/agent/report").WeeklyReport };
@@ -1685,7 +1793,7 @@ export type AgentReportView = { id: string; period_start: string; period_end: st
 export async function loadSellerHubAgentReports(): Promise<{ ok: boolean; reports: AgentReportView[]; error?: string }> {
   const res = await autoRepliesAuthorizedFetch("/api/seller-hub/agents/report", { method: "GET", timeoutMs: 20_000 });
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; reports?: AgentReportView[]; error?: string };
-  return res.ok && data.ok ? { ok: true, reports: data.reports ?? [] } : { ok: false, reports: [], error: data.error ?? `Ошибка ${res.status}` };
+  return res.ok && data.ok ? { ok: true, reports: data.reports ?? [] } : { ok: false, reports: [], error: data.error ?? httpErrorText(res.status) };
 }
 
 /**
@@ -1709,3 +1817,49 @@ export async function waitSellerHubAiChatReply(chatId: string | null, since: num
   }
   return null;
 }
+
+
+/** Автообновления базы знаний (справка WB). При любой ошибке возвращает null: база знаний работает и без них. */
+export async function loadSellerHubKnowledgeUpdates(): Promise<import("./knowledge/updates").KbUpdates | null> {
+  try {
+    const res = await autoRepliesAuthorizedFetch("/api/seller-hub/knowledge/updates", { method: "GET", timeoutMs: 20_000 });
+    const data = (await res.json().catch(() => null)) as ({ ok?: boolean } & Partial<import("./knowledge/updates").KbUpdates>) | null;
+    if (!res.ok || !data?.ok) return null;
+    return { autoArticles: data.autoArticles ?? [], patches: data.patches ?? {}, renames: data.renames ?? [], checkedAt: data.checkedAt ?? null, feed: data.feed ?? [] };
+  } catch {
+    return null;
+  }
+}
+
+/** Вопрос по базе знаний своими словами. Всегда возвращает хотя бы подходящие статьи; ответ нейросети может отсутствовать. */
+export async function askSellerHubKnowledge(question: string): Promise<{ ok: boolean; answer?: string | null; sources?: string[]; notice?: string; error?: string }> {
+  try {
+    const res = await autoRepliesAuthorizedFetch("/api/seller-hub/knowledge/ask", { method: "POST", body: JSON.stringify({ question }), timeoutMs: 60_000 });
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; answer?: string | null; sources?: string[]; notice?: string; error?: string };
+    if (!res.ok || !data.ok) return { ok: false, error: data.error ?? httpErrorText(res.status) };
+    return { ok: true, answer: data.answer ?? null, sources: data.sources ?? [], notice: data.notice };
+  } catch {
+    return { ok: false, error: "Не получилось связаться с помощником" };
+  }
+}
+
+// ——— Поручения агенту ———
+
+export type OrdersView = { orders: import("@/lib/seller-hub/orders/types").Order[]; runs: import("@/lib/seller-hub/orders/types").OrderRun[] };
+
+export async function loadSellerHubOrders(): Promise<{ ok: boolean; data?: OrdersView; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/orders", { method: "GET", timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; orders?: OrdersView["orders"]; runs?: OrdersView["runs"]; error?: string };
+  return res.ok && data.ok ? { ok: true, data: { orders: data.orders ?? [], runs: data.runs ?? [] } } : { ok: false, error: data.error ?? httpErrorText(res.status) };
+}
+
+async function ordersPost(body: unknown): Promise<{ ok: boolean; order?: import("@/lib/seller-hub/orders/types").Order; error?: string }> {
+  const res = await autoRepliesAuthorizedFetch("/api/seller-hub/orders", { method: "POST", body: JSON.stringify(body), timeoutMs: 20_000 });
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; order?: import("@/lib/seller-hub/orders/types").Order; error?: string };
+  return res.ok && data.ok ? { ok: true, order: data.order } : { ok: false, error: data.error ?? httpErrorText(res.status) };
+}
+
+export const createSellerHubOrder = (input: unknown) => ordersPost({ input });
+export const patchSellerHubOrder = (id: string, patch: { status?: "active" | "paused"; input?: unknown }) => ordersPost({ id, ...patch });
+export const deleteSellerHubOrder = (id: string) => ordersPost({ id, delete: true });
+export const readSellerHubOrderRuns = () => ordersPost({ readRuns: true });

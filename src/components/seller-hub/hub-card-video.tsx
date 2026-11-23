@@ -62,8 +62,8 @@ export function CardVideo({ src, mode }: { src: string; mode: "thumb" | "stage" 
             setPlaying(true);
           }}
         >
-          <span className="flex h-14 w-14 items-center justify-center rounded-full border bg-white" style={{ borderColor: "#0E1116" }}>
-            <Play className="ml-0.5 h-6 w-6" fill="#0E1116" />
+          <span className="flex h-14 w-14 items-center justify-center rounded-full border bg-white" style={{ borderColor: "var(--hub-text)" }}>
+            <Play className="ml-0.5 h-6 w-6" fill="var(--hub-text)" />
           </span>
         </button>
       ) : null}

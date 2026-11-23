@@ -1,10 +1,13 @@
 "use client";
 
+import { AnalyticsMotion, LoadingPage } from "./hub-analytics-ui";
 import Link from "next/link";
 import { SellerHubSyncModeContext } from "./sync-mode-context";
+import { tokenExpiryEvent } from "@/lib/seller-hub/token-expiry";
+import { useBrowserNotifications } from "./use-browser-notifications";
 import { ANALYTICS_TAB_HINT_KEY } from "@/lib/seller-hub/events-actions";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Menu, Plug, RefreshCw, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Menu, Plug, X } from "lucide-react";
 import { autoRepliesAuthorizedFetch } from "@/lib/auto-replies/auto-replies-fetch";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { lastFullDaysRange, snapshotTimeMs } from "@/lib/seller-hub/complete-days";
@@ -92,25 +95,26 @@ import { HubAnalytics } from "./hub-analytics";
 import { HubCatalog } from "./hub-catalog";
 import { HubDeliveries } from "./hub-deliveries";
 import { HubLogistics } from "./hub-logistics";
-import { HubIntegration } from "./hub-integration";
-import { HubCalcVerification } from "./hub-calc-verification";
+import { HubAccount } from "./hub-account";
 import { HubOrders } from "./hub-orders";
 import { HubFulfillment } from "./hub-fulfillment";
+import { setTaskFocus } from "./task-focus";
+import { clearHubCaches } from "./hub-cache-registry";
+import { setPersistScope } from "@/lib/seller-hub/persist";
+import { HubSectionBoundary } from "./hub-section-boundary";
+import { AutoRepliesFetchError } from "@/lib/auto-replies/auto-replies-fetch";
 import { HubOverview } from "./hub-overview";
 import { HubEvents } from "./hub-events";
+import { HubAssistant } from "./hub-assistant";
 import { HubTasks } from "./hub-tasks";
 import { HubPrices } from "./hub-prices";
 import { HubPromotions } from "./hub-promotions";
 import { HubStocks } from "./hub-stocks";
-import { HubFinance } from "./hub-finance";
 import { HubAgents } from "./hub-agents";
 import { HubKnowledge } from "./hub-knowledge";
-import { HubAssistant } from "./hub-assistant";
 import {
   formatInt,
-  formatSyncTime,
   hub,
-  HubBadge,
   HubButton,
   HubPanel,
   hubSans,
@@ -124,9 +128,35 @@ function emptyConnection(marketplaceId: SellerHubMarketplaceId): SellerHubConnec
 }
 
 export function SellerHubApp() {
+  /** Сбой связи с сервером в любом фоновом запросе не должен ронять экран: загрузка повторится сама, а блок покажет понятное состояние. */
+  useEffect(() => {
+    const onRejection = (event: PromiseRejectionEvent) => {
+      if (event.reason instanceof AutoRepliesFetchError) event.preventDefault();
+    };
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => window.removeEventListener("unhandledrejection", onRejection);
+  }, []);
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  /** Левая панель по умолчанию свёрнута: данным нужно место. Выбор владельца запоминается. */
+  const [collapsed, setCollapsed] = useState(true);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("karto.hub.rail") === "open") setCollapsed(false);
+    } catch {
+      /* без localStorage остаётся свёрнутой */
+    }
+  }, []);
+  const toggleCollapsed = () =>
+    setCollapsed((value) => {
+      const next = !value;
+      try {
+        window.localStorage.setItem("karto.hub.rail", next ? "closed" : "open");
+      } catch {
+        /* не критично */
+      }
+      return next;
+    });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantExpanded, setAssistantExpanded] = useState(false);
@@ -143,11 +173,19 @@ export function SellerHubApp() {
   const [wbTokenDraft, setWbTokenDraft] = useState("");
   const [snapshot, setSnapshot] = useState<SellerCatalogSnapshot | undefined>();
 
+  const connRef = useRef(connection);
+  connRef.current = connection;
+  /** Этап подключения для анимации: проверяем токен, читаем каталог, готово или сбой. */
+  const [phase, setPhase] = useState<"idle" | "checking" | "loading" | "done" | "verified" | "error">("idle");
   const [verifying, setVerifying] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [events, setEvents] = useState<SellerProductEvent[]>([]);
+  const [rawEvents, setEvents] = useState<SellerProductEvent[]>([]);
+  const events = useMemo(() => {
+    const expiring = tokenExpiryEvent(connection.tokenExpiresAt, Date.now());
+    return expiring ? [expiring, ...rawEvents] : rawEvents;
+  }, [rawEvents, connection.tokenExpiresAt]);
   const [eventsReady, setEventsReady] = useState(false);
   const [eventsError, setEventsError] = useState(false);
   const [eventsAttempt, setEventsAttempt] = useState(0);
@@ -219,6 +257,7 @@ export function SellerHubApp() {
           status: "active" as const,
           verifiedAt: local.verifiedAt ?? new Date().toISOString(),
           apiKey: "",
+          ...(status.expiresAt ? { tokenExpiresAt: status.expiresAt } : {}),
         };
         patchSellerHubConnection(uid, "wildberries", next);
         setConnection(next);
@@ -271,7 +310,11 @@ export function SellerHubApp() {
     const supabase = createBrowserClient();
     void supabase.auth.getSession().then(({ data }) => {
       const uid = data.session?.user?.id ?? null;
-      setUserId(uid);
+      setPersistScope(uid);
+      setUserId((prev) => {
+        if (prev !== uid) clearHubCaches();
+        return uid;
+      });
       setAuthReady(true);
       if (!uid) return;
       const root = readSellerHubRoot(uid);
@@ -283,7 +326,9 @@ export function SellerHubApp() {
         setArea("catalog");
       } else setArea(root.activeArea);
       hydrate(uid, "wildberries");
-      void migrateLocalWbToken(uid);
+      void migrateLocalWbToken(uid).catch(() => {
+        // Сервер не ответил вовремя: статус подключения проверится при следующем открытии.
+      });
       const cached = readSellerHubRoot(uid).catalogs.wildberries;
       if (cached?.items?.length) {
         void mergeCostsFromServer(uid, cached).then((next) => {
@@ -307,9 +352,12 @@ export function SellerHubApp() {
     if (userId) setSellerHubActiveArea(userId, next);
   };
 
+  useBrowserNotifications({ userId, events, ready: eventsReady, onOpen: () => changeArea("events") });
+
   const persistConnection = (patch: Partial<SellerHubConnection>) => {
-    const merged = { ...connection, ...patch };
+    const merged = { ...connRef.current, ...patch };
     const next = stripWbApiKeyForPersist(marketplace, merged);
+    connRef.current = next;
     setConnection(next);
     if (userId) {
       patchSellerHubConnection(userId, marketplace, next);
@@ -325,6 +373,7 @@ export function SellerHubApp() {
     setError(null);
     setNotice(null);
     setVerifying(true);
+    setPhase("checking");
     try {
       const draftKey =
         marketplace === "wildberries" ? wbTokenDraft.trim() : connection.apiKey.trim();
@@ -338,6 +387,7 @@ export function SellerHubApp() {
           : undefined;
       if (marketplace === "wildberries" && wbMode !== "recheck" && !draftKey) {
         setError("Укажите API-токен Wildberries");
+        setPhase("idle");
         return;
       }
       const result = await verifySellerHubConnection({
@@ -354,12 +404,14 @@ export function SellerHubApp() {
           persistConnection({ status: "error", lastError: result.error, scopes: result.scopes });
         }
         setError(result.error ?? "Не удалось проверить подключение.");
+        setPhase("error");
         return;
       }
 
       persistConnection({
         status: "active",
         verifiedAt: result.verifiedAt,
+        ...(result.expiresAt ? { tokenExpiresAt: result.expiresAt } : {}),
         sellerName: result.sellerName,
         businessId: result.businessId ?? connection.businessId,
         campaignId: result.campaignId ?? connection.campaignId,
@@ -371,32 +423,41 @@ export function SellerHubApp() {
 
       setNotice(
         result.totalCards != null
-          ? `Подключение подтверждено. В кабинете найдено ${formatInt(result.totalCards)} карточек — можно выгружать.`
-          : result.sampleCount != null
-            ? `Подключение подтверждено. Пробный запрос вернул ${formatInt(result.sampleCount)} позиций.`
-            : "Подключение подтверждено."
+          ? `Токен принят. В кабинете найдено ${formatInt(result.totalCards)} карточек, загружаю каталог.`
+          : "Токен принят, загружаю каталог."
       );
+      // Новое подключение или замена токена: каталог читаем сразу сами, без кнопки «Выгрузить» и без перезагрузки страницы.
+      if (mode !== "recheck") {
+        setVerifying(false);
+        await handleSync({ auto: true });
+      } else {
+        setNotice("Доступы проверены: токен работает.");
+        setPhase("verified");
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Ошибка проверки подключения.";
       if (marketplace !== "wildberries") persistConnection({ status: "error", lastError: msg });
       setError(msg);
+      setPhase("error");
     } finally {
       setVerifying(false);
     }
   };
 
-  const handleSync = async () => {
+  const handleSync = async (opts: { auto?: boolean } = {}) => {
     if (!userId) {
       setError("Войдите в аккаунт KARTO.");
       return;
     }
-    if (connection.status !== "active") {
+    const auto = opts.auto === true;
+    if (connRef.current.status !== "active") {
       setError("Сначала проверьте подключение в разделе «Кабинет и API».");
       changeArea("integration");
       return;
     }
     setError(null);
-    setNotice(null);
+    if (!auto) setNotice(null);
+    setPhase("loading");
     if (syncMode === "background") {
       setSyncing(true);
       try {
@@ -406,9 +467,10 @@ export function SellerHubApp() {
         const requested = await requestServerRefresh();
         if (!requested.ok) {
           setError("Не удалось попросить сервер обновить данные. Попробуйте ещё раз.");
+          setPhase("error");
           return;
         }
-        setNotice("Сервер читает кабинет: обычно это занимает около минуты. Кнопка нужна, только чтобы не ждать плановое обновление, оно идёт само.");
+        setNotice("Сервер читает кабинет: обычно это занимает около минуты. Можно перейти в другой раздел, загрузка продолжится.");
         // Читает воркер по своей очереди (учитывая лимиты WB): ждём, пока появится более свежий снимок.
         const deadline = Date.now() + 120_000;
         while (Date.now() < deadline) {
@@ -421,7 +483,8 @@ export function SellerHubApp() {
             const loaded = await loadServerSnapshot();
             if (!loaded.ok) continue;
             applyServerSnapshot(loaded.data, true);
-            setNotice("Данные обновлены.");
+            setNotice(auto ? "Кабинет подключён, каталог загружен." : "Данные обновлены.");
+            setPhase("done");
             return;
           }
         }
@@ -430,6 +493,7 @@ export function SellerHubApp() {
         const lastGood = state.ok ? (state.loadedAt.base ?? null) : null;
         const age = describeDataAge(lastGood ?? dataAge?.baseLoadedAt ?? snapshot?.syncedAt, Date.now());
         const reason = state.ok ? state.errors.base : undefined;
+        setPhase("error");
         setError(
           reason
             ? `Сервер пробует обновить данные, но пока не получилось: ${reason} Последнее удачное обновление: ${age.label}. Он повторит попытку сам.`
@@ -453,6 +517,7 @@ export function SellerHubApp() {
 
       if (!result.ok || !result.snapshot) {
         setError(result.error ?? "Не удалось выгрузить каталог.");
+        setPhase("error");
         return;
       }
 
@@ -476,16 +541,31 @@ export function SellerHubApp() {
       persistConnection({
         catalogCount: result.snapshot.totalCount,
         lastSyncAt: result.snapshot.syncedAt,
-        scopes: { ...connection.scopes, ...result.snapshot.scopes },
+        scopes: { ...connRef.current.scopes, ...result.snapshot.scopes },
       });
-      setNotice(`Каталог обновлён: ${formatInt(result.snapshot.totalCount)} SKU.`);
-      if (area === "integration") changeArea("catalog");
+      setNotice(auto ? `Кабинет подключён, каталог загружен: ${formatInt(result.snapshot.totalCount)} SKU.` : `Каталог обновлён: ${formatInt(result.snapshot.totalCount)} SKU.`);
+      setPhase("done");
+      if (area === "integration" && !auto) changeArea("catalog");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка выгрузки каталога.");
+      setPhase("error");
     } finally {
       setSyncing(false);
     }
   };
+
+  // Срок токена берём из самого токена на сервере: для уже подключённых кабинетов он мог быть ещё не сохранён.
+  const expiryChecked = useRef(false);
+  useEffect(() => {
+    if (!userId || marketplace !== "wildberries" || connection.status !== "active" || expiryChecked.current) return;
+    expiryChecked.current = true;
+    void loadSellerHubWbConnectionStatus()
+      .then((st) => {
+        if (st.ok && st.connected && st.expiresAt && st.expiresAt !== connRef.current.tokenExpiresAt) persistConnection({ tokenExpiresAt: st.expiresAt });
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, marketplace, connection.status]);
 
   const handleDisconnect = () => {
     if (!userId) return;
@@ -504,7 +584,9 @@ export function SellerHubApp() {
           sellerName: undefined,
           lastError: undefined,
           scopes: undefined,
+          tokenExpiresAt: undefined,
         });
+        setPhase("idle");
         setWbTokenDraft("");
         setNotice("Площадка отключена. Каталог и закупка в Seller Hub сохранены. Данные в кабинете WB не менялись.");
         return;
@@ -674,7 +756,8 @@ export function SellerHubApp() {
   useEffect(() => {
     if (!userId || !visibleSnapshot) {
       setEvents([]);
-      setEventsReady(true);
+      // Есть пользователь, но кабинет ещё грузится: это загрузка, а не «событий нет».
+      setEventsReady(!userId);
       setEventsError(false);
       return;
     }
@@ -1123,12 +1206,10 @@ export function SellerHubApp() {
   const renderContent = () => {
     if (!authReady) {
       return (
-        <HubPanel className="flex min-h-[320px] items-center justify-center">
-          <span
-            className="h-6 w-6 animate-spin rounded-full border-2 border-[#161814]/10 border-t-[#1F4E3D]"
-            aria-label="Загрузка"
-          />
-        </HubPanel>
+        <>
+          <AnalyticsMotion />
+          <LoadingPage title="Открываю кабинет" />
+        </>
       );
     }
 
@@ -1167,12 +1248,10 @@ export function SellerHubApp() {
 
     if (syncMode === "unknown") {
       return (
-        <HubPanel className="flex min-h-[320px] items-center justify-center">
-          <span
-            className="h-6 w-6 animate-spin rounded-full border-2 border-[#161814]/10 border-t-[#1F4E3D]"
-            aria-label="Загрузка"
-          />
-        </HubPanel>
+        <>
+          <AnalyticsMotion />
+          <LoadingPage title="Открываю кабинет" />
+        </>
       );
     }
 
@@ -1181,6 +1260,7 @@ export function SellerHubApp() {
         return (
           <HubOverview
             snapshot={visibleSnapshot}
+            events={events}
             connection={connection}
             syncing={syncing}
             onSync={() => void handleSync()}
@@ -1269,19 +1349,17 @@ export function SellerHubApp() {
             }}
           />
         );
-      case "verification":
-        return (
-          <HubCalcVerification snapshot={visibleSnapshot ?? null} connected={isConnected} />
-        );
       case "integration":
         return (
-          <HubIntegration
+          <HubAccount
             connection={connection}
             wbTokenDraft={wbTokenDraft}
             onWbTokenDraftChange={setWbTokenDraft}
             onPatch={persistConnection}
             onVerify={(mode) => void handleVerify(mode)}
             onSync={() => void handleSync()}
+            phase={phase}
+            onOpenCatalog={() => changeArea("catalog")}
             onDisconnect={handleDisconnect}
             verifying={verifying}
             syncing={syncing}
@@ -1331,7 +1409,7 @@ export function SellerHubApp() {
           />
         );
       case "analytics":
-        return <HubAnalytics snapshot={visibleSnapshot} connected={isConnected} />;
+        return <HubAnalytics snapshot={visibleSnapshot} connected={isConnected} onOpenMenu={() => setMobileNavOpen(true)} />;
       case "orders":
       case "deliveries":
       case "logistics":
@@ -1341,13 +1419,10 @@ export function SellerHubApp() {
             onTab={changeArea}
             snapshot={visibleSnapshot}
             connected={isConnected}
-            onOpenAgents={() => {
-              try {
-                sessionStorage.setItem("karto-hub-agents-tab", "logistics");
-              } catch {
-                /* хранилище недоступно: откроется вкладка по умолчанию */
-              }
-              changeArea("agents");
+            onOpenMenu={() => setMobileNavOpen(true)}
+            onOpenTasks={(category, task) => {
+              setTaskFocus({ category, id: task?.id, type: task?.type, nmId: task?.nmId });
+              changeArea("tasks");
             }}
           >
             {(fulfillment) =>
@@ -1373,6 +1448,11 @@ export function SellerHubApp() {
             snapshot={visibleSnapshot}
             connected={isConnected}
             onUpdate={handleSnapshotAdsUpdate}
+            onOpenMenu={() => setMobileNavOpen(true)}
+            onOpenTasks={(category, task) => {
+              setTaskFocus({ category, id: task?.id, type: task?.type, nmId: task?.nmId });
+              changeArea("tasks");
+            }}
             onOpenAgents={() => {
               try {
                 sessionStorage.setItem("karto-hub-agents-tab", "ads");
@@ -1397,8 +1477,6 @@ export function SellerHubApp() {
             }
           />
         );
-      case "finance":
-        return <HubFinance snapshot={visibleSnapshot} connected={isConnected} />;
       case "agents":
         return (
           <HubAgents
@@ -1406,6 +1484,17 @@ export function SellerHubApp() {
             connected={isConnected}
             onAdsUpdate={handleSnapshotAdsUpdate}
             onOpenFulfillment={(tab) => changeArea(tab)}
+            onOpenTasks={(focus) => {
+              if (focus) setTaskFocus(focus);
+              changeArea("tasks");
+            }}
+            onOpenSection={(id) => changeArea(id as SellerHubAreaId)}
+            events={events}
+            onOpenKb={(id) => {
+              // Статья базы знаний открывается по адресу с #kb=<id>: раздел читает его при открытии.
+              window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#kb=${encodeURIComponent(id)}`);
+              changeArea("knowledge");
+            }}
             onAsk={(prompt) => {
               setAssistantSeed(prompt ?? null);
               setAssistantOpen(true);
@@ -1421,10 +1510,60 @@ export function SellerHubApp() {
     }
   };
 
+  const ownHeader = area === "analytics" || area === "orders" || area === "deliveries" || area === "logistics" || area === "ads";
+  const wideArea = area === "tasks" || area === "events" || area === "knowledge" || area === "agents" || area === "overview" || area === "integration" || ownHeader;
+  const pageHeader = (
+    <header
+      className={(area === "knowledge" || area === "agents") ? "pb-2 pt-1 lg:hidden" : wideArea ? "pb-6 pt-1" : `shrink-0 py-3 ${area === "catalog" || area === "promotions" ? "px-2 sm:px-3 lg:px-3" : "px-4 sm:px-6 lg:px-8"}`}
+      style={{ backgroundColor: hub.canvas }}
+    >
+      <div className={`mx-auto flex w-full flex-wrap items-start justify-between gap-4 ${wideArea ? "max-w-none" : area === "catalog" || area === "promotions" ? "max-w-[1680px]" : "max-w-[1440px]"}`}>
+        <div className="flex min-w-0 items-start gap-3">
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            className="mt-0.5 rounded-[10px] p-2 transition-colors hover:bg-[#161814]/[0.05] lg:hidden"
+            style={{ color: hub.textMuted }}
+            aria-label="Открыть меню"
+          >
+            {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+
+          <div className={area === "knowledge" ? "hidden" : "min-w-0"}>
+            <h1
+              className={hubType.h1}
+              style={{ ...hubSerif, color: hub.text }}
+            >
+              {meta.title}
+            </h1>
+            {area === "overview" || area === "catalog" || !meta.description ? null : (
+              <p
+                className="mt-0.5 max-w-2xl text-[14px] leading-[1.55]"
+                style={{ color: hub.textSubtle }}
+              >
+                {meta.description}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {isConnected ? null : (
+          <div className="flex flex-wrap items-center gap-2.5">
+            <HubButton size="sm" variant="secondary" onClick={() => changeArea("integration")}>
+              <Plug className="h-3.5 w-3.5" />
+              Подключить кабинет
+            </HubButton>
+          </div>
+        )}
+      </div>
+    </header>
+  );
+
   return (
     <div
-      className="flex h-[100dvh] overflow-hidden [&_a]:text-inherit selection:bg-[#ECF7DB] selection:text-[#161814]"
-      style={{ backgroundColor: hub.canvas, color: hub.text, accentColor: "#1F4E3D", ...hubSans }}
+      data-hub-root
+      className="flex h-[100dvh] overflow-hidden [&_a]:text-inherit"
+      style={{ backgroundColor: hub.canvas, color: hub.text, accentColor: "var(--hub-forest)", ...hubSans }}
     >
       <div
         className="hidden h-full shrink-0 transition-[width] duration-300 lg:block"
@@ -1432,9 +1571,20 @@ export function SellerHubApp() {
       >
         <HubSidebar
           collapsed={collapsed}
-          onToggleCollapsed={() => setCollapsed((v) => !v)}
+          onToggleCollapsed={toggleCollapsed}
           area={canonicalArea(area)}
-          onAreaChange={changeArea}
+          onAreaChange={(id) => {
+            changeArea(id);
+            // Развернул, чтобы выбрать раздел: выбрал, панель снова свёрнута.
+            if (!collapsed) {
+              setCollapsed(true);
+              try {
+                window.localStorage.setItem("karto.hub.rail", "closed");
+              } catch {
+                /* не критично */
+              }
+            }
+          }}
         />
       </div>
 
@@ -1458,72 +1608,12 @@ export function SellerHubApp() {
       ) : null}
 
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header
-          className={`shrink-0 py-3 ${area === "catalog" || area === "promotions" ? "px-2 sm:px-3 lg:px-3" : "px-4 sm:px-6 lg:px-8"}`}
-          style={{ backgroundColor: hub.canvas }}
-        >
-          <div className={`mx-auto flex w-full flex-wrap items-start justify-between gap-4 ${area === "catalog" || area === "promotions" ? "max-w-[1680px]" : "max-w-[1440px]"}`}>
-            <div className="flex min-w-0 items-start gap-3">
-              <button
-                type="button"
-                onClick={() => setMobileNavOpen(true)}
-                className="mt-0.5 rounded-[10px] p-2 transition-colors hover:bg-[#161814]/[0.05] lg:hidden"
-                style={{ color: hub.textMuted }}
-                aria-label="Открыть меню"
-              >
-                {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-              </button>
-
-              <div className="min-w-0">
-                <h1
-                  className={hubType.h1}
-                  style={{ ...hubSerif, color: hub.text }}
-                >
-                  {meta.title}
-                </h1>
-                {area === "overview" || area === "catalog" || !meta.description ? null : (
-                  <p
-                    className="mt-1.5 max-w-2xl text-[14px] leading-[1.55]"
-                    style={{ color: hub.textSubtle }}
-                  >
-                    {meta.description}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2.5">
-              {isConnected && connection.catalogCount != null ? (
-                <HubBadge tone="ok">
-                  {syncMode === "background" && snapshot
-                    ? `${formatInt(snapshot.totalCount)} SKU · ${formatSyncTime(snapshot.syncedAt)}`
-                    : `${formatInt(connection.catalogCount)} SKU · ${formatSyncTime(connection.lastSyncAt)}`}
-                </HubBadge>
-              ) : null}
-              {isConnected && syncMode === "background" && dataAge && describeDataAge(dataAge.baseLoadedAt, Date.now()).stale ? (
-                <HubBadge tone="warn" title="Фоновый сбор давно не обновлял кабинет. Данные могут быть неактуальны.">
-                  {`Данные от ${describeDataAge(dataAge.baseLoadedAt, Date.now()).label}`}
-                </HubBadge>
-              ) : null}
-
-              {isConnected ? (
-                <HubButton size="sm" variant="secondary" onClick={() => void handleSync()} loading={syncing}>
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Обновить данные
-                </HubButton>
-              ) : (
-                <HubButton size="sm" variant="secondary" onClick={() => changeArea("integration")}>
-                  <Plug className="h-3.5 w-3.5" />
-                  Подключить кабинет
-                </HubButton>
-              )}
-            </div>
-          </div>
-        </header>
+        {wideArea ? null : pageHeader}
 
         <div className="relative flex min-h-0 flex-1 flex-col">
-          <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto pb-24 ${area === "catalog" || area === "promotions" ? "px-2 sm:px-3 lg:px-3" : "px-4 sm:px-6 lg:px-8"} ${area === "overview" || area === "promotions" ? "pt-1" : "py-4 lg:py-5"}`}>
-            <div className={`mx-auto w-full space-y-4 pb-4 ${area === "catalog" || area === "promotions" ? "max-w-[1680px]" : "max-w-[1440px]"}`}>
+          <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto ${area === "agents" ? "pb-24 xl:p-0!" : area === "overview" ? "pb-24 lg:pb-0" : "pb-24"} ${wideArea ? "px-3 sm:px-4 lg:px-5" : area === "catalog" || area === "promotions" ? "px-2 sm:px-3 lg:px-3" : "px-4 sm:px-6 lg:px-8"} ${area === "overview" || area === "promotions" ? "pt-1" : "py-4 lg:py-5"}`}>
+            {wideArea && !ownHeader ? pageHeader : null}
+            <div className={`mx-auto w-full space-y-4 ${area === "agents" ? "pb-4 xl:pb-0" : "pb-4"} ${wideArea ? "max-w-none" : area === "catalog" || area === "promotions" ? "max-w-[1680px]" : "max-w-[1440px]"}`}>
               {error && area !== "integration" ? (
                 <div
                   className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border px-4 py-3"
@@ -1537,7 +1627,7 @@ export function SellerHubApp() {
                   </HubButton>
                 </div>
               ) : null}
-              <SellerHubSyncModeContext.Provider value={syncMode}>{renderContent()}</SellerHubSyncModeContext.Provider>
+              <SellerHubSyncModeContext.Provider value={syncMode}><HubSectionBoundary resetKey={area}>{renderContent()}</HubSectionBoundary></SellerHubSyncModeContext.Provider>
             </div>
           </div>
           <HubAssistant

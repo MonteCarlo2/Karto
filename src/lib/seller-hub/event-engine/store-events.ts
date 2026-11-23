@@ -356,7 +356,7 @@ export function diffStoreSignals(input: { now: string; previous: StoreSignalsBas
         const is = new Set(p.participants);
         const entered = p.participants.filter((n) => !was.has(n));
         const left = before.participants.filter((n) => !is.has(n));
-        const list = (nms: string[]) => nms.slice(0, 3).map((n) => titleOf(n)?.title ?? `Артикул ${n}`).join("; ") + (nms.length > 3 ? ` и ещё ${nms.length - 3}` : "");
+        const list = (nms: string[]) => nms.slice(0, 60).map((n) => titleOf(n)?.title ?? `Артикул ${n}`).join("; ") + (nms.length > 60 ? ` и ещё ${nms.length - 60}` : "");
         if (entered.length > 0) out.push(make("promo_entered", "info", `В акцию «${p.name}» вошло товаров: ${entered.length}`, list(entered), now, `${id}:in:${entered.join(",")}`));
         if (left.length > 0) out.push(make("promo_left", "important", `Из акции «${p.name}» вышло товаров: ${left.length}`, list(left), now, `${id}:out:${left.join(",")}`));
       }

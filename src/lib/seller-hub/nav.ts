@@ -13,10 +13,8 @@ export type SellerHubAreaId =
   | "deliveries"
   | "logistics"
   | "ads"
-  | "finance"
   | "agents"
   | "knowledge"
-  | "verification"
   | "integration";
 
 export type SellerHubAreaMeta = {
@@ -74,8 +72,8 @@ export const SELLER_HUB_AREAS: SellerHubAreaMeta[] = [
   {
     id: "analytics",
     label: "Аналитика",
-    title: "Аналитика продаж",
-    description: "Сводка, динамика, воронка, товары, деньги и остатки по вашему кабинету: данные WB, без догадок.",
+    title: "Аналитика",
+    description: "",
   },
   {
     id: "orders",
@@ -102,12 +100,6 @@ export const SELLER_HUB_AREAS: SellerHubAreaMeta[] = [
     description: "Реклама WB: расход, заказы и ДРР, советы и управление кампаниями.",
   },
   {
-    id: "finance",
-    label: "Финансы",
-    title: "Деньги магазина",
-    description: "Баланс, документы и понятная разбивка того, что забрал маркетплейс.",
-  },
-  {
     id: "agents",
     label: "Агенты",
     title: "Агенты",
@@ -120,16 +112,10 @@ export const SELLER_HUB_AREAS: SellerHubAreaMeta[] = [
     description: "Короткие ответы на частые вопросы продавца, без канцелярита кабинета WB.",
   },
   {
-    id: "verification",
-    label: "Проверка расчётов",
-    title: "Проверка расчётов",
-    description: "Сверка источников и формул этапа «Задачи» на данных вашего кабинета.",
-  },
-  {
     id: "integration",
     label: "Кабинет и API",
     title: "Кабинет и API",
-    description: "API-токен маркетплейса — основа работы Seller Hub с вашим личным кабинетом.",
+    description: "Подключения, тариф и оплата, уведомления и расчёты.",
   },
 ];
 
@@ -138,11 +124,11 @@ export const SELLER_HUB_NAV_GROUPS: Array<{
   label: string;
   areaIds: SellerHubAreaId[];
 }> = [
-  { id: "lead", label: "", areaIds: ["overview", "tasks", "events", "agents"] },
+  { id: "lead", label: "", areaIds: ["overview", "events", "tasks", "agents"] },
   { id: "manage", label: "Управление", areaIds: ["catalog"] },
-  { id: "data", label: "Данные", areaIds: ["analytics", "orders", "ads", "finance"] },
+  { id: "data", label: "Данные", areaIds: ["analytics", "orders", "ads"] },
   { id: "learn", label: "Обучение", areaIds: ["knowledge"] },
-  { id: "setup", label: "Подключение", areaIds: ["verification", "integration"] },
+  { id: "setup", label: "Подключение", areaIds: ["integration"] },
 ];
 
 /**

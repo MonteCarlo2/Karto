@@ -45,15 +45,65 @@ export function isTransientAuthFailureHint(hint: string | undefined): boolean {
   return isTransientSupabaseAuthFailure({ message: hint });
 }
 
+type BearerResult = {
+  user: User | null;
+  /** Сообщение для логов или ответа клиенту при полном отказе */
+  failureHint?: string;
+};
+
+/** Сколько проверенный токен считается проверенным: каждая страница делает десятки запросов, а поход в Supabase Auth стоит ~1 с и иногда зависает. */
+const USER_CACHE_TTL_MS = 120_000;
+const USER_CACHE_MAX = 500;
+const userCache = new Map<string, { user: User; until: number }>();
+const userInFlight = new Map<string, Promise<BearerResult>>();
+
+/** Срок жизни токена из самого токена (exp): кэш никогда не живёт дольше него. */
+function tokenExpiresAtMs(token: string): number | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const json = JSON.parse(Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")) as { exp?: number };
+    return typeof json.exp === "number" ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Проверка токена с памятью: один раз сходили в Supabase, дальше две минуты отвечаем из памяти, а параллельные запросы
+ * с тем же токеном ждут один общий ответ. После выхода из аккаунта токен перестаёт действовать не позже чем через эти две минуты.
+ */
+export async function getUserFromBearerToken(accessToken: string): Promise<BearerResult> {
+  const now = Date.now();
+  const hit = userCache.get(accessToken);
+  if (hit && hit.until > now) return { user: hit.user };
+  const flying = userInFlight.get(accessToken);
+  if (flying) return flying;
+  const promise = fetchUserFromSupabase(accessToken)
+    .then((result) => {
+      if (result.user) {
+        const exp = tokenExpiresAtMs(accessToken);
+        const until = Math.min(Date.now() + USER_CACHE_TTL_MS, exp != null ? exp - 30_000 : Infinity);
+        if (until > Date.now()) {
+          if (userCache.size >= USER_CACHE_MAX) {
+            for (const [key, value] of userCache) if (value.until <= Date.now()) userCache.delete(key);
+            if (userCache.size >= USER_CACHE_MAX) userCache.clear();
+          }
+          userCache.set(accessToken, { user: result.user, until });
+        }
+      }
+      return result;
+    })
+    .finally(() => userInFlight.delete(accessToken));
+  userInFlight.set(accessToken, promise);
+  return promise;
+}
+
 /**
  * Обёртка над supabase.auth.getUser(accessToken): несколько попыток с backoff,
  * чтобы не отдавать ложный 401 при обрыве соединения с Supabase.
  */
-export async function getUserFromBearerToken(accessToken: string): Promise<{
-  user: User | null;
-  /** Сообщение для логов или ответа клиенту при полном отказе */
-  failureHint?: string;
-}> {
+async function fetchUserFromSupabase(accessToken: string): Promise<BearerResult> {
   const supabase = createServerClient();
   const maxAttempts = 6;
 

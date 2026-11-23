@@ -168,10 +168,10 @@ export function extractSummary(text: string): string {
   const sentences = flat.split(/(?<=[.!?])\s+(?=[«"A-ZА-ЯЁ0-9])/);
   let out = "";
   for (const sentence of sentences) {
-    if (out && (out + " " + sentence).length > 260) break;
+    if (out && (out + " " + sentence).length > 700) break;
     out = out ? `${out} ${sentence}` : sentence;
   }
-  return clip(out.trim(), 280);
+  return clip(out.trim(), 760);
 }
 
 const MONEY_TOPICS = new Set(["Комиссии", "Штрафы", "Тарифы"]);

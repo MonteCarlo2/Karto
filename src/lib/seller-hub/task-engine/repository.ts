@@ -436,6 +436,25 @@ export async function updateSellerHubTaskStatus(
   raise(error);
   const row = (data ?? null) as (TaskRow & { user_id: string }) | null;
   const task = row ? taskFromRow(row) : null;
+  // Вернуть в работу можно только то, что человек сам отметил выполненным или отложил: задачи, закрытые автоматически, так не открываются.
+  if (patch.status === "active") {
+    if (!task || !row || !statusUpdateAllowed(row.user_id, userId) || row.marketplace_id !== marketplaceId) return { ok: false, reason: "missing" };
+    if (!(task.status === "snoozed" || (task.status === "completed" && task.resolution === USER_COMPLETED_RESOLUTION))) return { ok: false, reason: "closed" };
+    const reopenedAt = new Date().toISOString();
+    const { data: reopened, error: reopenError } = await supabase
+      .from(TASKS)
+      .update({ status: "active", snooze_until: null, resolved_at: null, resolution: null, updated_at: reopenedAt })
+      .eq("id", taskId)
+      .eq("user_id", userId)
+      .eq("marketplace_id", marketplaceId)
+      .in("status", ["snoozed", "completed"])
+      .select(`user_id, ${TASK_COLUMNS}`)
+      .maybeSingle();
+    if (reopenError && reopenError.code !== "PGRST116") raise(reopenError);
+    const reopenedRow = (reopened ?? null) as (TaskRow & { user_id: string }) | null;
+    const reopenedTask = reopenedRow ? taskFromRow(reopenedRow) : null;
+    return reopenedTask ? { ok: true, task: reopenedTask } : { ok: false, reason: "conflict" };
+  }
   const decision = taskStatusWriteDecision(
     task && row ? { userId: row.user_id, marketplaceId: row.marketplace_id, status: task.status } : null,
     { userId, marketplaceId },

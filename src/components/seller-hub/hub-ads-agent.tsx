@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ACTION_LABEL } from "@/lib/seller-hub/action-labels";
 import { compareBids } from "@/lib/seller-hub/ads-bids";
 import {
   AGENT_RULE_KINDS,
@@ -14,18 +13,43 @@ import {
 } from "@/lib/seller-hub/ads-agent-engine";
 import { applyActionToCampaigns, describeAgentAction, executeAgentAction } from "@/lib/seller-hub/agent-exec";
 import {
-  loadSellerHubActionLog,
   loadSellerHubAdBidRecommendations,
   loadSellerHubAgentProposals,
   loadSellerHubAgentRules,
   resolveSellerHubAgentProposal,
   saveSellerHubAgentRule,
-  type ActionLogRow,
 } from "@/lib/seller-hub/client-api";
 import type { SellerAdBidRecommendation, SellerAdCampaignRow } from "@/lib/seller-hub/types";
 import type { AdsData } from "./hub-ads-data";
-import { hub, HubButton, HubPanel, HubPanelHeader, hubSans } from "./hub-ui";
+import type { ReactNode } from "react";
+import { hub, HubButton, hubSans } from "./hub-ui";
+import { HubPanel as FramedPanel, HubPanelHeader as FramedHeader } from "./hub-fulfillment-ui";
+import { AgentSkeleton, AgentSwitch, AgentTabs } from "./hub-agents-ui";
+import { PanelEmpty, PanelGroup, PanelNumber, PanelRow, PanelSegmented } from "./hub-agents-panel";
 import { useSellerHubSyncMode } from "./sync-mode-context";
+
+/** Вид для раздела «Агенты»: блок без рамки и белой плашки, лежит на полотне и отделён линией. Внутренние боковые поля рамочного вида обнуляются. */
+function FlatPanel({ children }: { children: ReactNode; className?: string }) {
+  return (
+    <section className="min-w-0 border-t pt-7 first:border-t-0 first:pt-0 [&_[class*='px-5']]:!px-0" style={{ borderColor: hub.border }}>
+      {children}
+    </section>
+  );
+}
+function FlatHeader({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <div className="mb-1">
+      <h2 className="text-balance text-[18px] font-semibold leading-6 tracking-[-0.01em]" style={{ ...hubSans, color: hub.text }}>
+        {title}
+      </h2>
+      {hint ? (
+        <p className="mt-1 max-w-[68ch] text-pretty text-[13px] leading-5" style={{ ...hubSans, color: hub.textSubtle }}>
+          {hint}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 /** Агент рекламы: правила и очередь предложений. В режиме «предлагать» ничего не меняется без вашего подтверждения. */
 export function HubAdsAgent({
@@ -35,6 +59,7 @@ export function HubAdsAgent({
   onCampaignsUpdate,
   variant = "full",
   onOpenAgents,
+  rulesOnly = false,
 }: {
   data: AdsData;
   campaigns: SellerAdCampaignRow[];
@@ -43,8 +68,12 @@ export function HubAdsAgent({
   /** full — раздел «Агенты»: правила, очередь, журнал. compact — полоса в «Продвижении»: только ближайшие предложения. */
   variant?: "full" | "compact";
   onOpenAgents?: () => void;
+  /** Только вкладка правил: для окна настроек. */
+  rulesOnly?: boolean;
 }) {
   const full = variant === "full";
+  const HubPanel = full ? FlatPanel : FramedPanel;
+  const HubPanelHeader = full ? FlatHeader : FramedHeader;
   const syncMode = useSellerHubSyncMode();
   // При фоновом сборе предложения насчитывает сервер и они копятся в базе; экран их только показывает.
   const serverMode = syncMode === "background";
@@ -59,10 +88,10 @@ export function HubAdsAgent({
   const [saving, setSaving] = useState<string | null>(null);
   const [ruleMessage, setRuleMessage] = useState<Record<string, string>>({});
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [adsTab, setAdsTab] = useState<"proposals" | "rules">(rulesOnly ? "rules" : "proposals");
   const [running, setRunning] = useState<string | null>(null);
   const [done, setDone] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<Record<string, string>>({});
-  const [history, setHistory] = useState<ActionLogRow[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,9 +102,6 @@ export function HubAdsAgent({
         setDepositedToday(res.depositedToday);
       } else setRulesError(res.error ?? "Правила не загрузились");
       setRulesLoaded(true);
-    });
-    void loadSellerHubActionLog().then((res) => {
-      if (!cancelled && res.ok) setHistory(res.entries.filter((e) => e.agent === "ads").slice(0, 8));
     });
     return () => {
       cancelled = true;
@@ -170,6 +196,11 @@ export function HubAdsAgent({
     const res = await executeAgentAction(a);
     setRunning(null);
     setConfirmId(null);
+    if (res.simulated) {
+      // Тестовый режим: показываем сообщение, предложение остаётся открытым и не помечается неудачным.
+      setFailed((prev) => ({ ...prev, [p.id]: res.error ?? "Тестовый режим" }));
+      return;
+    }
     if (!res.ok) {
       setFailed((prev) => ({ ...prev, [p.id]: res.error ?? "Не удалось выполнить" }));
       if (isServerRow(p.id)) void resolveSellerHubAgentProposal(p.id, "failed", res.error ?? "Не удалось выполнить").then(() => setServerReload((n) => n + 1));
@@ -188,31 +219,190 @@ export function HubAdsAgent({
 
   const enabledCount = rules.filter((r) => r.enabled).length;
 
-  return (
-    <div className="space-y-5">
-      {full ? (
-      <HubPanel>
-        <HubPanelHeader
-          title="Агент рекламы"
-          hint="Следит за кампаниями по вашим правилам и предлагает действия с цифрами. В режиме «предлагать» ничего не меняется, пока вы не нажмёте «Выполнить»."
+  if (full) {
+    const SHORT: Record<string, string> = {
+      autopay: "Пополняет кампанию, когда остаток упал ниже порога",
+      waste_guard: "Пауза или удаление товара, где расход выше маржи, а заказов нет",
+      drr_guard: "Снижает ставку, если ДРР выше маржи",
+      test_ads: "Тестовая кампания для товаров без продвижения, без запуска и списаний",
+      bid_climb: "Поднимает ставку, где есть запас по марже",
+    };
+    return (
+      <div className="space-y-7">
+        {rulesOnly ? null : (
+        <AgentTabs
+          label="Реклама"
+          value={adsTab}
+          onChange={setAdsTab}
+          options={[
+            { id: "proposals", label: "Предложения", count: allProposals.length },
+            { id: "rules", label: `Правила · ${enabledCount} из ${AGENT_RULE_KINDS.length}` },
+          ]}
         />
-        <div className="space-y-2 px-5 py-4 text-[13px] leading-5 sm:px-6" style={{ ...hubSans, color: hub.textMuted }}>
-          <p>
-            Включено правил: <strong style={{ color: hub.text }}>{enabledCount}</strong> из {AGENT_RULE_KINDS.length}. Автопилот (агент действует сам в рамках лимитов) сейчас доступен для автопополнения и работает, когда на сервере подключён планировщик. Остальные правила только предлагают.
-          </p>
-          {rulesError ? <p style={{ color: hub.danger }}>{rulesError}</p> : null}
-        </div>
-      </HubPanel>
-      ) : null}
+        )}
 
+        {adsTab === "proposals" ? (
+          !rulesLoaded ? (
+            <AgentSkeleton rows={4} className="max-w-xl" />
+          ) : allProposals.length === 0 ? (
+            <PanelEmpty>
+              {enabledCount === 0 ? "Все правила выключены. Включите нужные на вкладке «Правила», и агент начнёт предлагать действия." : "Предложений нет: по включённым правилам всё в порядке."}
+              {result.skipped.length > 0 ? ` Не сделано: ${result.skipped.map((s) => s.text).join("; ")}.` : ""}
+            </PanelEmpty>
+          ) : (
+            <ul className="space-y-3">
+              {allProposals.map((p) => (
+                <li key={p.id} className="rounded-[18px] p-4" style={{ backgroundColor: "rgba(46, 90, 67, 0.045)" }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 text-[14.5px] font-semibold leading-5 [overflow-wrap:anywhere]" style={{ ...hubSans, color: hub.text }}>
+                      {p.title}
+                    </p>
+                    <span className="flex shrink-0 items-center gap-1.5 text-[12.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: p.risk === "low" ? "#10B981" : p.risk === "medium" ? "#F59E0B" : "#EF4444" }} aria-hidden />
+                      {p.risk === "low" ? "низкий риск" : p.risk === "medium" ? "средний риск" : "высокий риск"}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[12.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                    {p.rule === "playbook" ? "Сценарий цен" : RULE_META[p.rule].title}
+                  </p>
+                  <ul className="mt-3 space-y-1">
+                    {p.facts.map((f) => (
+                      <li key={f} className="text-[13.5px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-3 text-[13.5px] leading-5" style={{ ...hubSans, color: hub.text }}>
+                    <span style={{ color: hub.textSubtle }}>Изменится: </span>
+                    {p.effect}
+                  </p>
+                  {failed[p.id] ? (
+                    <p className="mt-2 text-[13.5px]" style={{ ...hubSans, color: hub.danger }}>
+                      {failed[p.id]}
+                    </p>
+                  ) : null}
+                  {confirmId === p.id ? (
+                    <div className="hub-fade-in mt-3 flex flex-wrap items-center gap-2 rounded-[12px] px-3 py-2.5" style={{ backgroundColor: hub.warnSoft }}>
+                      <span className="min-w-0 flex-1 text-[13.5px]" style={{ ...hubSans, color: hub.warn }}>
+                        Подтвердите: {describeAgentAction(p.action, campaigns)}.
+                      </span>
+                      <HubButton size="sm" loading={running === p.id} onClick={() => void execute(p)}>
+                        Подтвердить
+                      </HubButton>
+                      <HubButton size="sm" variant="secondary" disabled={running === p.id} onClick={() => setConfirmId(null)}>
+                        Отмена
+                      </HubButton>
+                    </div>
+                  ) : (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <HubButton size="sm" onClick={() => setConfirmId(p.id)}>
+                        Выполнить
+                      </HubButton>
+                      {isServerRow(p.id) ? (
+                        <HubButton
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setDone((prev) => ({ ...prev, [p.id]: "Отклонено" }));
+                            void resolveSellerHubAgentProposal(p.id, "dismissed").then(() => setServerReload((n) => n + 1));
+                          }}
+                        >
+                          Не надо
+                        </HubButton>
+                      ) : null}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )
+        ) : (
+          <div className="space-y-3">
+            {rulesError ? (
+              <p className="text-[13.5px]" style={{ ...hubSans, color: hub.danger }}>
+                {rulesError}
+              </p>
+            ) : null}
+            <PanelGroup>
+              {rules.map((rule) => {
+                const d = draftOf(rule);
+                const meta = RULE_META[rule.kind];
+                const dirty = Boolean(drafts[rule.kind]);
+                const hasBody = d.enabled && (meta.params.length > 0 || rule.kind === "autopay" || dirty || Boolean(ruleMessage[rule.kind]));
+                return (
+                  <PanelRow key={rule.kind} title={meta.title} hint={SHORT[rule.kind] ?? meta.description} control={<AgentSwitch label={meta.title} checked={d.enabled} onChange={(v) => setDraft({ ...d, enabled: v })} />}>
+                    {hasBody || dirty || ruleMessage[rule.kind] ? (
+                      <div className="hub-fade-in space-y-2.5">
+                        {d.enabled
+                          ? meta.params.map((param) => (
+                              <div key={param.key} className="flex items-center justify-between gap-4">
+                                <span className="min-w-0 text-[13.5px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
+                                  {param.label}
+                                </span>
+                                <PanelNumber label={param.label} unit={param.unit} min={param.min} max={param.max} step={param.step} value={d.params[param.key] ?? param.default} onCommit={(v) => setDraft({ ...d, params: { ...d.params, [param.key]: v } })} />
+                              </div>
+                            ))
+                          : null}
+                        {d.enabled && rule.kind === "autopay" ? (
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-[13.5px]" style={{ ...hubSans, color: hub.textMuted }}>
+                              Режим
+                            </span>
+                            <PanelSegmented
+                              label="Режим автопополнения"
+                              value={d.mode}
+                              onChange={(m) => setDraft({ ...d, mode: m })}
+                              options={[
+                                { id: "suggest", label: "Предлагать" },
+                                { id: "auto", label: "Автопилот" },
+                              ]}
+                            />
+                          </div>
+                        ) : null}
+                        {d.enabled && rule.kind === "autopay" && d.mode === "auto" ? (
+                          <p className="text-[12.5px] leading-[1.45]" style={{ ...hubSans, color: hub.warn }}>
+                            Пополняет без подтверждения, но в пределах порога, суммы и суточного лимита и не больше, чем на счёте.
+                          </p>
+                        ) : null}
+                        {dirty || ruleMessage[rule.kind] ? (
+                          <div className="flex items-center justify-end gap-3">
+                            {ruleMessage[rule.kind] ? (
+                              <span className="text-[13px]" style={{ ...hubSans, color: ruleMessage[rule.kind] === "Сохранено" ? hub.greenDark : hub.danger }}>
+                                {ruleMessage[rule.kind]}
+                              </span>
+                            ) : null}
+                            {dirty ? (
+                              <HubButton size="sm" loading={saving === rule.kind} onClick={() => void saveRule(rule.kind)}>
+                                Сохранить правило
+                              </HubButton>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </PanelRow>
+                );
+              })}
+            </PanelGroup>
+            <p className="px-0.5 text-[12.5px] leading-5" style={{ ...hubSans, color: hub.textSubtle }}>
+              Суточные лимиты и подтверждение на деньги действуют всегда.
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={full ? "space-y-8" : "space-y-5"}>
       <HubPanel>
         <HubPanelHeader title={`${full ? "Предложения агента" : "Агент рекламы предлагает"}${allProposals.length > 0 ? ` · ${allProposals.length}` : ""}`} hint={full ? "Каждое предложение — факты, что изменится и чем рискуем. Выполняется после вашего подтверждения." : "Агент считает по правилам, которые вы настроили в разделе «Агенты», и выполняет после вашего подтверждения."} />
         {!rulesLoaded ? (
-          <p className="px-5 py-5 text-[13px] sm:px-6" style={{ ...hubSans, color: hub.textMuted }}>
+          <p className="px-5 py-5 text-[14.5px] sm:px-6" style={{ ...hubSans, color: hub.textMuted }}>
             Загружаю правила…
           </p>
         ) : proposals.length === 0 ? (
-          <p className="px-5 py-5 text-[13.5px] leading-5 sm:px-6" style={{ ...hubSans, color: hub.textMuted }}>
+          <p className="px-5 py-5 text-[15px] leading-5 sm:px-6" style={{ ...hubSans, color: hub.textMuted }}>
             {enabledCount === 0
               ? full ? "Все правила выключены. Включите нужные ниже, и агент начнёт предлагать действия." : "Правила агента выключены. Включите нужные в разделе «Агенты», и он начнёт предлагать действия здесь и в других разделах."
               : "Предложений нет: по включённым правилам всё в порядке."}
@@ -226,26 +416,26 @@ export function HubAdsAgent({
                   <p className="text-[14px] font-semibold" style={{ ...hubSans, color: hub.text }}>
                     {p.title}
                   </p>
-                  <span className="rounded-md px-2 py-0.5 text-[11.5px] font-semibold" style={{ ...hubSans, backgroundColor: p.risk === "low" ? hub.greenSoft : hub.warnSoft, color: p.risk === "low" ? hub.green : hub.warn }}>
+                  <span className="rounded-md px-2 py-0.5 text-[14px] font-semibold" style={{ ...hubSans, backgroundColor: p.risk === "low" ? hub.greenSoft : hub.warnSoft, color: p.risk === "low" ? hub.green : hub.warn }}>
                     {p.risk === "low" ? "низкий риск" : p.risk === "medium" ? "средний риск" : "высокий риск"} · {p.rule === "playbook" ? "Сценарий цен" : RULE_META[p.rule].title}
                   </span>
                 </div>
-                <ul className="list-disc space-y-0.5 pl-5 text-[13px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
+                <ul className="list-disc space-y-0.5 pl-5 text-[14.5px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
                   {p.facts.map((f) => (
                     <li key={f}>{f}</li>
                   ))}
                 </ul>
-                <p className="text-[13px] leading-5" style={{ ...hubSans, color: hub.text }}>
+                <p className="text-[14.5px] leading-5" style={{ ...hubSans, color: hub.text }}>
                   <strong>Что изменится:</strong> {p.effect}
                 </p>
                 {failed[p.id] ? (
-                  <p className="text-[12.5px]" style={{ ...hubSans, color: hub.danger }}>
+                  <p className="text-[14px]" style={{ ...hubSans, color: hub.danger }}>
                     {failed[p.id]}
                   </p>
                 ) : null}
                 {confirmId === p.id ? (
                   <div className="flex flex-wrap items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: hub.warnSoft }}>
-                    <span className="text-[13px]" style={{ ...hubSans, color: hub.warn }}>
+                    <span className="text-[14.5px]" style={{ ...hubSans, color: hub.warn }}>
                       Подтвердите: {describeAgentAction(p.action, campaigns)}.
                     </span>
                     <HubButton size="sm" loading={running === p.id} onClick={() => void execute(p)}>
@@ -279,7 +469,7 @@ export function HubAdsAgent({
           </ul>
         )}
         {!full ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-3 text-[12.5px] sm:px-6" style={{ ...hubSans, borderColor: hub.borderSoft, color: hub.textMuted }}>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-3 text-[14px] sm:px-6" style={{ ...hubSans, borderColor: hub.borderSoft, color: hub.textMuted }}>
             <span>
               {allProposals.length > proposals.length ? `Ещё предложений: ${allProposals.length - proposals.length}. ` : ""}
               Включено правил: {enabledCount} из {AGENT_RULE_KINDS.length}.
@@ -292,118 +482,12 @@ export function HubAdsAgent({
           </div>
         ) : null}
         {Object.values(done).some((v) => v === "Выполнено") ? (
-          <p className="border-t px-5 py-3 text-[12.5px] sm:px-6" style={{ ...hubSans, borderColor: hub.borderSoft, color: hub.green }}>
+          <p className="border-t px-5 py-3 text-[14px] sm:px-6" style={{ ...hubSans, borderColor: hub.borderSoft, color: hub.green }}>
             Выполнено в этой сессии: {Object.values(done).filter((v) => v === "Выполнено").length}. Подробности в журнале действий (раздел «Агенты»).
           </p>
         ) : null}
       </HubPanel>
 
-      {full ? (
-      <HubPanel>
-        <HubPanelHeader title="Правила" hint="Каждое правило выключено, пока вы его не включите. Параметры задаёте вы; суточные лимиты и подтверждение на деньги действуют всегда." />
-        <ul className="divide-y" style={{ borderColor: hub.borderSoft }}>
-          {rules.map((rule) => {
-            const d = draftOf(rule);
-            const meta = RULE_META[rule.kind];
-            const dirty = Boolean(drafts[rule.kind]);
-            return (
-              <li key={rule.kind} className="space-y-3 px-5 py-4 sm:px-6">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[14px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-                      {meta.title}
-                    </p>
-                    <p className="mt-0.5 text-[12.5px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
-                      {meta.description}
-                    </p>
-                  </div>
-                  <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[13px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-                    <input type="checkbox" checked={d.enabled} onChange={(e) => setDraft({ ...d, enabled: e.target.checked })} className="h-4 w-4" />
-                    {d.enabled ? "Включено" : "Выключено"}
-                  </label>
-                </div>
-                {meta.params.length > 0 ? (
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    {meta.params.map((param) => (
-                      <label key={param.key} className="block text-[12.5px]" style={{ ...hubSans, color: hub.textMuted }}>
-                        {param.label}
-                        <span className="mt-1 flex items-center gap-1.5">
-                          <input
-                            type="number"
-                            min={param.min}
-                            max={param.max}
-                            step={param.step}
-                            value={d.params[param.key] ?? param.default}
-                            onChange={(e) => setDraft({ ...d, params: { ...d.params, [param.key]: Number(e.target.value) } })}
-                            className="w-24 rounded-md border px-2 py-1 text-[13px]"
-                            style={{ borderColor: hub.border, color: hub.text }}
-                          />
-                          <span>{param.unit}</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                ) : null}
-                <div className="flex flex-wrap items-center gap-3">
-                  {rule.kind === "autopay" ? (
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-4 text-[12.5px]" style={{ ...hubSans, color: hub.text }}>
-                        <label className="flex items-center gap-1.5">
-                          <input type="radio" name={`mode-${rule.kind}`} checked={d.mode === "suggest"} onChange={() => setDraft({ ...d, mode: "suggest" })} />
-                          Предлагать, я подтверждаю
-                        </label>
-                        <label className="flex items-center gap-1.5">
-                          <input type="radio" name={`mode-${rule.kind}`} checked={d.mode === "auto"} onChange={() => setDraft({ ...d, mode: "auto" })} />
-                          Автопилот: пополнять самому
-                        </label>
-                      </div>
-                      {d.mode === "auto" ? (
-                        <p className="text-[12px] leading-4" style={{ ...hubSans, color: hub.warn }}>
-                          Автопилот пополняет кампании без вашего подтверждения, но только в рамках порога, суммы и суточного лимита выше, и не больше, чем на счёте продвижения. Он работает, когда на сервере подключён планировщик (переменная SELLER_HUB_AGENT_SECRET и вызов по расписанию). Пока планировщик не подключён, пополнения предлагаются здесь, и их нужно подтверждать.
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <span className="text-[12.5px]" style={{ ...hubSans, color: hub.textMuted }}>
-                      Режим: <strong style={{ color: hub.text }}>предлагать</strong>, вы подтверждаете. Автопилот для этого правила: скоро.
-                    </span>
-                  )}
-                  {dirty ? (
-                    <HubButton size="sm" loading={saving === rule.kind} onClick={() => void saveRule(rule.kind)}>
-                      Сохранить правило
-                    </HubButton>
-                  ) : null}
-                  {ruleMessage[rule.kind] ? (
-                    <span className="text-[12.5px]" style={{ ...hubSans, color: ruleMessage[rule.kind] === "Сохранено" ? hub.green : hub.danger }}>
-                      {ruleMessage[rule.kind]}
-                    </span>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </HubPanel>
-      ) : null}
-
-      {full && history.length > 0 ? (
-        <HubPanel>
-          <HubPanelHeader title="Последние действия по рекламе" hint="Из журнала: что менялось в кампаниях через KARTO." />
-          <ul>
-            {history.map((h) => (
-              <li key={h.id} className="flex flex-wrap items-baseline justify-between gap-2 border-b px-5 py-2.5 text-[13px] last:border-b-0 sm:px-6" style={{ ...hubSans, borderColor: hub.borderSoft, color: hub.text }}>
-                <span>
-                  {ACTION_LABEL[h.action] ?? h.action}
-                  {h.target_id != null ? ` · кампания ${h.target_id}` : ""}
-                </span>
-                <span style={{ color: h.result === "ok" ? hub.green : hub.danger }}>
-                  {h.result === "ok" ? "выполнено" : "ошибка"} · {new Date(h.created_at).toLocaleString("ru-RU")}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </HubPanel>
-      ) : null}
     </div>
   );
 }

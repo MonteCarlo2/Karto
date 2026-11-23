@@ -118,8 +118,13 @@ export function removeRestrictionWord(words: string[], word: string): string[] {
 /** Стоп-слово в тексте отзыва — перед генерацией нужно подтверждение. */
 export function findStopWordHitsInReview(reviewText: string, stopWords: string[]): string[] {
   if (!reviewText.trim() || !stopWords.length) return [];
-  const lower = reviewText.toLowerCase();
-  return stopWords.filter((w) => lower.includes(w.toLowerCase()));
+  // Стоп-слово ловим с начала слова: «брак» находит «брак» и «бракованный», но «рак» не срабатывает внутри «брака».
+  return stopWords.filter((w) => {
+    const word = w.trim();
+    if (!word) return false;
+    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}`, "iu").test(reviewText);
+  });
 }
 
 /** @deprecated используйте findStopWordHitsInReview */

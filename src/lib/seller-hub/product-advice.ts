@@ -5,6 +5,7 @@ import { extractJsonLoose } from "@/lib/seller-hub/json-loose";
 import type { TextResult } from "@/lib/seller-hub/card-text-score";
 import type { VisionResult } from "@/lib/seller-hub/card-vision-score";
 import type { TaskFact } from "@/lib/seller-hub/task-engine/types";
+import { MIN_COVER_FOR_GROWTH_DAYS, promoLossOffers, promoOpportunityOffers } from "@/lib/seller-hub/task-engine/promo";
 import type { SellerCatalogItem, SellerPromotionRow } from "@/lib/seller-hub/types";
 
 /**
@@ -30,7 +31,7 @@ export type ProductFacts = {
   ads: { advertised: boolean; spend: number; orders: number; drr: number | null } | null;
   photo: { score: number; band: string } | null;
   text: { score: number; band: string } | null;
-  promotions: { available: number; joined: number };
+  promotions: { available: number; joined: number; /** Акции, где цена входа убыточна: задача велит выйти из них. */ losing?: number };
 };
 
 export const PRODUCT_OPTION_KINDS = ["keep", "wait", "enter_cost", "start_ads", "lower_price", "join_promo", "improve_photo", "improve_text", "restock"] as const;
@@ -62,11 +63,12 @@ export function optionApplies(kind: ProductOptionKind, f: ProductFacts): boolean
     case "enter_cost":
       return f.marginPercent == null;
     case "start_ads":
-      return (f.marginPercent ?? 0) > 0 && (f.stock ?? 0) > 0 && !(f.ads?.advertised);
+      return (f.marginPercent ?? 0) > 0 && (f.stock ?? 0) > 0 && (f.coverDays == null || f.coverDays >= MIN_COVER_FOR_GROWTH_DAYS) && !(f.ads?.advertised);
     case "lower_price":
       return actionForProductOption("lower_price", f) != null;
     case "join_promo":
-      return f.promotions.available > 0;
+      // Входить можно только там, где цена входа окупается; при убыточной акции советуем выйти, а не входить в другие.
+      return f.promotions.available > 0 && (f.promotions.losing ?? 0) === 0;
     case "improve_photo":
       return f.photo != null && f.photo.band !== "strong";
     case "improve_text":
@@ -176,7 +178,7 @@ export function buildProductFacts(input: {
         ads: input.advertised.has(v.nmId) || ad ? { advertised: input.advertised.has(v.nmId), spend: Math.round(ad?.spend ?? 0), orders: ad?.orders ?? 0, drr: ad && ad.orderSum > 0 ? Math.round((ad.spend / ad.orderSum) * 1000) / 10 : null } : null,
         photo: vr ? { score: vr.score, band: vr.band } : null,
         text: tr ? { score: tr.score, band: tr.band } : null,
-        promotions: { available: livePromos.filter((p) => !joined.has(p.id)).length, joined: livePromos.filter((p) => joined.has(p.id)).length },
+        promotions: { available: promoOpportunityOffers(f, input.nowMs).length, joined: livePromos.filter((p) => joined.has(p.id)).length, losing: promoLossOffers(f, input.nowMs).length },
       },
     ];
   });

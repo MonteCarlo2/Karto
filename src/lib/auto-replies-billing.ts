@@ -142,8 +142,9 @@ export async function processDueAutoReplyRenewals(
         .select("payment_id")
         .eq("payment_id", result.paymentId)
         .maybeSingle();
-      if (!exists) {
-        await supabase.from("payment_processed").insert({ payment_id: result.paymentId });
+      // Платёж занимаем вставкой в payment_processed: если параллельно его уже обработал другой сервер или вебхук, вставка не пройдёт и ответы второй раз не начисляются.
+      const claim = exists ? { error: { message: "уже обработан" } } : await supabase.from("payment_processed").insert({ payment_id: result.paymentId });
+      if (!claim.error) {
         const paymentMethodId =
           result.payment.payment_method?.id ?? row.payment_method_id ?? null;
         await creditAutoReplyFromPayment(supabase, row.user_id, row.tariff_index, {

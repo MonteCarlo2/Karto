@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { loadSellerHubAutopilot, saveSellerHubAutopilot, type AutopilotSettingsView, type AutopilotView } from "@/lib/seller-hub/client-api";
-import { HubBadge, HubButton, HubPanel, hub } from "./hub-ui";
+import { AgentLoadError, AgentSkeleton, AgentSwitch } from "./hub-agents-ui";
+import { PanelGroup, PanelNumber, PanelRow, PanelSaveBar, PanelSection } from "./hub-agents-panel";
+import { hub, hubSans } from "./hub-ui";
 
 /**
  * Автопилот: правила владельца. По умолчанию выключен. Выполняет только безопасные шаги принятых планов, у которых автопилот включён отдельно,
@@ -10,29 +12,50 @@ import { HubBadge, HubButton, HubPanel, hub } from "./hub-ui";
  */
 
 const TYPE_LABEL: Record<string, string> = {
-  pause: "Ставить на паузу рекламные кампании",
-  remove_nm: "Убирать товар из рекламной кампании",
-  minus_phrases: "Добавлять минус-фразы (запросы без заказов)",
-  deposit: "Пополнять бюджет кампании (500–2000 ₽ за шаг)",
+  pause: "Ставить кампании на паузу",
+  remove_nm: "Убирать товар из кампании",
+  minus_phrases: "Добавлять минус-фразы",
+  deposit: "Пополнять бюджет кампании",
 };
+
+const TYPE_HINT: Record<string, string> = {
+  pause: "Если расход идёт без заказов",
+  remove_nm: "Если товар тратит деньги без заказов",
+  minus_phrases: "Запросы без заказов",
+  deposit: "1000–5000 ₽ за шаг",
+};
+
+const same = (a: AutopilotSettingsView, b: AutopilotSettingsView) =>
+  a.enabled === b.enabled && a.maxActionsPerDay === b.maxActionsPerDay && a.maxDepositPerDayRub === b.maxDepositPerDayRub && [...a.allowedTypes].sort().join() === [...b.allowedTypes].sort().join() && [...a.routines].sort().join() === [...b.routines].sort().join();
 
 export function HubAutopilot() {
   const [view, setView] = useState<AutopilotView | null>(null);
   const [draft, setDraft] = useState<AutopilotSettingsView | null>(null);
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<{ text: string; ok: boolean } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
+    setLoadError(null);
     const res = await loadSellerHubAutopilot();
     if (res.ok && res.data) {
       setView(res.data);
       setDraft(res.data.settings);
-    } else setNote(res.error ?? "Не удалось прочитать правила");
-  }
+    } else setLoadError(res.error ?? "Не удалось прочитать правила автопилота");
+  }, []);
 
   useEffect(() => {
-    void load();
+    let cancelled = false;
+    void loadSellerHubAutopilot().then((res) => {
+      if (cancelled) return;
+      if (res.ok && res.data) {
+        setView(res.data);
+        setDraft(res.data.settings);
+      } else setLoadError(res.error ?? "Не удалось прочитать правила автопилота");
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function save(next: AutopilotSettingsView) {
@@ -41,89 +64,71 @@ export function HubAutopilot() {
     const res = await saveSellerHubAutopilot(next);
     setBusy(false);
     if (res.ok) {
-      setDraft(next);
-      setNote("Сохранено");
+      setNote({ text: "Сохранено", ok: true });
       await load();
-    } else setNote(res.error ?? "Не удалось сохранить");
+    } else setNote({ text: res.error ?? "Не удалось сохранить, попробуйте ещё раз", ok: false });
   }
 
-  if (!draft) return null;
-  const toggleType = (t: string) => setDraft({ ...draft, allowedTypes: draft.allowedTypes.includes(t) ? draft.allowedTypes.filter((x) => x !== t) : [...draft.allowedTypes, t] });
+  if (!draft || !view) {
+    return loadError ? <AgentLoadError text="Правила автопилота сейчас не открылись." onRetry={() => void load()} /> : <AgentSkeleton rows={4} className="max-w-xl" />;
+  }
 
+  const patch = (next: Partial<AutopilotSettingsView>) => {
+    setNote(null);
+    setDraft({ ...draft, ...next });
+  };
+  const flip = (list: string[], id: string) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+  const dirty = !same(draft, view.settings);
+
+  const off = !draft.enabled;
   return (
-    <HubPanel className="px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <HubBadge tone={view?.settings.enabled ? "ok" : "muted"}>{view?.settings.enabled ? "включён" : "выключен"}</HubBadge>
-          <p className="text-[14px] font-semibold" style={{ color: hub.text }}>Автопилот</p>
+    <div className="space-y-9">
+      <div className="flex items-center justify-between gap-6 rounded-[18px] px-6 py-5 transition-colors duration-300" style={{ backgroundColor: draft.enabled ? "rgba(185, 255, 75, 0.14)" : "rgba(1, 20, 8, 0.03)", boxShadow: "inset 0 0 0 1px rgba(1, 20, 8, 0.08)" }}>
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 text-[17px] font-semibold leading-6" style={{ ...hubSans, color: hub.text }}>
+            Автопилот
+            <span className="inline-flex items-center gap-1.5 text-[13px] font-medium" style={{ color: draft.enabled ? "#2E5A43" : hub.textSubtle }}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: draft.enabled ? "#6FC21D" : "#A9B3AC" }} aria-hidden />
+              {draft.enabled ? "включён" : "выключен"}
+            </span>
+          </p>
+          <p className="mt-1 max-w-[52ch] text-[14px] leading-[1.5]" style={{ ...hubSans, color: hub.textSubtle }}>
+            {draft.enabled ? "Безопасные шаги рекламы выполняются сами, в пределах суток. Всё записывается в журнал." : "Агент только предлагает, а все действия вы подтверждаете сами."}
+          </p>
         </div>
-        <HubButton variant="secondary" onClick={() => setOpen((v) => !v)}>{open ? "Свернуть" : "Настроить"}</HubButton>
+        <AgentSwitch label="Автопилот" checked={draft.enabled} onChange={(v) => patch({ enabled: v })} />
       </div>
-      <p className="mt-1 text-[13px] leading-5" style={{ color: hub.textMuted }}>
-        Выполняет безопасные шаги ваших планов сам, без кнопки. Включается в два этапа: здесь общие правила, а у каждого принятого плана своя кнопка «Включить автопилот». Цена, акции, карточка и ставки автопилотом не меняются.
-      </p>
-      {open ? (
-        <div className="mt-3 space-y-3">
-          <label className="flex items-center gap-2 text-[13px]" style={{ color: hub.text }}>
-            <input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })} />
-            Включить автопилот
-          </label>
-          <div>
-            <p className="text-[12px] font-semibold" style={{ color: hub.text }}>Что разрешено выполнять без кнопки</p>
-            <div className="mt-1 space-y-1">
-              {(view?.types ?? []).map((t) => (
-                <label key={t} className="flex items-center gap-2 text-[13px]" style={{ color: hub.text }}>
-                  <input type="checkbox" checked={draft.allowedTypes.includes(t)} onChange={() => toggleType(t)} />
-                  {TYPE_LABEL[t] ?? t}
-                </label>
-              ))}
-            </div>
-          </div>
-          {(view?.routines ?? []).length > 0 ? (
-            <div>
-              <p className="text-[12px] font-semibold" style={{ color: hub.text }}>Регулярные задачи (сами, без планов)</p>
-              <div className="mt-1 space-y-1">
-                {view!.routines.map((r) => (
-                  <label key={r.id} className="flex items-center gap-2 text-[13px]" style={{ color: hub.text }}>
-                    <input type="checkbox" checked={draft.routines.includes(r.id)} onChange={() => setDraft({ ...draft, routines: draft.routines.includes(r.id) ? draft.routines.filter((x) => x !== r.id) : [...draft.routines, r.id] })} />
-                    {r.label}
-                  </label>
-                ))}
-              </div>
-              <p className="text-[12px] leading-4" style={{ color: hub.textMuted }}>Задачи, которые меняют кабинет (минус-фразы, защита бюджета, автопополнение), работают только при включённом автопилоте и в пределах действий в сутки. Проверка акций и отчёт кабинет не меняют и работают, когда отмечены. Минус-фразы можно убрать вручную в разделе «Продвижение».</p>
-            </div>
-          ) : null}
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className="text-[12px]" style={{ color: hub.textMuted }}>
-              Не больше действий в сутки
-              <input type="number" min={1} max={50} value={draft.maxActionsPerDay} onChange={(e) => setDraft({ ...draft, maxActionsPerDay: Number(e.target.value) })} className="mt-0.5 block w-full rounded-lg border px-2 py-1 text-[13px]" style={{ borderColor: hub.borderSoft, color: hub.text, background: "transparent" }} />
-            </label>
-            <label className="text-[12px]" style={{ color: hub.textMuted }}>
-              Пополнение бюджета, ₽ в сутки не больше
-              <input type="number" min={0} max={20000} step={500} value={draft.maxDepositPerDayRub} onChange={(e) => setDraft({ ...draft, maxDepositPerDayRub: Number(e.target.value) })} className="mt-0.5 block w-full rounded-lg border px-2 py-1 text-[13px]" style={{ borderColor: hub.borderSoft, color: hub.text, background: "transparent" }} />
-            </label>
-          </div>
-          <div className="flex items-center gap-2">
-            <HubButton variant="primary" disabled={busy} onClick={() => void save(draft)}>Сохранить правила</HubButton>
-            {note ? <span className="text-[12px]" style={{ color: hub.textMuted }}>{note}</span> : null}
-          </div>
-          <div>
-            <p className="text-[12px] font-semibold" style={{ color: hub.text }}>Что автопилот уже сделал</p>
-            {(view?.recent ?? []).length === 0 ? (
-              <p className="text-[12px]" style={{ color: hub.textMuted }}>Пока ничего.</p>
-            ) : (
-              <ul className="mt-1 space-y-1">
-                {view!.recent.map((r) => (
-                  <li key={r.id} className="text-[12px] leading-4" style={{ color: hub.text }}>
-                    <span style={{ color: hub.textMuted }}>{r.at ? new Date(r.at).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""} · </span>
-                    {r.title} <span style={{ color: r.status === "done" ? hub.greenDark : hub.danger }}>{r.status === "done" ? "выполнено" : "не вышло"}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      ) : null}
-    </HubPanel>
+
+      <div className={`space-y-9 transition-opacity duration-300 ${off ? "pointer-events-none opacity-45" : ""}`} aria-disabled={off}>
+        <PanelSection title="Что делает сам" hint="Цены, акции и карточки автопилот не меняет никогда: только по вашей кнопке.">
+          <PanelGroup>
+            {view.types.map((t) => (
+              <PanelRow key={t} title={TYPE_LABEL[t] ?? t} hint={TYPE_HINT[t]} control={<AgentSwitch label={TYPE_LABEL[t] ?? t} checked={draft.allowedTypes.includes(t)} disabled={off} onChange={() => patch({ allowedTypes: flip(draft.allowedTypes, t) })} />} />
+            ))}
+          </PanelGroup>
+        </PanelSection>
+
+        {view.routines.length > 0 ? (
+          <PanelSection title="Ежедневные проверки" hint="Выполняются раз в сутки без вашего участия.">
+            <PanelGroup>
+              {view.routines.map((r) => {
+                // «Защита бюджета: ставить на паузу…» → название и короткая подсказка отдельно.
+                const [name, ...rest] = r.label.split(": ");
+                return <PanelRow key={r.id} title={name} hint={rest.join(": ") || undefined} control={<AgentSwitch label={r.label} checked={draft.routines.includes(r.id)} disabled={off} onChange={() => patch({ routines: flip(draft.routines, r.id) })} />} />;
+              })}
+            </PanelGroup>
+          </PanelSection>
+        ) : null}
+
+        <PanelSection title="Не больше за сутки" hint="Когда предел исчерпан, автопилот останавливается до утра.">
+          <PanelGroup>
+            <PanelRow title="Действий" hint="Все виды вместе" control={<PanelNumber label="Действий в сутки" unit="шт." value={draft.maxActionsPerDay} min={1} max={50} onCommit={(v) => patch({ maxActionsPerDay: v })} />} />
+            <PanelRow title="Пополнение бюджета" hint="Сумма за сутки по всем кампаниям, шаг 500" control={<PanelNumber label="Пополнение бюджета в сутки" unit="₽" value={draft.maxDepositPerDayRub} min={0} max={20000} step={500} onCommit={(v) => patch({ maxDepositPerDayRub: v })} />} />
+          </PanelGroup>
+        </PanelSection>
+      </div>
+
+      <PanelSaveBar dirty={dirty} busy={busy} note={note} onSave={() => void save(draft)} onReset={() => patch(view.settings)} />
+    </div>
   );
 }

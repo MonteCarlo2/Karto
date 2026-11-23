@@ -5,7 +5,6 @@ import {
   Activity,
   BarChart3,
   Boxes,
-  ClipboardCheck,
   LayoutDashboard,
   ListTodo,
   Megaphone,
@@ -17,7 +16,6 @@ import {
   ShoppingCart,
   Tag,
   Ticket,
-  Wallet,
   Bot,
   BookOpen,
   Warehouse,
@@ -47,10 +45,8 @@ const AREA_ICON: Record<SellerHubAreaId, ComponentType<{ className?: string; str
   deliveries: Package,
   logistics: Truck,
   ads: Megaphone,
-  finance: Wallet,
   agents: Bot,
   knowledge: BookOpen,
-  verification: ClipboardCheck,
   integration: Plug,
 };
 
@@ -74,26 +70,26 @@ function RailAreaButton({
       type="button"
       onClick={onClick}
       title={collapsed ? area.label : undefined}
-      className={`flex w-full items-center rounded-xl transition-colors ${
-        collapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2 text-left"
+      className={`flex w-full items-center rounded-[10px] outline-none transition-colors duration-150 focus-visible:shadow-[0_0_0_2px_var(--hub-rail),0_0_0_4px_var(--hub-lime-ring)] ${
+        collapsed ? "h-10 justify-center px-2" : "h-10 gap-3 px-3 text-left"
       } ${
           active
-          ? "bg-[#B9FF4B] text-[#0E1116]"
-          : "text-[#0E1116] hover:bg-[#F4F6F8]"
+          ? "bg-[var(--hub-lime)] text-[var(--hub-on-lime)] shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]"
+          : "text-[var(--hub-text-muted)] hover:bg-[var(--hub-text)]/[0.05] hover:text-[var(--hub-text)]"
       }`}
       style={hubSans}
     >
-      <Icon className="h-5 w-5 shrink-0 text-[#0a0a0a]" strokeWidth={2.25} />
+      <Icon className="h-5 w-5 shrink-0" strokeWidth={1.5} />
 
       {!collapsed ? (
         <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-          <span className="truncate text-[15.5px] font-semibold leading-6 tracking-[-0.01em]">
+          <span className={`truncate text-[14px] leading-6 tracking-[-0.005em] ${active ? "font-semibold" : "font-medium"}`}>
             {area.label}
           </span>
           {planned ? (
             <span
-              className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.04em]"
-              style={{ backgroundColor: "rgba(185,255,75,0.16)", color: hub.lime }}
+              className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium"
+              style={{ backgroundColor: hub.surfaceMuted, color: hub.textSubtle }}
             >
               скоро
             </span>
@@ -117,7 +113,7 @@ export function HubSidebar({
 }) {
   return (
     <aside
-      className="flex h-full min-h-0 flex-col overflow-hidden border-e border-[#E3E6EB]"
+      className="flex h-full min-h-0 flex-col overflow-hidden border-e border-[var(--hub-border)]"
       style={{ backgroundColor: hub.railBg, ...hubSans }}
     >
       <div className={`flex shrink-0 justify-center ${collapsed ? "px-3 pb-2 pt-2" : "px-5 pb-4 pt-2"}`}>
@@ -130,12 +126,12 @@ export function HubSidebar({
         aria-label="Разделы Seller Hub"
         className={`min-h-0 flex-1 overflow-y-auto py-2 ${collapsed ? "px-2.5" : "px-3"}`}
       >
-        <div className="space-y-8">
+        <div className="space-y-6">
           {SELLER_HUB_NAV_GROUPS.map((group) => (
             <div key={group.id}>
               {!collapsed && group.label ? (
                 <p
-                  className="mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.1em]"
+                  className="mb-1.5 px-3 text-[12px] font-medium"
                   style={{ color: hub.railTextMuted }}
                 >
                   {group.label}
@@ -166,15 +162,15 @@ export function HubSidebar({
         <button
           type="button"
           onClick={onToggleCollapsed}
-          className={`flex w-full items-center justify-center gap-2 rounded-xl border border-[#E3E6EB] bg-white text-[12px] font-semibold text-[#0E1116] transition-colors hover:bg-[#F4F6F8] ${
-            collapsed ? "px-2 py-3" : "px-3 py-2.5"
+          className={`flex w-full items-center justify-center gap-2 rounded-[10px] text-[13px] font-medium text-[var(--hub-text-muted)] outline-none transition-colors duration-150 hover:bg-[var(--hub-text)]/[0.05] hover:text-[var(--hub-text)] focus-visible:shadow-[0_0_0_2px_var(--hub-rail),0_0_0_4px_var(--hub-lime-ring)] ${
+            collapsed ? "h-10 px-2" : "h-10 px-3"
           }`}
           aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
         >
           {collapsed ? (
-            <PanelLeftOpen className="h-4 w-4" strokeWidth={2.1} />
+            <PanelLeftOpen className="h-[18px] w-[18px]" strokeWidth={1.5} />
           ) : (
-            <PanelLeftClose className="h-4 w-4" strokeWidth={2.1} />
+            <PanelLeftClose className="h-[18px] w-[18px]" strokeWidth={1.5} />
           )}
           {collapsed ? null : "Свернуть меню"}
         </button>

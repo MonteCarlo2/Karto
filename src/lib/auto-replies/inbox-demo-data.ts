@@ -41,6 +41,11 @@ export type InboxReviewItem = {
   reviewPublishedAt?: string;
   /** Последняя ошибка автоотправки (не повторять бесконечно). */
   autoSendError?: string;
+  /** Сколько раз автоотправка не удалась подряд и когда в последний раз (ISO): по ним работает пауза между попытками. */
+  autoSendAttempts?: number;
+  autoSendFailedAt?: string;
+  /** Отзыв уже отвечен вне KARTO (в кабинете маркетплейса): сохраняем как отправленный, повторно не отвечаем. */
+  answeredExternally?: boolean;
 };
 
 export const DEMO_INBOX_ITEMS: InboxReviewItem[] = [

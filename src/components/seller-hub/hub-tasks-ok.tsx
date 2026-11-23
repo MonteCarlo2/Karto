@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { Check, CheckCircle2 } from "lucide-react";
 import { taskFactsFromSnapshot } from "@/lib/seller-hub/task-engine/facts";
 import type { SellerTask } from "@/lib/seller-hub/task-engine/types";
 import type { SellerCatalogSnapshot } from "@/lib/seller-hub/types";
-import { formatInt, hub, HubPanel, hubSans } from "./hub-ui";
+import { formatInt, hub, hubSans } from "./hub-ui";
 
 const WEEK_MS = 7 * 86_400_000;
 
@@ -64,33 +64,33 @@ export function HubTasksOk({
   ];
 
   return (
-    <HubPanel className="px-5 py-6">
+    <section className="py-2">
       <div className="flex items-start gap-3">
-        <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0" style={{ color: hub.greenDark }} />
+        <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0" strokeWidth={1.5} style={{ color: hub.greenDark }} />
         <div>
-          <h2 className="text-[18px] font-semibold" style={{ ...hubSans, color: hub.text }}>
+          <h2 className="text-[18px] font-semibold tracking-[-0.01em]" style={{ ...hubSans, color: hub.text }}>
             Магазин в порядке
           </h2>
-          <p className="mt-1 text-[14px] leading-6" style={{ ...hubSans, color: hub.textMuted }}>
+          <p className="mt-1 max-w-[68ch] text-pretty text-[14px] leading-6" style={{ ...hubSans, color: hub.textMuted }}>
             Активных задач нет. Мы продолжаем следить за ценами, остатками, спросом, карточками и отзывами и сообщим, как
             только что-то изменится.
             {summary.doneWeek > 0 ? ` За последнюю неделю вы закрыли задач: ${formatInt(summary.doneWeek)}.` : ""}
           </p>
         </div>
       </div>
-      <ul className="mt-5 grid gap-3 sm:grid-cols-2">
+      <ul className="mt-6 grid gap-x-12 sm:grid-cols-2">
         {checks.map((check) => (
-          <li key={check.title} className="rounded-xl border px-4 py-3" style={{ borderColor: hub.border }}>
-            <p className="text-[13.5px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-              <span style={{ color: hub.greenDark }}>✓ </span>
+          <li key={check.title} className="border-t py-4" style={{ borderColor: hub.border }}>
+            <p className="flex items-center gap-2 text-[14px] font-semibold" style={{ ...hubSans, color: hub.text }}>
+              <Check className="h-4 w-4 shrink-0" strokeWidth={2} style={{ color: hub.greenDark }} aria-hidden />
               {check.title}
             </p>
-            <p className="mt-1 text-[13px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
+            <p className="mt-1 pl-6 text-[13px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
               {check.detail}
             </p>
           </li>
         ))}
       </ul>
-    </HubPanel>
+    </section>
   );
 }

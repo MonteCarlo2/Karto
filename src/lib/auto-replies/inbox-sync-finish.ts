@@ -9,7 +9,6 @@ import { reassignInboxItemFeeds } from "./inbox-feed-utils";
 import { shouldAutoSendInboxItem } from "./inbox-star-rules";
 import {
   applyReviewScopeEligibility,
-  consumeReviewScopeLimit,
   filterInboxItemsByReviewScope,
   maxAutoSendsForReviewScope,
 } from "./inbox-review-scope";
@@ -70,7 +69,7 @@ export async function finishInboxSyncPipeline(input: {
     sendReply: input.sendReply,
   });
 
-  consumeReviewScopeLimit(input.mp.reviewScope, autoResult.autoSentCount);
+  // Расход лимита объёма считают и сохраняют вызывающие (маршруты и фоновый запуск): здесь он нигде не применялся бы.
 
   const withFallbackDrafts = await enrichPendingInboxDrafts({
     items: autoResult.items,
@@ -141,7 +140,7 @@ export async function postProcessInboxAutoSend(input: {
     sendReply: input.sendReply,
   });
 
-  consumeReviewScopeLimit(input.mp.reviewScope, autoResult.autoSentCount);
+  // Расход лимита считают и сохраняют вызывающие.
 
   const withFallbackDrafts = await enrichPendingInboxDrafts({
     items: autoResult.items,

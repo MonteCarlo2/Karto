@@ -22,6 +22,19 @@ export async function getAutoReplyBalance(
   return info.balance;
 }
 
+/**
+ * Хватает ли хотя бы одного ответа. Списываем только после успешного результата (отправки или генерации):
+ * сначала проверяем остаток этой функцией, потом делаем работу, потом consumeAutoReplyCredits. Так сбой не сжигает ответы.
+ */
+export async function hasAutoReplyCredit(supabase: SupabaseClient, userId: string, amount = 1): Promise<boolean> {
+  if (amount <= 0) return true;
+  try {
+    return (await getAutoReplyBalance(supabase, userId)) >= amount;
+  } catch {
+    return false;
+  }
+}
+
 export async function consumeAutoReplyCredits(
   supabase: SupabaseClient,
   userId: string,

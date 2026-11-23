@@ -30,6 +30,8 @@ export type SellerHubConnection = {
   catalogCount?: number;
   lastSyncAt?: string;
   scopes?: SellerHubScopeState;
+  /** Когда истекает токен WB (ISO, из самого токена). */
+  tokenExpiresAt?: string;
 };
 
 export type SellerCatalogItem = {

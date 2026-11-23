@@ -98,9 +98,48 @@ export function mergeInboxReviewItem(prev: InboxReviewItem, next: InboxReviewIte
     replyDraft,
     draftGeneratedByAi: next.draftGeneratedByAi ?? prev.draftGeneratedByAi,
     autoSendError: ghostReopen ? next.autoSendError : next.autoSendError ?? prev.autoSendError,
+    autoSendAttempts: mergedSent || ghostReopen ? undefined : next.autoSendAttempts ?? prev.autoSendAttempts,
+    autoSendFailedAt: mergedSent || ghostReopen ? undefined : next.autoSendFailedAt ?? prev.autoSendFailedAt,
+    answeredExternally: next.answeredExternally ?? prev.answeredExternally,
     canSend: ghostReopen ? next.canSend : mergedSent ? false : next.canSend,
     sentAtLabel,
   };
+}
+
+/**
+ * Отзыв, который у нас «ждёт ответа», но маркетплейс уже не отдаёт его среди неотвеченных, ответили вне KARTO (в кабинете) или он удалён.
+ * Оставлять его ожидающим нельзя: автоотправка пыталась бы ответить снова каждую минуту. Помечаем как отправленный вне KARTO.
+ * Решение принимаем только там, где свежая выдача точно покрывает отзыв: либо она полная (complete), либо отзыв не старше самого старого из полученных.
+ */
+export function reconcileAnsweredElsewhere(
+  existing: InboxReviewItem[],
+  fresh: InboxReviewItem[],
+  opts: { complete: boolean; marketplaceId?: AutoRepliesMarketplaceId }
+): InboxReviewItem[] {
+  const freshIds = new Set(fresh.map((i) => i.id));
+  let oldestMs: number | null = null;
+  for (const item of fresh) {
+    const t = item.reviewPublishedAt ? Date.parse(item.reviewPublishedAt) : NaN;
+    if (Number.isFinite(t) && (oldestMs == null || t < oldestMs)) oldestMs = t;
+  }
+  return existing.map((item) => {
+    if (item.status !== "pending" || freshIds.has(item.id)) return item;
+    if (opts.marketplaceId && item.marketplaceId !== opts.marketplaceId) return item;
+    const t = item.reviewPublishedAt ? Date.parse(item.reviewPublishedAt) : NaN;
+    const covered = opts.complete || (oldestMs != null && Number.isFinite(t) && t >= oldestMs);
+    if (!covered) return item;
+    return {
+      ...item,
+      status: "sent" as const,
+      canSend: false,
+      answeredExternally: true,
+      autoSent: false,
+      autoSendError: undefined,
+      autoSendAttempts: undefined,
+      autoSendFailedAt: undefined,
+      sentAtLabel: "Отвечено вне KARTO",
+    };
+  });
 }
 
 export function mergeInboxReviewLists(

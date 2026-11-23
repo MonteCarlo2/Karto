@@ -1,3 +1,5 @@
+import { depositMinMessage } from "./wb-rules";
+
 /** Пополнение бюджета рекламной кампании: проверка запроса до обращения к WB. Деньги двигаются только при явном подтверждении. */
 
 /** Страховочный потолок разовой суммы, ₽. Больше пополнять в KARTO нельзя: крупные суммы — в кабинете WB. */
@@ -26,6 +28,8 @@ export function parseAdDepositRequest(body: unknown): AdDepositParse {
   if (typeof sum !== "number" || !Number.isInteger(sum) || sum < 1) {
     return { ok: false, error: "Сумма пополнения — целое число рублей" };
   }
+  const tooSmall = depositMinMessage(sum);
+  if (tooSmall) return { ok: false, error: tooSmall };
   if (sum > AD_DEPOSIT_MAX_RUB) {
     return {
       ok: false,

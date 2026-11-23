@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  hasSaluteSpeechCredentials,
-  transcribeAudioSalute,
-} from "@/lib/services/salute-speech-transcribe";
+import { canTranscribe, transcribeSpeech } from "@/lib/services/speech-transcribe";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -32,7 +29,7 @@ function decodeJwtPayload(token: string): { exp?: number } | null {
 }
 
 /**
- * Голос → текст только через SaluteSpeech (Сбер). KIE / Replicate / OpenAI здесь не используются.
+ * Голос → текст: модель с аудиовходом через OpenRouter, запасной путь SaluteSpeech (Сбер).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -54,7 +51,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!hasSaluteSpeechCredentials()) {
+    if (!canTranscribe()) {
       console.error("[brand/transcribe] SaluteSpeech credentials missing");
       return NextResponse.json(
         { error: CLIENT_VOICE_FALLBACK, saluteNotConfigured: true },
@@ -93,7 +90,7 @@ export async function POST(request: NextRequest) {
 
     let result: { text: string } | { error: string };
     try {
-      result = await transcribeAudioSalute(buffer, mimeType);
+      result = await transcribeSpeech(buffer, mimeType);
     } catch (e) {
       const raw = e instanceof Error ? e.message : String(e);
       console.error("[brand/transcribe] transcribeAudioSalute threw:", raw);
@@ -105,7 +102,8 @@ export async function POST(request: NextRequest) {
     }
 
     const err = "error" in result ? result.error : "empty SaluteSpeech result";
-    console.warn("[brand/transcribe] salute unsuccessful:", err);
+    console.warn("[brand/transcribe] распознавание не удалось:", err);
+    if (err === "Речь в записи не найдена") return NextResponse.json({ error: "Не расслышал: в записи тихо или нет речи.", noSpeech: true }, { status: 422 });
 
     return NextResponse.json({ error: CLIENT_VOICE_FALLBACK }, { status: 502 });
   } catch (e) {

@@ -8,8 +8,10 @@ export function downloadBase64File(base64: string, filename: string, mime: strin
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
 const csvCell = (value: string | number | null | undefined): string => {
@@ -28,5 +30,5 @@ export function downloadCsv(filename: string, head: string[], rows: Array<Array<
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
 }

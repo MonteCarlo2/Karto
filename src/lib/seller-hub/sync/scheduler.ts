@@ -47,4 +47,16 @@ export function startSellerHubBackgroundScheduler(): void {
 
   setTimeout(() => void tick(), STARTUP_DELAY_MS);
   setInterval(() => void tick(), INTERVAL_MS);
+
+  // Поручения агента: раз в минуту выполняем те, которым пора (расписание или условие). Работает без открытого кабинета.
+  const ordersTick = async () => {
+    try {
+      const [{ createServerClient }, { runDueOrders }] = await Promise.all([import("@/lib/supabase/server"), import("@/lib/seller-hub/orders/executor")]);
+      await runDueOrders(createServerClient());
+    } catch (error) {
+      console.error("[seller-hub-orders] проход не удался:", error instanceof Error ? error.message : String(error));
+    }
+  };
+  setTimeout(() => void ordersTick(), STARTUP_DELAY_MS + 5_000);
+  setInterval(() => void ordersTick(), 60_000);
 }

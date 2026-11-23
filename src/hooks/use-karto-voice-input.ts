@@ -43,6 +43,8 @@ export function useKartoVoiceInput({
   const mediaMimeRef = useRef<string>("audio/webm");
   const streamRef = useRef<MediaStream | null>(null);
   const maxRecordTimerRef = useRef<number | null>(null);
+  /** Запись остановлена по лимиту длительности: об этом скажем после распознавания. */
+  const hitLimitRef = useRef(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const browserBufferRef = useRef("");
   const transcriptTypingRunRef = useRef(0);
@@ -192,7 +194,7 @@ export function useKartoVoiceInput({
         const typed = new File([blob], `karto-voice.${ext}`, { type: effectiveType });
 
         let res: Response | null = null;
-        let data: { text?: string; error?: string; saluteNotConfigured?: boolean } = {};
+        let data: { text?: string; error?: string; saluteNotConfigured?: boolean; noSpeech?: boolean } = {};
         let fetchError: unknown = null;
         for (let attempt = 1; attempt <= 3; attempt += 1) {
           const fd = new FormData();
@@ -237,11 +239,13 @@ export function useKartoVoiceInput({
             setVoiceHint(
               "Запись слишком большая для одной отправки. Остановите чуть раньше и попробуйте снова."
             );
+          } else if (res.status === 422 || data.noSpeech) {
+            setVoiceHint("Не расслышал: в записи тихо или нет речи. Скажите громче и ближе к микрофону.");
           } else if (res.status === 401) {
             setVoiceHint("Сессия устарела. Обновите страницу или войдите снова.");
           } else {
             setVoiceHint(
-              "Извините, голос не распознан — временная ошибка. Попробуйте ещё раз или наберите текст вручную."
+              "Не удалось распознать из-за сбоя связи. Повторите запись или напишите текстом."
             );
           }
           return;
@@ -255,13 +259,11 @@ export function useKartoVoiceInput({
             onStart: () => setTranscriptTypingVisual(true),
             onEnd: () => setTranscriptTypingVisual(false),
           });
-          if (transcriptTypingRunRef.current === runId) setVoiceHint("Текст добавлен.");
+          if (transcriptTypingRunRef.current === runId) setVoiceHint(hitLimitRef.current ? "Запись длилась дольше минуты: распознал только первые 58 секунд." : null);
           return;
         }
 
-        setVoiceHint(
-          "Извините, голос не распознан — временная ошибка. Попробуйте ещё раз или наберите текст вручную."
-        );
+        setVoiceHint("Не расслышал: в записи тихо или нет речи. Скажите громче и ближе к микрофону.");
       } catch {
         setVoiceHint("Не удалось отправить запись. Проверьте интернет или наберите текст вручную.");
       } finally {
@@ -288,7 +290,8 @@ export function useKartoVoiceInput({
 
     const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
     mediaRecorderRef.current = rec;
-    setVoiceHint("Слушаю… Нажмите ещё раз, чтобы остановить.");
+    hitLimitRef.current = false;
+    setVoiceHint(null);
 
     rec.ondataavailable = (e) => {
       if (e.data.size > 0) mediaChunksRef.current.push(e.data);
@@ -299,10 +302,10 @@ export function useKartoVoiceInput({
       const blob = new Blob(mediaChunksRef.current, { type: mediaMimeRef.current });
       mediaChunksRef.current = [];
       if (blob.size > 800) {
-        setVoiceHint("Распознаю речь...");
+        setVoiceHint(null);
         void sendRecordedAudio(blob);
       } else {
-        setVoiceHint("Запись слишком короткая — задержите запись подольше.");
+        setVoiceHint("Запись слишком короткая: держите запись дольше и говорите.");
       }
     };
 
@@ -310,7 +313,7 @@ export function useKartoVoiceInput({
     setIsRecordingMedia(true);
 
     maxRecordTimerRef.current = window.setTimeout(() => {
-      setVoiceHint("Отправляю запись на распознавание…");
+      hitLimitRef.current = true;
       stopMediaRecording();
     }, MAX_VOICE_RECORD_MS);
   }, [cleanupStream, sendRecordedAudio, startVoiceMeter, stopMediaRecording]);
@@ -363,7 +366,7 @@ export function useKartoVoiceInput({
           onStart: () => setTranscriptTypingVisual(true),
           onEnd: () => setTranscriptTypingVisual(false),
         }).then(() => {
-          if (transcriptTypingRunRef.current === runId) setVoiceHint("Текст добавлен.");
+          if (transcriptTypingRunRef.current === runId) setVoiceHint(null);
         });
       } else {
         setVoiceHint("Речь не распознана. Скажите чуть громче и ближе к микрофону.");

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildWbProductImageCandidates } from "@/lib/auto-replies/wb-basket-routes";
 import { fetchSellerHubPromotionRoster } from "@/lib/seller-hub/client-api";
-import { AlertTriangle, ArrowDown, ChevronRight, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ChevronRight, Lightbulb, X } from "lucide-react";
 import { saleMargin } from "@/lib/seller-hub/product-signal";
 import {
   catalogPaceMedian,
@@ -19,7 +19,7 @@ import type {
   SellerPromotionRow,
   SellerRealizationSnapshot,
 } from "@/lib/seller-hub/types";
-import { formatInt, formatRub, hub, hubNumeric, hubSans } from "./hub-ui";
+import { formatInt, formatRub, hub, HubButton, hubNumeric, hubSans } from "./hub-ui";
 
 type SkuLine = {
   item: SellerCatalogItem;
@@ -526,7 +526,7 @@ function PromoRule({
               if (!Number.isFinite(next)) return;
               onChange({ mode: "ifSafe", maxDiscount: Math.min(90, Math.max(1, Math.round(next))) });
             }}
-            className="h-8 w-14 rounded-md border bg-white px-2 text-center text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-[#0E1116] disabled:opacity-40"
+            className="h-8 w-14 rounded-md border bg-white px-2 text-center text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--hub-text)] disabled:opacity-40"
             style={{ ...hubSans, ...hubNumeric, borderColor: hub.border, color: hub.text }}
           />
           %
@@ -536,7 +536,7 @@ function PromoRule({
             type="checkbox"
             checked={policy.mode === "never"}
             onChange={(event) => onChange({ ...policy, mode: event.target.checked ? "never" : "ifSafe" })}
-            className="h-4 w-4 accent-[#1F4E3D]"
+            className="h-4 w-4 accent-[var(--hub-forest)]"
           />
           Держать товары вне акций
         </label>
@@ -544,7 +544,7 @@ function PromoRule({
           <button
             type="button"
             onClick={onArm}
-            className="text-[14px] underline decoration-[#E3E6EB] underline-offset-4 outline-none hover:decoration-[#0E1116] focus-visible:ring-2 focus-visible:ring-[#0E1116]"
+            className="text-[14px] underline decoration-[var(--hub-border)] underline-offset-4 outline-none hover:decoration-[var(--hub-text)] focus-visible:ring-2 focus-visible:ring-[var(--hub-text)]"
             style={{ ...hubSans, color: hub.text }}
           >
             Снять текущие скидки
@@ -560,7 +560,7 @@ function PromoRule({
             type="button"
             disabled={busy}
             onClick={onExitAll}
-            className="inline-flex h-8 items-center rounded-lg bg-[#0E1116] px-3 text-[13px] font-medium text-white outline-none hover:bg-[#2A3038] disabled:opacity-45"
+            className="inline-flex h-8 items-center rounded-lg bg-[var(--hub-text)] px-3 text-[13px] font-medium text-white outline-none hover:bg-[#2A3038] disabled:opacity-45"
             style={hubSans}
           >
             {busy ? "Записываю" : "Записать"}
@@ -838,7 +838,7 @@ function PromoStage({
                 onFocus(promo.id);
               }}
               aria-pressed={selected}
-              className="flex min-h-[212px] w-[360px] shrink-0 snap-start flex-col rounded-2xl px-5 py-4 text-left outline-none transition-[box-shadow] duration-150 focus-visible:ring-2 focus-visible:ring-[#0E1116] focus-visible:ring-offset-2 motion-reduce:transition-none"
+              className="flex min-h-[212px] w-[360px] shrink-0 snap-start flex-col rounded-2xl px-5 py-4 text-left outline-none transition-[box-shadow] duration-150 focus-visible:ring-2 focus-visible:ring-[var(--hub-text)] focus-visible:ring-offset-2 motion-reduce:transition-none"
               style={{
                 ...hubSans,
                 backgroundColor: paint.bg,
@@ -889,8 +889,8 @@ function PromoStage({
       </div>
 
       <section
-        className="mt-4 grid items-start gap-5 rounded-2xl border-2 border-[#0E1116] px-5 py-4 lg:grid-cols-[minmax(280px,440px)_minmax(0,1fr)]"
-        style={{ backgroundColor: `color-mix(in srgb, ${focusPaint.bg} 16%, #F4F6F8)` }}
+        className="mt-4 grid items-start gap-5 rounded-2xl border-2 border-[var(--hub-text)] px-5 py-4 lg:grid-cols-[minmax(280px,440px)_minmax(0,1fr)]"
+        style={{ backgroundColor: `color-mix(in srgb, ${focusPaint.bg} 16%, var(--hub-canvas))` }}
       >
         <div>
           <h3 className="text-balance text-[28px] font-semibold leading-8 tracking-[-0.03em]" style={{ ...hubSans, color: focusPaint.fg }}>
@@ -924,24 +924,37 @@ function PromoStage({
         <PromoGoods lines={listLines} ink={focusPaint.fg} />
       </section>
 
-      <section className="mt-5">
-        <h3 className="text-[14px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-          Рекомендации по всем акциям
+      <section className="mt-8">
+        <h3 className="text-[22px] font-semibold tracking-[-0.02em]" style={{ ...hubSans, color: hub.text }}>
+          Что делать с акциями
         </h3>
-        <ul className="mt-3 flex flex-col gap-2">
-          {boards.map((board) => {
+        <p className="mt-1 text-[15.5px]" style={{ ...hubSans, color: hub.textMuted }}>
+          По каждой акции: сколько товаров участвует и что выгодно сделать прямо сейчас.
+        </p>
+        <ul className="mt-5 space-y-4">
+          {boards.map((board, idx) => {
             const move = promoMove(board);
             const paint = posterTone(board.promo);
             const selected = board.promo.id === focus.promo.id;
             const inn = reportedSku(board.promo);
             const out = typeof board.promo.notInPromoTotal === "number" ? board.promo.notInPromoTotal : null;
+            const badge = deadlineBadge(board.promo);
+            const actionable = connected && (move.exitIds.length > 0 || move.addIds.length > 0);
+            // Один понятный вывод по акции: числа участия уже видны справа, поэтому повторять их не нужно.
+            const tileText =
+              board.inAction.length === 0
+                ? "WB пока не назвал товары по этой акции, поэтому действий нет. Как только придёт состав, здесь появится, что добавить или снять."
+                : move.addIds.length > 0 && move.exitIds.length > 0
+                  ? `Можно добавить ${formatInt(move.addIds.length)} ${ruCount(move.addIds.length, "товар", "товара", "товаров")}: после цены акции остаётся маржа. И стоит снять скидку с ${formatInt(move.exitIds.length)}: они уходят в минус или продаются не хуже остальных.`
+                  : move.headline;
             return (
               <li
                 key={board.promo.id}
-                className="rounded-2xl border bg-white px-4 py-3"
+                className="hub-rise rounded-[24px] border p-5 sm:p-6"
                 style={{
-                  borderColor: selected ? paint.fg : "rgba(14,17,22,0.08)",
-                  boxShadow: selected ? `inset 3px 0 0 ${paint.bg}` : undefined,
+                  animationDelay: `${Math.min(idx, 8) * 45}ms`,
+                  borderColor: selected ? paint.fg : `color-mix(in srgb, ${paint.fg} 18%, white)`,
+                  background: `linear-gradient(160deg, color-mix(in srgb, ${paint.bg} 45%, white), var(--hub-canvas) 70%)`,
                 }}
               >
                 <button
@@ -950,52 +963,76 @@ function PromoStage({
                     setConfirm(null);
                     onFocus(board.promo.id);
                   }}
-                  className="flex w-full items-start gap-3 text-left outline-none"
+                  className="flex w-full flex-wrap items-start justify-between gap-x-5 gap-y-3 text-left outline-none"
                 >
-                  <span className="mt-1 h-12 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: paint.bg }} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                      <span className="text-[16px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-                        {cleanPromoName(board.promo.name)}
-                      </span>
-                      <span className="text-[13px]" style={{ ...hubSans, ...hubNumeric, color: hub.textMuted }}>
-                        {formatInt(inn)} участвуют
-                        {out != null ? ` · ${formatInt(out)} не участвуют` : ""}
-                      </span>
+                  <span className="min-w-0">
+                    <span className="block text-[21px] font-semibold leading-[1.3] tracking-[-0.01em]" style={{ ...hubSans, color: hub.text }}>
+                      {cleanPromoName(board.promo.name)}
                     </span>
-                    <span className="mt-1 block text-pretty text-[14px] leading-5" style={{ ...hubSans, color: hub.text }}>
-                      {move.headline}
+                    <span className="mt-1 block text-[14px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                      {board.promo.type === "auto" ? "Автоакция" : "Сезонная"}
                     </span>
                   </span>
+                  <span className="flex items-center gap-6">
+                    <span className="text-right" style={hubNumeric}>
+                      <span className="block text-[28px] font-medium leading-none" style={{ color: hub.text }}>
+                        {formatInt(inn)}
+                      </span>
+                      <span className="mt-1.5 block text-[13.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                        участвуют
+                      </span>
+                    </span>
+                    {out != null ? (
+                      <span className="text-right" style={hubNumeric}>
+                        <span className="block text-[28px] font-medium leading-none" style={{ color: hub.text }}>
+                          {formatInt(out)}
+                        </span>
+                        <span className="mt-1.5 block text-[13.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                          не участвуют
+                        </span>
+                      </span>
+                    ) : null}
+                    {badge ? (
+                      <span
+                        className="rounded-[12px] border px-3.5 py-2 text-[14px] font-semibold"
+                        style={{
+                          ...hubSans,
+                          color: badge.urgent ? "#A8322D" : hub.textMuted,
+                          backgroundColor: badge.urgent ? "rgba(200, 69, 63, 0.1)" : "rgba(1, 20, 8, 0.05)",
+                          borderColor: badge.urgent ? "rgba(200, 69, 63, 0.3)" : "rgba(1, 20, 8, 0.1)",
+                        }}
+                      >
+                        {badge.text}
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
-                {connected && (move.exitIds.length > 0 || move.addIds.length > 0) ? (
-                <div className="mt-2 flex flex-wrap gap-2 pl-[1.35rem]">
-                  {move.exitIds.length > 0 ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => setConfirm({ id: board.promo.id, mode: "exit" })}
-                      className="inline-flex h-9 items-center rounded-lg bg-[#0E1116] px-3 text-[13px] font-medium text-white outline-none hover:bg-[#2A3038] disabled:opacity-45"
-                      style={hubSans}
-                    >
-                      Снять скидку с {formatInt(move.exitIds.length)}
-                    </button>
-                  ) : null}
-                  {move.addIds.length > 0 && connected ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => setConfirm({ id: board.promo.id, mode: "apply" })}
-                      className="inline-flex h-9 items-center rounded-lg border bg-white px-3 text-[13px] font-medium outline-none hover:bg-[#F4F6F8] disabled:opacity-45"
-                      style={{ ...hubSans, borderColor: hub.border, color: hub.text }}
-                    >
-                      Записать цену для {formatInt(move.addIds.length)}
-                    </button>
-                  ) : null}
+
+                <div className="mt-5 flex items-start gap-3 border-t pt-5" style={{ borderColor: "rgba(1, 20, 8, 0.1)" }}>
+                  <span className="mt-[1px] flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(185, 255, 75, 0.55)" }} aria-hidden>
+                    <Lightbulb className="h-[18px] w-[18px]" style={{ color: hub.text }} />
+                  </span>
+                  <p className="text-[16.5px] leading-[1.5]" style={{ ...hubSans, color: hub.text }}>
+                    {tileText}
+                  </p>
                 </div>
+
+                {actionable ? (
+                  <div className="mt-4 flex flex-wrap gap-2.5 pl-11">
+                    {move.exitIds.length > 0 ? (
+                      <HubButton disabled={busy} onClick={() => setConfirm({ id: board.promo.id, mode: "exit" })}>
+                        Снять скидку с {formatInt(move.exitIds.length)}
+                      </HubButton>
+                    ) : null}
+                    {move.addIds.length > 0 ? (
+                      <HubButton variant="secondary" disabled={busy} onClick={() => setConfirm({ id: board.promo.id, mode: "apply" })}>
+                        Записать цену для {formatInt(move.addIds.length)}
+                      </HubButton>
+                    ) : null}
+                  </div>
                 ) : null}
                 {confirm?.id === board.promo.id && board.promo.id !== focus.promo.id && confirm.mode === "exit" ? (
-                  <div className="pl-[1.35rem]">
+                  <div className="pl-11">
                     <ConfirmBox
                       text={`Скидка станет 0% на ${formatInt(move.exitIds.length)} ${ruCount(move.exitIds.length, "товаре", "товарах", "товарах")}.`}
                       confirmLabel="Записать в WB"
@@ -1010,7 +1047,7 @@ function PromoStage({
                   </div>
                 ) : null}
                 {confirm?.id === board.promo.id && board.promo.id !== focus.promo.id && confirm.mode === "apply" ? (
-                  <div className="pl-[1.35rem]">
+                  <div className="pl-11">
                     <ConfirmBox
                       text={`В WB уйдёт цена входа на ${formatInt(move.addIds.length)} ${ruCount(move.addIds.length, "товар", "товара", "товаров")}.`}
                       confirmLabel="Записать в WB"
@@ -1038,7 +1075,7 @@ function PromoThumb({ line }: { line: SkuLine }) {
   const fallback = basketPhoto(line.nmId);
   const [src, setSrc] = useState(primary ?? fallback);
   return (
-    <span className="h-14 w-11 shrink-0 overflow-hidden rounded-md bg-[#F4F6F8]">
+    <span className="h-14 w-11 shrink-0 overflow-hidden rounded-md bg-[var(--hub-canvas)]">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -1157,7 +1194,7 @@ function PromoDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-1.5 outline-none hover:bg-[#F4F6F8] focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+              className="rounded-lg p-1.5 outline-none hover:bg-[var(--hub-canvas)] focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
               aria-label="Закрыть разбор"
             >
               <X className="h-4 w-4" style={{ color: hub.textMuted }} />
@@ -1243,7 +1280,7 @@ function AdviceRow({
   return (
     <li className="border-b py-4" style={{ borderColor: hub.borderSoft }}>
       <div className="flex gap-3">
-        <div className="h-14 w-11 shrink-0 overflow-hidden rounded-md bg-[#F4F6F8]">
+        <div className="h-14 w-11 shrink-0 overflow-hidden rounded-md bg-[var(--hub-canvas)]">
           {photo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={photo} alt="" className="h-full w-full object-cover" />
@@ -1292,7 +1329,7 @@ function AdviceRow({
               <button
                 type="button"
                 onClick={() => onPending({ nmId: line.nmId, mode: "apply" })}
-                className="inline-flex h-8 items-center rounded-lg bg-[#0E1116] px-3 text-[12px] font-medium text-white outline-none hover:bg-[#2A3038]"
+                className="inline-flex h-8 items-center rounded-lg bg-[var(--hub-text)] px-3 text-[12px] font-medium text-white outline-none hover:bg-[#2A3038]"
                 style={hubSans}
               >
                 Применить акционную цену
@@ -1302,7 +1339,7 @@ function AdviceRow({
               <button
                 type="button"
                 onClick={() => onPending({ nmId: line.nmId, mode: "exit" })}
-                className="inline-flex h-8 items-center rounded-[11px] border bg-white px-3 text-[12px] font-semibold outline-none hover:bg-[#F4F6F8]"
+                className="inline-flex h-8 items-center rounded-[11px] border bg-white px-3 text-[12px] font-semibold outline-none hover:bg-[var(--hub-canvas)]"
                 style={{ ...hubSans, borderColor: hub.border, color: hub.text }}
               >
                 Удержать цену вне акции
@@ -1312,7 +1349,7 @@ function AdviceRow({
               <button
                 type="button"
                 onClick={() => onPending({ nmId: line.nmId, mode: "keep" })}
-                className="inline-flex h-8 items-center rounded-[11px] border bg-white px-3 text-[12px] font-semibold outline-none hover:bg-[#F4F6F8]"
+                className="inline-flex h-8 items-center rounded-[11px] border bg-white px-3 text-[12px] font-semibold outline-none hover:bg-[var(--hub-canvas)]"
                 style={{ ...hubSans, borderColor: hub.border, color: hub.text }}
               >
                 Оставить текущую цену
@@ -1389,7 +1426,7 @@ function ConfirmBox({
           type="button"
           disabled={busy}
           onClick={onConfirm}
-          className="inline-flex h-8 items-center rounded-lg bg-[#0E1116] px-3 text-[12px] font-medium text-white outline-none hover:bg-[#2A3038] disabled:opacity-45"
+          className="inline-flex h-8 items-center rounded-lg bg-[var(--hub-text)] px-3 text-[12px] font-medium text-white outline-none hover:bg-[#2A3038] disabled:opacity-45"
           style={hubSans}
         >
           {busy ? "Записываю" : confirmLabel}

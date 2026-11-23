@@ -248,13 +248,17 @@ function causeEvidence(cause: ProbableCause | null): TaskEvidence {
     probable_cause_detail: cause.detail,
     probable_cause_from: cause.from,
     probable_cause_to: cause.to,
-    probable_cause_note: "Вероятная причина по данным Hub, не доказанная.",
+    probable_cause_note: "Возможная причина по данным кабинета, это предположение.",
   };
 }
 
 function causeSentence(cause: ProbableCause | null): string {
   if (!cause) return "";
-  return ` Вероятная причина по данным Hub: ${cause.label} (${cause.detail}). Это не доказательство.`;
+  const change =
+    cause.from != null && cause.to != null && Number.isFinite(Number(cause.from)) && Number.isFinite(Number(cause.to))
+      ? ` (было ${rub(Number(cause.from))}, стало ${rub(Number(cause.to))})`
+      : "";
+  return ` Возможная причина: ${cause.label}${change}. Это предположение, а не точный вывод.`;
 }
 
 function volumesSentence(opens: number | null, orders: number | null): string {
@@ -394,7 +398,7 @@ export function candidateSalesDrop(
     severityFloor: "opportunity",
     severityCeiling: "critical",
     title: series.source === "orders" ? "Проверить падение заказов" : "Проверить падение продаж",
-    description: `${fact.title}: ${metric} снизились ${pctRel(test.relativeChange)} (${pieces(series.prior)} → ${pieces(series.current)})${volumes ? `, ${volumes}` : ""}. Период: ${period}. Оценка потерь: ${pieces(lostUnits)}${money != null ? ` ≈ ${rub(money)}` : ""} (оценка).${causeSentence(cause)}`,
+    description: `${fact.title}: ${metric} снизились ${pctRel(test.relativeChange)} (было ${pieces(series.prior)}, стало ${pieces(series.current)})${volumes ? `, ${volumes}` : ""}. Период: ${period}. Оценка потерь: ${pieces(lostUnits)}${money != null ? ` ≈ ${rub(money)}` : ""} (оценка).${causeSentence(cause)}`,
     reason: `Статистически достоверное падение ${metric} при относительной существенности ≥ ${thresholds.salesChangePercent}% (${series.sourceLabel}).`,
     evidence: {
       current_sales_28d: series.current,
@@ -452,7 +456,7 @@ export function candidateSalesGrowth(
     severityFloor: "opportunity",
     severityCeiling: "important",
     title: series.source === "orders" ? "Рост заказов стоит сверить с запасом" : "Растущий спрос стоит сверить с запасом",
-    description: `${fact.title}: ${metric} выросли ${pctRel(test.relativeChange)} (${pieces(series.prior)} → ${pieces(series.current)}). Период: ${period}.${causeSentence(cause)}`,
+    description: `${fact.title}: ${metric} выросли ${pctRel(test.relativeChange)} (было ${pieces(series.prior)}, стало ${pieces(series.current)}). Период: ${period}.${causeSentence(cause)}`,
     reason: `Статистически достоверный рост ${metric} при относительной существенности ≥ ${thresholds.salesChangePercent}%.`,
     evidence: {
       current_sales_28d: series.current,
@@ -528,7 +532,7 @@ export function candidateConversionDrop(
     );
     stages.push({
       which: "add_to_cart",
-      label: "конверсия в корзину (переходы → корзина)",
+      label: "конверсия из просмотров в корзину",
       test: cart,
       fromPct: fact.priorAddToCartPercent,
       toPct: fact.addToCartPercent,
@@ -543,7 +547,7 @@ export function candidateConversionDrop(
     );
     stages.push({
       which: "cart_to_order",
-      label: "конверсия в заказ (корзина → заказ)",
+      label: "конверсия из корзины в заказ",
       test: order,
       fromPct: fact.priorCartToOrderPercent,
       toPct: fact.cartToOrderPercent,
@@ -589,7 +593,7 @@ export function candidateConversionDrop(
     severityFloor: "opportunity",
     severityCeiling: "critical",
     title: "Упала конверсия карточки",
-    description: `${fact.title}: ${trafficLead}. ${best.label}: ${best.fromPct ?? "—"}% → ${best.toPct ?? "—"}%. На основе ${pieces(opensTotal).replace(" шт.", "")} переходов и ${pieces(ordersTotal)} заказов за 28 дней. Период: ${period}. Оценка потерь: ${pieces(lostUnits)}${money != null ? ` ≈ ${rub(money)}` : ""} (оценка).${causeSentence(cause)}${contentLevers}`,
+    description: `${fact.title}: ${trafficLead}. ${best.label}: было ${best.fromPct ?? "—"}%, стало ${best.toPct ?? "—"}%. На основе ${pieces(opensTotal).replace(" шт.", "")} переходов и ${pieces(ordersTotal)} заказов за 28 дней. Период: ${period}. Оценка потерь: ${pieces(lostUnits)}${money != null ? ` ≈ ${rub(money)}` : ""} (оценка).${causeSentence(cause)}${contentLevers}`,
     reason: `Достоверное падение заказов при недостоверном/слабом падении переходов и достоверном падении ${best.label} ≥ ${thresholds.conversionDropPercent}% относительно.`,
     evidence: {
       current_sales_28d: fact.orders,
@@ -706,7 +710,7 @@ export function candidateLowTraffic(
     severityFloor: "opportunity",
     severityCeiling: "critical",
     title: "Карточку стали реже видеть",
-    description: `${fact.title}: заказы упали вместе с переходами. Переходы: ${pieces(fact.priorOpenCount)} → ${pieces(fact.openCount)}. На основе ${pieces(opensTotal).replace(" шт.", "")} переходов и ${pieces(ordersTotal)} заказов за 28 дней. Период: ${period}. Оценка потерь: ${pieces(lostUnits)}${money != null ? ` ≈ ${rub(money)}` : ""} (оценка).${causeSentence(cause)}`,
+    description: `${fact.title}: заказы упали вместе с переходами. Переходы: было ${pieces(fact.priorOpenCount)}, стало ${pieces(fact.openCount)}. На основе ${pieces(opensTotal).replace(" шт.", "")} переходов и ${pieces(ordersTotal)} заказов за 28 дней. Период: ${period}. Оценка потерь: ${pieces(lostUnits)}${money != null ? ` ≈ ${rub(money)}` : ""} (оценка).${causeSentence(cause)}`,
     reason: `Достоверное падение заказов и переходов (≥ ${thresholds.trafficDropPercent}% относительно) без достоверного падения конверсий.`,
     evidence: {
       current_sales_28d: fact.orders,

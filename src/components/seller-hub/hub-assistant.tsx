@@ -11,6 +11,7 @@ import type { SellerCatalogItem, SellerCatalogSnapshot } from "@/lib/seller-hub/
 import { autoRepliesAuthorizedFetch } from "@/lib/auto-replies/auto-replies-fetch";
 import { snapshotTimeMs, withoutIncompleteDay } from "@/lib/seller-hub/complete-days";
 import { hub, HubButton, hubSans } from "./hub-ui";
+import { HubVoiceButton } from "./hub-voice-button";
 
 type Draft = {
   agent: "prices" | "ads" | "comms";
@@ -186,11 +187,11 @@ function assistantHasSignal(snapshot?: SellerCatalogSnapshot): boolean {
 function AssistantMark({ size = 36 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 36 36" aria-hidden>
-      <circle cx="18" cy="18" r="18" fill="#0E1116" />
-      <circle cx="18" cy="16.5" r="8" fill="#B9FF4B" />
-      <circle cx="15.2" cy="15.6" r="1.3" fill="#0E1116" />
-      <circle cx="20.8" cy="15.6" r="1.3" fill="#0E1116" />
-      <path d="M15 19.2c1 .9 2.1 1.3 3 1.3s2-.4 3-1.3" fill="none" stroke="#0E1116" strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="18" cy="18" r="18" fill="var(--hub-text)" />
+      <circle cx="18" cy="16.5" r="8" fill="var(--hub-lime)" />
+      <circle cx="15.2" cy="15.6" r="1.3" fill="var(--hub-text)" />
+      <circle cx="20.8" cy="15.6" r="1.3" fill="var(--hub-text)" />
+      <path d="M15 19.2c1 .9 2.1 1.3 3 1.3s2-.4 3-1.3" fill="none" stroke="var(--hub-text)" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -321,27 +322,8 @@ export function HubAssistant({
     }
   }
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => onOpenChange(true)}
-        className="absolute bottom-5 right-5 z-40 flex max-w-[min(320px,calc(100%-2.5rem))] items-center gap-2.5 rounded-full border bg-white py-1.5 pl-1.5 pr-4 text-left shadow-[0_8px_28px_rgba(14,17,22,0.12)] outline-none focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
-        style={{ borderColor: hub.border, ...hubSans }}
-        aria-label="Открыть помощника"
-      >
-        <span className="relative shrink-0">
-          <AssistantMark size={40} />
-          {hasSignal ? (
-            <span className="absolute -right-0.5 -top-0.5 h-3 w-3 animate-pulse rounded-full bg-[#B9FF4B] ring-2 ring-white" aria-hidden />
-          ) : null}
-        </span>
-        <span className="min-w-0 truncate text-[13px] font-medium" style={{ color: hub.text }}>
-          {hint}
-        </span>
-      </button>
-    );
-  }
+  // Плавающую кнопку помощника убрали: панель открывается только из кнопок «Спросить» в разделах.
+  if (!open) return null;
 
   return (
     <div
@@ -380,12 +362,12 @@ export function HubAssistant({
               type="button"
               onClick={() => onExpandedChange(!expanded)}
               aria-label={expanded ? "Вернуть к краю" : "Развернуть"}
-              className="rounded-lg p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#B9FF4B]"
+              className="rounded-lg p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--hub-lime)]"
               style={{ color: hub.textMuted }}
             >
               {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
-            <button type="button" onClick={() => { onExpandedChange(false); onOpenChange(false); }} aria-label="Закрыть" className="rounded-lg p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#B9FF4B]" style={{ color: hub.textMuted }}>
+            <button type="button" onClick={() => { onExpandedChange(false); onOpenChange(false); }} aria-label="Закрыть" className="rounded-lg p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--hub-lime)]" style={{ color: hub.textMuted }}>
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -402,7 +384,7 @@ export function HubAssistant({
                   key={starter}
                   type="button"
                   onClick={() => ask(starter)}
-                  className="rounded-full border border-[#E3E6EB] bg-[#F4F6F8] px-3 py-1.5 text-left text-[13px] font-medium transition duration-150 hover:-translate-y-px hover:bg-[#B9FF4B]/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#B9FF4B]"
+                  className="rounded-full border border-[var(--hub-border)] bg-[var(--hub-canvas)] px-3 py-1.5 text-left text-[13px] font-medium transition duration-150 hover:-translate-y-px hover:bg-[var(--hub-lime)]/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--hub-lime)]"
                   style={{ color: hub.text }}
                 >
                   {starter}
@@ -422,15 +404,15 @@ export function HubAssistant({
                   <ol className="space-y-2">
                     {turn.draft.steps.map((step, index) => (
                       <li key={step} className="flex gap-2.5 text-[13.5px] leading-snug" style={{ color: hub.text }}>
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B9FF4B]/40 text-[11px] font-bold text-[#1F4E3D]">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--hub-lime)]/40 text-[11px] font-bold text-[var(--hub-forest)]">
                           {index + 1}
                         </span>
                         <span>{step}</span>
                       </li>
                     ))}
                   </ol>
-                  <div className="flex items-center gap-2 text-[13px] font-medium text-[#1F4E3D]">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#B9FF4B] text-[#1F4E3D]">
+                  <div className="flex items-center gap-2 text-[13px] font-medium text-[var(--hub-forest)]">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--hub-lime)] text-[var(--hub-forest)]">
                       <Check className="h-3 w-3" />
                     </span>
                     Готово к проверке
@@ -470,7 +452,7 @@ export function HubAssistant({
                             key={value}
                             type="button"
                             onClick={() => setSchedule(value)}
-                            className="rounded-full px-2.5 py-1 text-[12px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#B9FF4B]"
+                            className="rounded-full px-2.5 py-1 text-[12px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--hub-lime)]"
                             style={{
                               backgroundColor: schedule === value ? "rgba(185,255,75,0.45)" : "transparent",
                               color: hub.text,
@@ -486,7 +468,7 @@ export function HubAssistant({
                         <input
                           value={chatId}
                           onChange={(event) => setChatId(event.target.value)}
-                          className="mt-1 w-full rounded-[10px] border px-3 py-2 text-[13px] outline-none focus:ring-2 focus:ring-[#B9FF4B]"
+                          className="mt-1 w-full rounded-[10px] border px-3 py-2 text-[13px] outline-none focus:ring-2 focus:ring-[var(--hub-lime)]"
                           style={{ borderColor: hub.inputBorder, backgroundColor: hub.inputBg, color: hub.text }}
                         />
                       </label>
@@ -510,9 +492,9 @@ export function HubAssistant({
               <span className="inline-flex items-center gap-2 text-[13px]" style={{ color: hub.textMuted }} aria-label="KARTO печатает">
                 Печатает
                 <span className="inline-flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#1F4E3D]" />
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#1F4E3D] [animation-delay:150ms]" />
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#1F4E3D] [animation-delay:300ms]" />
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--hub-forest)]" />
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--hub-forest)] [animation-delay:150ms]" />
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--hub-forest)] [animation-delay:300ms]" />
                 </span>
               </span>
             </Bubble>
@@ -552,11 +534,12 @@ export function HubAssistant({
               }
             }}
           />
+          <HubVoiceButton value={prompt} onChange={setPrompt} disabled={typing} size={36} className="mb-0.5 shrink-0" />
           <button
             type="submit"
             disabled={!prompt.trim() || typing}
             aria-label="Отправить"
-            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#B9FF4B] text-[#0E1116] transition hover:bg-[#C6FF68] disabled:opacity-40"
+            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--hub-lime)] text-[var(--hub-text)] transition hover:bg-[#C6FF68] disabled:opacity-40"
           >
             <ArrowUp className="h-4 w-4" />
           </button>
@@ -583,8 +566,8 @@ function Bubble({ role, children }: { role: "user" | "assistant"; children: Reac
       <div
         className={
           mine
-            ? "max-w-[82%] rounded-2xl rounded-br-md bg-[#B9FF4B] px-3.5 py-2.5 text-[#0A0A0A]"
-            : "max-w-[82%] rounded-2xl rounded-bl-md bg-[#F4F6F8] px-3.5 py-2.5 text-[#0E1116]"
+            ? "max-w-[82%] rounded-2xl rounded-br-md bg-[var(--hub-lime)] px-3.5 py-2.5 text-[#0A0A0A]"
+            : "max-w-[82%] rounded-2xl rounded-bl-md bg-[var(--hub-canvas)] px-3.5 py-2.5 text-[var(--hub-text)]"
         }
       >
         {children}

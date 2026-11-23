@@ -261,7 +261,7 @@ function FilterChip({
       role="tab"
       aria-selected={active}
       onClick={onClick}
-      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-[11px] border bg-white px-3.5 text-[13px] outline-none transition hover:bg-[#F4F6F8] focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-[11px] border bg-white px-3.5 text-[13px] outline-none transition hover:bg-[var(--hub-canvas)] focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
       style={{
         ...hubSans,
         borderColor: active ? hub.ink : hub.border,
@@ -320,7 +320,7 @@ function KpiFilters({
             type="button"
             aria-expanded={open}
             onClick={() => setOpen((value) => !value)}
-            className="inline-flex min-h-[40px] items-center rounded-[11px] border bg-white px-3.5 text-[13px] font-semibold outline-none hover:bg-[#F4F6F8] focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+            className="inline-flex min-h-[40px] items-center rounded-[11px] border bg-white px-3.5 text-[13px] font-semibold outline-none hover:bg-[var(--hub-canvas)] focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
             style={{
               ...hubSans,
               borderColor: moreActive ? hub.ink : hub.border,
@@ -343,7 +343,7 @@ function KpiFilters({
                     onChange(option.id);
                     setOpen(false);
                   }}
-                  className="flex w-full items-center justify-between rounded-[8px] px-3 py-2 text-left text-[13px] outline-none hover:bg-[#F4F6F8]"
+                  className="flex w-full items-center justify-between rounded-[8px] px-3 py-2 text-left text-[13px] outline-none hover:bg-[var(--hub-canvas)]"
                   style={{ ...hubSans, color: filter === option.id ? hub.ink : hub.text, fontWeight: filter === option.id ? 600 : 500 }}
                 >
                   {option.label}
@@ -392,7 +392,7 @@ function ProductCell({ item, onPreview }: { item: SellerCatalogItem; onPreview: 
     <div className="flex min-w-[280px] items-center gap-3.5">
       <button
         type="button"
-        className="relative flex h-[75px] w-[56px] shrink-0 items-center justify-center overflow-hidden bg-[#F4F6F8] outline-none focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+        className="relative flex h-[75px] w-[56px] shrink-0 items-center justify-center overflow-hidden bg-[var(--hub-canvas)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
         style={{ boxShadow: `inset 0 0 0 1px ${hub.border}` }}
         onClick={(event) => {
           event.stopPropagation();
@@ -439,7 +439,7 @@ function saleFromDraft(item: SellerCatalogItem, draft: RowDraft | undefined): nu
 }
 
 const CLICK_FRAME =
-  "inline-flex cursor-pointer items-center rounded-lg border-2 shadow-[0_1px_2px_rgba(14,17,22,0.06)] outline-none transition duration-200 hover:shadow-[0_4px_12px_rgba(14,17,22,0.1)] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#1F4E3D] focus-visible:ring-offset-2";
+  "inline-flex cursor-pointer items-center rounded-lg border-2 shadow-[0_1px_2px_rgba(14,17,22,0.06)] outline-none transition duration-200 hover:shadow-[0_4px_12px_rgba(14,17,22,0.1)] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)] focus-visible:ring-offset-2";
 
 function scorePaint(score: number): { pill: string; dot: string; number: string } {
   if (score >= 80) {
@@ -600,7 +600,7 @@ function StockCover({
         type="button"
         aria-label={label}
         onClick={onOpen}
-        className="inline-flex items-center rounded-full px-2 py-0.5 text-[12px] font-semibold leading-none outline-none focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+        className="inline-flex items-center rounded-full px-2 py-0.5 text-[12px] font-semibold leading-none outline-none focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
         style={{ ...hubSans, ...hubNumeric, backgroundColor: look.backgroundColor, color: look.color }}
       >
         {cover.text}
@@ -627,7 +627,7 @@ function MetricButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="rounded-[4px] text-left text-[15px] font-semibold underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+      className="rounded-[4px] text-left text-[15px] font-semibold underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
       style={{ ...hubSans, ...hubNumeric, color }}
     >
       {children}
@@ -687,7 +687,7 @@ function StatusChip({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-semibold leading-none outline-none transition duration-200 hover:shadow-[0_2px_6px_rgba(14,17,22,0.08)] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[#1F4E3D] focus-visible:ring-offset-1"
+      className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-semibold leading-none outline-none transition duration-200 hover:shadow-[0_2px_6px_rgba(14,17,22,0.08)] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)] focus-visible:ring-offset-1"
       style={{ ...hubSans, ...look }}
     >
       <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: look.color }} aria-hidden />
@@ -799,7 +799,11 @@ export function HubCatalog({
     return map;
   }, [snapshot?.orders?.orders]);
 
-  const items = useMemo(() => snapshot?.items ?? [], [snapshot]);
+  // Один товар иногда приходит дважды (слияние кэша и свежих данных): оставляем первый, иначе у строк повторяются ключи React.
+  const items = useMemo(() => {
+    const seen = new Set<string>();
+    return (snapshot?.items ?? []).filter((item) => (seen.has(item.id) ? false : (seen.add(item.id), true)));
+  }, [snapshot]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -961,7 +965,11 @@ export function HubCatalog({
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
 
+    // Один товар может прийти в списке дважды (слияние кэша и свежих данных): показываем его один раз, иначе у строк повторяются ключи.
+    const seenIds = new Set<string>();
     let rows = items.filter((item) => {
+      if (seenIds.has(item.id)) return false;
+      seenIds.add(item.id);
       if (q) {
         const haystack = `${item.title} ${item.vendorCode} ${item.externalId} ${item.brand ?? ""} ${item.barcode ?? ""}`;
         if (!haystack.toLowerCase().includes(q)) return false;
@@ -1555,7 +1563,7 @@ export function HubCatalog({
               <button
                 type="button"
                 aria-label="Очистить поиск"
-                className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full outline-none hover:bg-black/[0.05] focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+                className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full outline-none hover:bg-black/[0.05] focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
                 style={{ color: hub.textMuted }}
                 onClick={() => {
                   setSearch("");
@@ -1612,7 +1620,7 @@ export function HubCatalog({
             <button
               type="button"
               onClick={beginEdit}
-              className="inline-flex h-[42px] items-center rounded-[11px] border-2 bg-white px-4 text-[14px] font-semibold outline-none transition hover:bg-[#F4F6F8] active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F4E3D]"
+              className="inline-flex h-[42px] items-center rounded-[11px] border-2 bg-white px-4 text-[14px] font-semibold outline-none transition hover:bg-[var(--hub-canvas)] active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hub-forest)]"
               style={{ ...hubSans, borderColor: hub.ink, color: hub.ink }}
             >
               Редактировать
@@ -1623,7 +1631,7 @@ export function HubCatalog({
             disabled={visible.length === 0}
             title="Скачать текущий список книгой Excel: колонки таблицы, без «Действий». Артикул, nmID и штрихкод — текст."
             onClick={exportVisible}
-            className="inline-flex h-[42px] items-center gap-2 rounded-[11px] border-2 bg-white px-4 text-[14px] font-semibold outline-none transition hover:bg-[#F4F8FF] active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F4E3D] disabled:cursor-not-allowed disabled:opacity-45"
+            className="inline-flex h-[42px] items-center gap-2 rounded-[11px] border-2 bg-white px-4 text-[14px] font-semibold outline-none transition hover:bg-[#F4F8FF] active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hub-forest)] disabled:cursor-not-allowed disabled:opacity-45"
             style={{ ...hubSans, borderColor: hub.blue, color: hub.blue }}
           >
             <Download className="h-4 w-4" />
@@ -1695,7 +1703,7 @@ export function HubCatalog({
             </div>
             <button
               type="button"
-              className="inline-flex h-10 shrink-0 items-center rounded-[11px] border-2 bg-white px-3.5 text-[13.5px] font-semibold outline-none hover:bg-[#F4F6F8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F4E3D]"
+              className="inline-flex h-10 shrink-0 items-center rounded-[11px] border-2 bg-white px-3.5 text-[13.5px] font-semibold outline-none hover:bg-[var(--hub-canvas)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hub-forest)]"
               style={{ ...hubSans, borderColor: hub.ink, color: hub.ink }}
               onClick={() => {
                 setShowSitting((shown) => !shown);
@@ -1725,7 +1733,7 @@ export function HubCatalog({
                     {column.focus ? (
                       <button
                         type="button"
-                        className="rounded-[4px] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+                        className="rounded-[4px] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
                         onClick={() => setBrief({ kind: "guide", focus: column.focus ?? "index" })}
                       >
                         {column.label}
@@ -1766,7 +1774,7 @@ export function HubCatalog({
                 return (
                 <tr
                   key={item.id}
-                  className="group cursor-pointer border-b transition-colors duration-200 hover:bg-[#F4F6F8]"
+                  className="group cursor-pointer border-b transition-colors duration-200 hover:bg-[var(--hub-canvas)]"
                   style={{ borderColor: hub.borderSoft }}
                   onClick={() => requestLeave(() => setSelectedItem(item))}
                 >
@@ -1881,7 +1889,7 @@ export function HubCatalog({
                       {signal.floor != null ? (
                         <button
                           type="button"
-                          className="text-[11px] font-medium underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+                          className="text-[11px] font-medium underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
                           style={{ color: hub.textMuted }}
                           onClick={(event) => openBrief(event, item.id, "margin")}
                         >
@@ -1928,7 +1936,7 @@ export function HubCatalog({
                     ) : (
                       <button
                         type="button"
-                        className="rounded-[4px] text-[15px] font-semibold underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+                        className="rounded-[4px] text-[15px] font-semibold underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
                         style={{ ...hubSans, ...hubNumeric, color: item.costPrice != null ? hub.text : hub.textMuted }}
                         title={item.costPrice == null ? "Вписать себестоимость" : "Изменить себестоимость"}
                         onClick={(event) => {
@@ -1954,7 +1962,7 @@ export function HubCatalog({
                     {signal.margin != null && signal.marginGap == null ? (
                       <button
                         type="button"
-                        className="inline-flex items-center gap-0.5 rounded-[4px] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+                        className="inline-flex items-center gap-0.5 rounded-[4px] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
                         onClick={(event) => openBrief(event, item.id, "margin")}
                       >
                         <span>
@@ -2073,7 +2081,7 @@ export function HubCatalog({
                           event.stopPropagation();
                           onAsk(auditChatText(item, coverDays(item, ordersByNm, periodDays), periodDays));
                         }}
-                        className="inline-flex h-9 cursor-pointer items-center rounded-[11px] bg-[#B9FF4B] px-3.5 text-[13px] font-semibold text-[#0E1116] shadow-[0_1px_2px_rgba(14,17,22,0.1),0_0_0_1px_rgba(31,78,61,0.14)] outline-none transition duration-200 hover:bg-[#C6FF68] hover:shadow-[0_8px_18px_rgba(185,255,75,0.55)] active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1F4E3D]"
+                        className="inline-flex h-9 cursor-pointer items-center rounded-[11px] bg-[var(--hub-lime)] px-3.5 text-[13px] font-semibold text-[var(--hub-text)] shadow-[0_1px_2px_rgba(14,17,22,0.1),0_0_0_1px_rgba(31,78,61,0.14)] outline-none transition duration-200 hover:bg-[#C6FF68] hover:shadow-[0_8px_18px_rgba(185,255,75,0.55)] active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--hub-forest)]"
                         style={hubSans}
                       >
                         Аудит

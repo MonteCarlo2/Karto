@@ -160,3 +160,33 @@ describe("действия в одну кнопку", () => {
     assert.equal(twice[0]!.fix, undefined);
   });
 });
+
+describe("советы по рекламе не противоречат остальным", () => {
+  it("кандидата на тест рекламы нет, если запаса меньше 14 дней или остаток меньше пяти штук", () => {
+    const run = (patch: Partial<AdvisorProduct>) => advise({ products: [product({ orders28: 0, ...patch })] }).filter((a) => a.kind === "candidate").length;
+    assert.equal(run({}), 1);
+    assert.equal(run({ coverDays: 5 }), 0);
+    assert.equal(run({ stock: 3 }), 0);
+  });
+  it("в кампанию, которая не окупается, пополнение не советуют", () => {
+    const campaign = { id: "10", name: "К", status: 9, budget: 100, bids: [{ nmId: "1" }] } as never;
+    const result = advise({
+      campaigns: [campaign],
+      campaignStats: [{ advertId: "10", spend: 1400, orders: 5, orderSum: 3000 }],
+      products: [product({ marginPercent: 20 })],
+    });
+    const b = result.find((a) => a.kind === "budget_low");
+    assert.ok(b);
+    assert.equal(b!.fix, undefined, "кнопки пополнения нет");
+    assert.match(b!.action, /Не пополняйте/);
+  });
+  it("в кампанию, которая окупается, пополнение советуют", () => {
+    const campaign = { id: "10", name: "К", status: 9, budget: 100, bids: [{ nmId: "1" }] } as never;
+    const result = advise({
+      campaigns: [campaign],
+      campaignStats: [{ advertId: "10", spend: 1400, orders: 50, orderSum: 30000 }],
+      products: [product({ marginPercent: 20 })],
+    });
+    assert.equal(result.find((a) => a.kind === "budget_low")?.fix?.type, "deposit");
+  });
+});

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSellerHubWbToken, wbRouteError } from "@/lib/seller-hub/wb-token-http";
 import { WildberriesApiError } from "@/lib/services/wildberries/client";
-import { fetchWbSupplyOrders, type WbSupplyOrder } from "@/lib/services/wildberries/marketplace-ops-client";
+import { fetchWbOrdersIndex, fetchWbSupplyOrders, type WbSupplyOrder } from "@/lib/services/wildberries/marketplace-ops-client";
 import { CACHE_TTL_MS, cachedFetch, supabaseCacheStore } from "@/lib/seller-hub/data-cache";
 import { safeSellerHubMessage } from "@/lib/seller-hub/wb-token";
 import { createServerClient } from "@/lib/supabase/server";
@@ -57,6 +57,28 @@ export async function POST(request: NextRequest) {
       fails += 1;
       firstError ??= e;
       failed.push({ supplyId: supply.id, status: e.status, message: safeSellerHubMessage(e.message, access.token) });
+    }
+  }
+
+  // Новый метод состава отдаёт только номера заданий: товар достаём из выгрузки заданий за 30 дней (кэш на полчаса, одна на все поставки).
+  if (result.some((r) => r.orders.some((o) => o.nmId == null && !o.article))) {
+    try {
+      const index = await cachedFetch({
+        store,
+        key: "orders-index:30",
+        ttlMs: 30 * 60_000,
+        fetcher: () => fetchWbOrdersIndex(access.token, 30),
+      });
+      const byId = new Map(index.value.map((row) => [row.id, row]));
+      for (const entry of result) {
+        entry.orders = entry.orders.map((o) => {
+          if (o.nmId != null || o.article) return o;
+          const hit = byId.get(o.id);
+          return hit ? { ...o, nmId: hit.nmId, article: hit.article } : o;
+        });
+      }
+    } catch {
+      /* без расшифровки остаются номера заданий: экран это показывает */
     }
   }
 

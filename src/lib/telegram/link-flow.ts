@@ -1,8 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { telegramSendMessage } from "./bot-api";
+import { HELP_TEXT, MENU_KEYBOARD } from "./assistant-text";
+import { assistantAllowed } from "./access";
 import {
   TELEGRAM_WELCOME_ALREADY,
   TELEGRAM_WELCOME_LINKED,
+  TELEGRAM_WELCOME_LINKED_BASIC,
   TELEGRAM_WELCOME_RELINKED,
 } from "./bot-profile";
 import {
@@ -54,12 +57,17 @@ export async function completeTelegramLink(
     });
   }
 
-  if (!existing || !sameAccount) {
+  // Кнопки помощника под полем ввода показываем вместе с приветствием, но только тем, кому помощник открыт.
+  if (!assistantAllowed(input.userId)) {
+    await telegramSendMessage({ chatId: input.chat.id, text: !existing || !sameAccount ? TELEGRAM_WELCOME_LINKED_BASIC : TELEGRAM_WELCOME_ALREADY });
+  } else if (!existing || !sameAccount) {
     await telegramSendMessage({ chatId: input.chat.id, text: TELEGRAM_WELCOME_LINKED });
+    await telegramSendMessage({ chatId: input.chat.id, text: HELP_TEXT, replyMarkup: MENU_KEYBOARD });
   } else if (chatChanged || isRelink) {
-    await telegramSendMessage({ chatId: input.chat.id, text: TELEGRAM_WELCOME_RELINKED });
+    // Чат восстановлен (например, историю очистили): одно аккуратное сообщение с возможностями.
+    await telegramSendMessage({ chatId: input.chat.id, text: `${TELEGRAM_WELCOME_RELINKED}\n\n${HELP_TEXT}`, replyMarkup: MENU_KEYBOARD });
   } else {
-    await telegramSendMessage({ chatId: input.chat.id, text: TELEGRAM_WELCOME_ALREADY });
+    await telegramSendMessage({ chatId: input.chat.id, text: HELP_TEXT, replyMarkup: MENU_KEYBOARD });
   }
 
   if (!existing || !sameAccount || chatChanged || isRelink) {

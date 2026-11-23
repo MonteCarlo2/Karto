@@ -1,3 +1,4 @@
+import { humanizeText } from "@/lib/seller-hub/task-engine/story";
 import type { TaskActionType, TaskEvidence, TaskImpactType, TaskSeverity, TaskStatus } from "@/lib/seller-hub/task-engine/types";
 
 export const IMPACT_OPTIONS: Array<{ id: TaskImpactType | "all"; label: string }> = [
@@ -92,16 +93,46 @@ export function impactWhy(impact: TaskImpactType): string {
   }
 }
 
+/** Кнопка «просто посмотреть» внутри задачи: ведёт к тому же месту, но называется как просмотр, а не правка. */
+export function viewLabel(action: TaskActionType): string | null {
+  switch (action) {
+    case "OPEN_PRODUCT":
+    case "OPEN_CONTENT_EDITOR":
+      return "Посмотреть карточку";
+    case "OPEN_STOCKS":
+      return "Посмотреть остатки";
+    case "OPEN_PRICE_EDITOR":
+      return "Посмотреть цену";
+    case "OPEN_REVIEWS":
+    case "OPEN_REVIEW_RESPONSES":
+      return "Посмотреть отзывы";
+    case "OPEN_QUESTIONS":
+      return "Посмотреть вопросы";
+    case "OPEN_SUPPLIES":
+      return "Посмотреть поставки";
+    case "OPEN_PROMOTIONS":
+      return "Посмотреть акции";
+    case "OPEN_ADS":
+      return "Посмотреть рекламу";
+    case "NONE":
+      return null;
+    default: {
+      const unexpected: never = action;
+      return unexpected;
+    }
+  }
+}
+
 export function actionLabel(action: TaskActionType): string | null {
   switch (action) {
     case "OPEN_PRODUCT":
-      return "Открыть товар";
+      return "Изменить карточку";
     case "OPEN_STOCKS":
-      return "Открыть остатки";
+      return "Изменить остатки";
     case "OPEN_PRICE_EDITOR":
-      return "Проверить цену";
+      return "Изменить цену";
     case "OPEN_CONTENT_EDITOR":
-      return "Улучшить карточку";
+      return "Отредактировать карточку";
     case "OPEN_REVIEWS":
     case "OPEN_REVIEW_RESPONSES":
       return "Ответить на отзывы";
@@ -110,9 +141,9 @@ export function actionLabel(action: TaskActionType): string | null {
     case "OPEN_SUPPLIES":
       return "Подготовить поставку";
     case "OPEN_PROMOTIONS":
-      return "Открыть акции";
+      return "Настроить акции";
     case "OPEN_ADS":
-      return "Открыть рекламу";
+      return "Настроить рекламу";
     case "NONE":
       return null;
     default: {
@@ -296,4 +327,73 @@ export function evidenceNote(evidence: TaskEvidence): string | null {
 /** Открытый эпизод в базе. Активный список — isActionableTask: будущее откладывание туда не входит. */
 export function isOpenStatus(status: TaskStatus): boolean {
   return status === "active" || status === "in_progress" || status === "snoozed";
+}
+
+/**
+ * Короткий конспект для карточки: без названия товара и артикула (они уже видны в карточке),
+ * без служебных фраз («Период», «На основе», «Оценка потерь»), не больше N предложений.
+ * Полный текст остаётся в панели задачи.
+ */
+export function briefText(
+  text: string,
+  strip: Array<string | null | undefined> = [],
+  maxSentences = 1,
+  maxChars = 170,
+): string {
+  let value = humanizeText((text ?? "").trim());
+  if (!value) return "";
+  for (const raw of strip) {
+    const needle = raw?.trim();
+    if (!needle) continue;
+    if (value.toLowerCase().startsWith(needle.toLowerCase())) {
+      value = value.slice(needle.length).replace(/^[\s:,;—–-]+/, "");
+    } else {
+      value = value.split(needle).join("").replace(/\s{2,}/g, " ");
+    }
+  }
+  const noise = /^(Период:|На основе |Оценка потерь|Изменения себестоимости|Если вы запаслись|К артикулу)/i;
+  const parts = value
+    .split(/(?<=[.!?])\s+(?=[A-ZА-ЯЁ«"])/u)
+    .map((part) => part.trim())
+    .filter((part) => part && !noise.test(part));
+  let out = (parts.length > 0 ? parts.slice(0, maxSentences).join(" ") : value).trim();
+  if (out.length > maxChars) {
+    const cut = out.slice(0, maxChars);
+    const space = cut.lastIndexOf(" ");
+    out = `${(space > maxChars * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:—–-]+$/, "")}…`;
+  }
+  return out ? out.charAt(0).toUpperCase() + out.slice(1) : "";
+}
+
+/**
+ * Подробное описание задачи, разложенное на строки: каждая цифра и каждое пояснение отдельно,
+ * без названия товара. Так длинный текст движка читается списком, а не сплошным абзацем.
+ */
+export function detailLines(text: string, strip: Array<string | null | undefined> = []): string[] {
+  let value = humanizeText((text ?? "").trim());
+  if (!value) return [];
+  for (const raw of strip) {
+    const needle = raw?.trim();
+    if (!needle) continue;
+    if (value.toLowerCase().startsWith(needle.toLowerCase())) {
+      value = value.slice(needle.length).replace(/^[\s:,;—–-]+/, "");
+    } else {
+      value = value.split(needle).join("").replace(/ {2,}/g, " ");
+    }
+  }
+  return value
+    .split(/;\s+|(?<=[.!?])\s+(?=[A-ZА-ЯЁ«"])/u)
+    .map((line) => line.trim().replace(/[.;]+$/u, ""))
+    .filter(Boolean)
+    .map((line) => line.charAt(0).toUpperCase() + line.slice(1));
+}
+
+/** Строка расчёта «Название 1 688 ₽» делится на название и значение, чтобы показать их в две колонки. */
+export function splitLabelValue(line: string): { label: string; value: string } | null {
+  if (/^\d/u.test(line) || /[«»]/u.test(line)) return null;
+  const colon = line.match(/^([^:]{2,48}):\s*(.{1,40})$/u);
+  if (colon) return { label: colon[1]!.trim(), value: colon[2]!.trim() };
+  const digit = line.match(/^(.{3,48}?)\s+([-−+]?\d[\d\s.,]*\s*(?:₽|%|шт\.|дн\.|п\.п\.)?.{0,16})$/u);
+  if (digit && digit[2]!.length <= 26) return { label: digit[1]!.trim(), value: digit[2]!.trim() };
+  return null;
 }

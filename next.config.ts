@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
   // Для Timeweb (Node.js) — только standalone. НЕ использовать output: 'export'
   // (export = статический /out, тогда статика не отдаётся нашим сервером).
   output: "standalone",
+  // Проверочная сборка пишет в отдельную папку (NEXT_DIST_DIR), чтобы не ломать запущенный dev-сервер. По умолчанию .next.
+  distDir: process.env.NEXT_DIST_DIR?.trim() || ".next",
   // Без этого standalone может оказаться в .next/standalone/Users/.../server.js
   outputFileTracingRoot: repoRoot,
 

@@ -376,12 +376,12 @@ describe("seller hub wb token storage (mocked)", () => {
   });
 
   it("UI draft and connection responses do not persist or echo WB token", () => {
-    const hub = readFileSync("src/components/seller-hub/hub-integration.tsx", "utf8");
+    const hub = readFileSync("src/components/seller-hub/hub-account-connect.tsx", "utf8");
     assert.match(hub, /wbTokenDraft/);
     assert.match(hub, /onWbTokenDraftChange/);
     assert.match(
       hub,
-      /if \(marketplaceId === "wildberries"\) \{\s*onWbTokenDraftChange\?\.\(e\.target\.value\);/,
+      /if \(isWb\) \{\s*onWbTokenDraftChange\(value\);/,
     );
     assert.doesNotMatch(hub, /onPatch\(\{\s*apiKey: e\.target\.value,\s*\.\.\.\(marketplaceId === "wildberries"/);
     const app = readFileSync("src/components/seller-hub/seller-hub-app.tsx", "utf8");

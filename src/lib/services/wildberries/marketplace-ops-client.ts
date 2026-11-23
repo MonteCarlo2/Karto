@@ -1,3 +1,4 @@
+import { FBS_ORDERS_WINDOW_DAYS } from "@/lib/seller-hub/orders-window";
 import type { SellerOrdersSummary, SellerOrderRow, SellerSuppliesSnapshot, SellerSupplyRow } from "@/lib/seller-hub/types";
 import { WildberriesApiError } from "./client";
 
@@ -171,7 +172,7 @@ function collectOfficeNames(orders: Iterable<WbAssemblyOrder>): string[] {
 
 export async function fetchWbOrdersSummary(token: string): Promise<SellerOrdersSummary> {
   const nowSec = Math.floor(Date.now() / 1000);
-  const weekAgoSec = nowSec - 7 * 24 * 60 * 60;
+  const weekAgoSec = nowSec - FBS_ORDERS_WINDOW_DAYS * 24 * 60 * 60;
 
   const orderMap = new Map<number, WbAssemblyOrder>();
 
@@ -234,6 +235,32 @@ export async function fetchWbOrdersSummary(token: string): Promise<SellerOrdersS
   }
 
   return summary;
+}
+
+export type WbOrderIndexRow = { id: number; nmId?: number; article?: string };
+
+/**
+ * Какой товар в каком задании за последние дни (метод «Сборочные задания» принимает до 30 дней). Нужен, чтобы расшифровать состав поставки:
+ * новый метод состава отдаёт только номера заданий. Только чтение.
+ */
+export async function fetchWbOrdersIndex(token: string, days = 30): Promise<WbOrderIndexRow[]> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const fromSec = nowSec - Math.min(days, 30) * 24 * 60 * 60;
+  const out: WbOrderIndexRow[] = [];
+  let next = 0;
+  for (let page = 0; page < 8; page += 1) {
+    const params = new URLSearchParams({ limit: "1000", next: String(next), dateFrom: String(fromSec), dateTo: String(nowSec) });
+    const res = await marketplaceFetch(token, `/api/v3/orders?${params}`);
+    if (!res.ok) break;
+    const payload = parseJson<{ orders?: WbAssemblyOrder[]; next?: number }>(res.text);
+    for (const order of payload?.orders ?? []) {
+      if (order.id) out.push({ id: order.id, nmId: order.nmId, article: order.article });
+    }
+    const nextVal = payload?.next;
+    if (nextVal == null || nextVal === next) break;
+    next = nextVal;
+  }
+  return out;
 }
 
 export type WbSupplyOrder = { id: number; createdAt?: string; nmId?: number; article?: string };

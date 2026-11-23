@@ -1,5 +1,6 @@
 import { AD_BID_MAX_RAISE } from "@/lib/seller-hub/ads-bid";
 import { suggestedDepositRub } from "@/lib/seller-hub/ads-advisor";
+import { defaultAdCampaignName } from "@/lib/seller-hub/ads-create";
 import type { AgentAction } from "@/lib/seller-hub/ads-agent-engine";
 import type { AdvisorProduct } from "@/lib/seller-hub/ads-advisor";
 import type { BidRow } from "@/lib/seller-hub/ads-bids";
@@ -52,7 +53,23 @@ export type CampaignFacts = {
   storeCpo: number | null;
   /** Предварительный вердикт по правилам: подсказка нейросети, не истина. */
   ruleVerdict: "no_data" | "bad" | "good" | "neutral";
+  /** Названия товаров, которых уже нет в кампании, но по которым за период шёл расход. Их цифры в итогах не учтены. */
+  replaced?: string[];
 };
+
+/**
+ * Кто сейчас в кампании и кто был в ней раньше. WB отдаёт статистику за период по артикулам, которые участвовали в нём,
+ * а состав кампании продавец мог поменять на днях: оценивать нужно только нынешний состав. Если список товаров кампании неизвестен, считаем как раньше.
+ */
+export function campaignComposition(
+  campaign: { bids?: Array<{ nmId: string }> },
+  statByNm: Record<string, unknown> | undefined,
+): { known: boolean; current: string[]; departed: string[] } {
+  const members = (campaign.bids ?? []).map((b) => b.nmId);
+  if (members.length === 0) return { known: false, current: Object.keys(statByNm ?? {}), departed: [] };
+  const set = new Set(members);
+  return { known: true, current: members, departed: Object.keys(statByNm ?? {}).filter((nm) => !set.has(nm)) };
+}
 
 /** Меньше стольких кликов за период: вывод об эффективности делать рано. */
 export const MIN_CLICKS_FOR_VERDICT = 30;
@@ -123,16 +140,25 @@ export function parseReviews(text: string, facts: CampaignFacts[]): CampaignRevi
       if (!kind) continue;
       const nmId = opt.nmId != null && productIds.has(String(opt.nmId)) ? String(opt.nmId) : null;
       // Варианты про конкретный товар без товара из кампании отбрасываем: нейросеть не должна придумывать цели.
-      if (["lower_bid", "raise_bid", "remove_product", "lower_price", "join_promo", "improve_card"].includes(kind) && !nmId) continue;
+      if (["lower_bid", "raise_bid", "remove_product", "lower_price", "join_promo", "improve_card", "new_campaign_cpc"].includes(kind) && !nmId) continue;
       // Вариант должен быть применим к фактам: поднимать ставку можно только ниже конкурентной, снижать только заданную.
       const target = nmId ? fact.products.find((p) => p.nmId === nmId) : null;
       if (kind === "raise_bid" && !(target && target.bidRub != null && target.competitiveRub != null && target.bidRub < target.competitiveRub)) continue;
+      // Поднимать ставку можно только при запасе по марже: ДРР товара заметно ниже маржи. Иначе это противоречит совету снизить расходы.
+      if (kind === "raise_bid" && !(target && target.drr != null && target.marginPercent != null && target.drr <= target.marginPercent * 0.7)) continue;
+      // В убыточную кампанию деньги не доливаем, ставки не поднимаем.
+      if (kind === "deposit" && fact.ruleVerdict === "bad") continue;
+      // Кампания работает хорошо: останавливать и урезать её советовать нельзя.
+      if (verdict === "good" && (kind === "pause" || kind === "remove_product" || kind === "lower_bid" || kind === "lower_price")) continue;
       if (kind === "lower_bid" && !(target && target.bidRub != null && target.bidRub > 0)) continue;
       if (kind === "remove_product" && fact.products.length <= 1) continue;
       options.push({ kind, nmId, reason: String(opt.reason ?? "").trim().slice(0, 260) });
       if (options.length >= 3) break;
     }
-    out.set(id, { id, verdict, headline: String(o.headline ?? "").trim().slice(0, 140), summary: String(o.summary ?? "").trim().slice(0, 500), options });
+    // «Ничего не менять» не соседствует с действиями: либо всё хорошо, либо есть что делать.
+    const acting = options.filter((x) => x.kind !== "keep" && x.kind !== "wait");
+    const finalOptions = acting.length > 0 ? acting : options.slice(0, 1);
+    out.set(id, { id, verdict, headline: String(o.headline ?? "").trim().slice(0, 140), summary: String(o.summary ?? "").trim().slice(0, 500), options: finalOptions });
   }
   // Кампания без ответа модели не пропадает: показываем «нет разбора», а не молчим.
   return facts.map((f) => out.get(f.id) ?? { id: f.id, verdict: "no_data" as const, headline: "Нет разбора", summary: "Нейросеть не вернула разбор этой кампании.", options: [] });
@@ -149,19 +175,24 @@ export function actionForOption(option: ReviewOption, facts: CampaignFacts): Age
     case "pause":
       return facts.status === 9 ? { type: "pause", campaignId: facts.id } : null;
     case "deposit":
-      return facts.status === 9 || facts.status === 4 || facts.status === 11 ? { type: "deposit", campaignId: facts.id, sumRub: suggestedDepositRub(facts.avgDailySpend) } : null;
+      return facts.ruleVerdict !== "bad" && (facts.status === 9 || facts.status === 4 || facts.status === 11) ? { type: "deposit", campaignId: facts.id, sumRub: suggestedDepositRub(facts.avgDailySpend) } : null;
     case "remove_product":
       return product && facts.products.length > 1 ? { type: "remove_nm", campaignId: facts.id, nmId: product.nmId } : null;
     case "lower_bid": {
       if (!cpmManual || !product || !(product.bidRub && product.bidRub > 0)) return null;
       const next = Math.round(product.bidRub * 0.8 * 100) / 100;
-      return next > 0 && next < product.bidRub ? { type: "bid", advertId: facts.id, nmId: product.nmId, bidRub: next } : null;
+      return next > 0 && next < product.bidRub ? { type: "bid", advertId: facts.id, nmId: product.nmId, bidRub: next, previousBidRub: product.bidRub } : null;
     }
     case "raise_bid": {
       if (!cpmManual || !product || !(product.bidRub && product.bidRub > 0) || product.competitiveRub == null || product.competitiveRub <= product.bidRub) return null;
       const cap = Math.min(product.bidRub * 1.25, product.bidRub * AD_BID_MAX_RAISE);
       const next = Math.round(Math.min(product.competitiveRub, cap) * 100) / 100;
-      return next > product.bidRub ? { type: "bid", advertId: facts.id, nmId: product.nmId, bidRub: next } : null;
+      return next > product.bidRub ? { type: "bid", advertId: facts.id, nmId: product.nmId, bidRub: next, previousBidRub: product.bidRub } : null;
+    }
+    case "new_campaign_cpc": {
+      // Тип оплаты у существующей кампании не меняется: создаём новую для этого товара, без запуска и без списания денег.
+      if (!product || facts.paymentType !== "cpm") return null;
+      return { type: "create_campaign", nmId: product.nmId, name: defaultAdCampaignName(product.title, "cpc"), paymentType: "cpc" };
     }
     default:
       return null;
@@ -190,19 +221,25 @@ export function buildCampaignFacts(input: {
     if (c.status !== 9 && c.status !== 11 && c.status !== 4) continue;
     const s = statsById.get(c.id);
     if (!s && c.status !== 9) continue;
-    const spend = s?.spend ?? 0;
-    const orders = s?.orders ?? 0;
-    const orderSum = s?.orderSum ?? 0;
-    const clicks = s?.clicks ?? 0;
-    const views = s?.views ?? 0;
+    const comp = campaignComposition(c, s?.byNm);
+    const emptyRow = { views: 0, clicks: 0, spend: 0, orders: 0, orderSum: 0 };
+    /** Итоги кампании: если состав менялся, считаем только по нынешним товарам, а не по всему, что шло за период. */
+    const changed = comp.known && comp.departed.length > 0;
+    const rows = comp.current.map((nmId) => [nmId, s?.byNm?.[nmId] ?? emptyRow] as const);
+    const sum = (pick: (r: (typeof emptyRow) & { name?: string }) => number) => rows.reduce((acc, [, r]) => acc + pick(r), 0);
+    const spend = changed ? sum((r) => r.spend) : (s?.spend ?? 0);
+    const orders = changed ? sum((r) => r.orders) : (s?.orders ?? 0);
+    const orderSum = changed ? sum((r) => r.orderSum) : (s?.orderSum ?? 0);
+    const clicks = changed ? sum((r) => r.clicks) : (s?.clicks ?? 0);
+    const views = changed ? sum((r) => r.views) : (s?.views ?? 0);
     const avgDailySpend = spend / Math.max(1, input.days);
-    const products: ProductAdFacts[] = Object.entries(s?.byNm ?? {})
+    const products: ProductAdFacts[] = rows
       .map(([nmId, row]) => {
         const p = productById.get(nmId);
         const b = bidByPair.get(`${c.id}:${nmId}`);
         return {
           nmId,
-          title: p?.title || row.name || nmId,
+          title: p?.title || (row as { name?: string }).name || nmId,
           spend: Math.round(row.spend),
           orders: row.orders,
           orderSum: Math.round(row.orderSum),
@@ -215,6 +252,7 @@ export function buildCampaignFacts(input: {
       })
       .sort((a, b) => b.spend - a.spend)
       .slice(0, 8);
+    const replaced = comp.departed.map((nmId) => productById.get(nmId)?.title || s?.byNm?.[nmId]?.name || nmId).slice(0, 5);
     const prev = prevById.get(c.id);
     const base = {
       id: c.id,
@@ -237,6 +275,7 @@ export function buildCampaignFacts(input: {
       prev: prev ? { spend: Math.round(prev.spend), orders: prev.orders, orderSum: Math.round(prev.orderSum), drr: pctOf(prev.spend, prev.orderSum) } : null,
       products,
       storeCpo: input.storeCpo != null ? Math.round(input.storeCpo) : null,
+      ...(replaced.length > 0 ? { replaced } : {}),
     };
     out.push({ ...base, ruleVerdict: ruleVerdictOf(base) });
   }

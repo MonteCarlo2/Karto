@@ -19,8 +19,11 @@ describe("task status patch", () => {
     assert.equal(parsed.ok && "userId" in parsed.patch, false);
   });
 
+  it("accepts return to work (undo of done and snooze)", () => {
+    assert.deepEqual(parseTaskStatusPatch({ status: "active", userId: "attacker" }, NOW), { ok: true, patch: { status: "active" } });
+  });
+
   it("rejects a status that cannot be saved and a date that is not in the future", () => {
-    assert.equal(parseTaskStatusPatch({ status: "active" }, NOW).ok, false);
     assert.equal(parseTaskStatusPatch({ status: "dismissed" }, NOW).ok, false);
     assert.equal(parseTaskStatusPatch({ status: "snoozed" }, NOW).ok, false);
     assert.equal(parseTaskStatusPatch({ status: "snoozed", snoozeUntil: "завтра" }, NOW).ok, false);

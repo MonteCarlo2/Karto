@@ -1,7 +1,11 @@
+import { listOrders } from "@/lib/seller-hub/orders/repository";
+import { orderSummary, scheduleText } from "@/lib/seller-hub/orders/types";
+import { supabaseCacheStore } from "@/lib/seller-hub/data-cache";
+import { buildStockAnalytics } from "@/lib/seller-hub/stock-analytics";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSellerHubUser } from "@/lib/seller-hub/access";
 import { listChats, loadChat, runChatTurn } from "@/lib/seller-hub/agent/chat-run";
-import { loadScenarioProducts } from "@/lib/seller-hub/agent/scenario-inputs";
+import { buildChatInput } from "@/lib/seller-hub/agent/chat-input";
 import { composeSnapshot } from "@/lib/seller-hub/sync/derive";
 import { SyncStore } from "@/lib/seller-hub/sync/store";
 import { listSellerHubTasks } from "@/lib/seller-hub/task-engine/repository";
@@ -29,7 +33,7 @@ export async function GET(request: NextRequest) {
 }
 
 /** Новое сообщение владельца: ИИ задаёт уточняющие вопросы или составляет планы. Закрыть диалог: action close. */
-export async function POST(request: NextRequest) {
+async function handle(request: NextRequest, onPhase?: (phase: import("@/lib/seller-hub/agent/intent").WorkKind) => void) {
   const auth = await requireSellerHubUser(request);
   if (!auth.user) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   const body = (await request.json().catch(() => null)) as { chatId?: unknown; message?: unknown; action?: unknown } | null;
@@ -44,19 +48,35 @@ export async function POST(request: NextRequest) {
   }
   if (typeof body.message !== "string" || !body.message.trim()) return NextResponse.json({ ok: false, error: "Напишите задачу" }, { status: 400 });
   try {
-    const built = await composeSnapshot(new SyncStore(db), db, { userId: auth.user.id, marketplaceId: MARKETPLACE });
-    if (!built) return NextResponse.json({ ok: false, error: "Данные кабинета ещё не загружены" }, { status: 409 });
+    const prepared = await buildChatInput(db, auth.user.id);
+    if (!prepared) return NextResponse.json({ ok: false, error: "Данные кабинета ещё не загружены" }, { status: 409 });
     const nowMs = Date.now();
-    const [products, tasks] = await Promise.all([loadScenarioProducts(db, auth.user.id, built.snapshot, nowMs), listSellerHubTasks(auth.user.id, MARKETPLACE)]);
-    const tasksByNm = new Map<string, string[]>();
-    for (const t of tasks) {
-      if (!t.nmId || (t.status !== "active" && t.status !== "in_progress")) continue;
-      tasksByNm.set(t.nmId, [...(tasksByNm.get(t.nmId) ?? []), t.title]);
-    }
-    const result = await runChatTurn({ db, userId: auth.user.id, chatId, message: body.message, products, tasksByNm, nowMs });
+    const result = await runChatTurn({ db, userId: auth.user.id, chatId, message: body.message, onPhase, ...prepared.input, nowMs });
     return NextResponse.json({ ok: true, chat: result.chat, planIds: result.planIds, limited: result.error === "limit" });
   } catch (error) {
     console.error("[seller-hub-agent] чат:", error instanceof Error ? error.message : String(error));
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Не удалось обработать задачу" }, { status: 502 });
   }
+}
+
+/**
+ * Обычный ответ JSON. С заголовком x-chat-stream: 1 ответ идёт построчно: сначала этапы работы ({"phase":"web"}), в конце результат ({"done":true,...}).
+ * Так анимация на экране следует за тем, что сервер делает на самом деле.
+ */
+export async function POST(request: NextRequest) {
+  if (request.headers.get("x-chat-stream") !== "1") return handle(request);
+  const enc = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const emit = (o: unknown) => controller.enqueue(enc.encode(`${JSON.stringify(o)}\n`));
+      try {
+        const res = await handle(request, (phase) => emit({ phase }));
+        emit({ done: true, status: res.status, body: await res.json() });
+      } catch {
+        emit({ done: true, status: 502, body: { ok: false, error: "Не удалось обработать задачу" } });
+      }
+      controller.close();
+    },
+  });
+  return new Response(stream, { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-cache, no-transform" } });
 }

@@ -10,9 +10,44 @@ export class AutoRepliesFetchError extends Error {
   }
 }
 
+/** Коды, при которых запрос, скорее всего, даже не дошёл до обработки: сервер перезапускается, собирает страницу или перегружен. */
+const TRANSIENT_STATUSES = new Set([404, 502, 503, 504]);
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Запрос с авторизацией. С retries (только для безопасного чтения, не для записи и не для денег) сбои сети и «временные» коды
+ * повторяются с нарастающей паузой: человек не видит одиночный сбой, данные просто приходят чуть позже.
+ */
 export async function autoRepliesAuthorizedFetch(
   path: string,
-  init?: RequestInit & { timeoutMs?: number }
+  init?: RequestInit & { timeoutMs?: number; retries?: number }
+): Promise<Response> {
+  const retries = init?.retries ?? (init?.method == null || init.method === "GET" ? 2 : 0);
+  let attempt = 0;
+  for (;;) {
+    try {
+      const res = await autoRepliesAuthorizedFetchOnce(path, init);
+      if (attempt < retries && TRANSIENT_STATUSES.has(res.status)) {
+        attempt += 1;
+        await sleep(1200 * attempt);
+        continue;
+      }
+      return res;
+    } catch (e) {
+      const retryable = e instanceof AutoRepliesFetchError && !e.timeout && e.message !== "Войдите в аккаунт KARTO";
+      if (attempt < retries && retryable) {
+        attempt += 1;
+        await sleep(1200 * attempt);
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
+async function autoRepliesAuthorizedFetchOnce(
+  path: string,
+  init?: RequestInit & { timeoutMs?: number; retries?: number }
 ): Promise<Response> {
   const supabase = createBrowserClient();
   const {

@@ -22,10 +22,16 @@ export function applyMinusWords(text: string, shop: AutoRepliesShopSettings): st
   for (const word of shop.advanced.minusWords) {
     const w = word.trim();
     if (!w) continue;
-    const re = new RegExp(`\\b${escapeRegExp(w)}\\b`, "gi");
-    out = out.replace(re, "").replace(/\s{2,}/g, " ").trim();
+    // Границы слов для русского текста: \b в JavaScript видит только латиницу, поэтому слово целиком ищем через Unicode-буквы.
+    const re = new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRegExp(w)}(?![\\p{L}\\p{N}_])`, "giu");
+    out = out.replace(re, "");
   }
-  return out;
+  // Убрали слово: чистим двойные пробелы и пробел перед знаком, не ломая абзацы.
+  return out
+    .replace(/[^\S\n]{2,}/g, " ")
+    .replace(/[^\S\n]+([.,!?;:])/g, "$1")
+    .replace(/[^\S\n]+\n/g, "\n")
+    .trim();
 }
 
 function escapeRegExp(s: string): string {

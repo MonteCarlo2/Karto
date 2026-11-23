@@ -142,6 +142,7 @@ async function telegramRequest<T>(
 export type InlineKeyboardButton = {
   text: string;
   callback_data?: string;
+  url?: string;
   copy_text?: { text: string };
 };
 
@@ -150,6 +151,25 @@ export type ForceReplyMarkup = {
   selective?: boolean;
   input_field_placeholder?: string;
 };
+
+export type ReplyKeyboardMarkup = {
+  keyboard: string[][];
+  resize_keyboard?: boolean;
+  is_persistent?: boolean;
+  /** Клавиатура скрывается после нажатия: быстрые ответы не навязываются. */
+  one_time_keyboard?: boolean;
+  input_field_placeholder?: string;
+};
+
+/** Статус «печатает…»: пока готовим ответ, чат не выглядит зависшим. */
+export async function telegramSendChatAction(input: { chatId: number | string; action: "typing" }): Promise<void> {
+  await telegramRequest("sendChatAction", { chat_id: input.chatId, action: input.action });
+}
+
+/** Меню команд бота (кнопка «Меню» слева от поля ввода). */
+export async function telegramSetMyCommands(commands: Array<{ command: string; description: string }>): Promise<void> {
+  await telegramRequest("setMyCommands", { commands });
+}
 
 export async function telegramSendPhoto(input: {
   chatId: number | string;
@@ -196,11 +216,16 @@ export async function telegramDeleteMessage(input: {
   });
 }
 
+/** Отправка идёт через прокси и бывает медленной: ждём дольше и пробуем до трёх раз, чтобы сообщение не терялось из-за одного сбоя сети. */
+const SEND_TIMEOUT_MS = Number(process.env.TELEGRAM_SEND_TIMEOUT_MS) || 35_000;
+const SEND_ATTEMPTS = 3;
+
 export async function telegramSendMessage(input: {
   chatId: number | string;
   text: string;
   replyMarkup?:
     | { inline_keyboard: InlineKeyboardButton[][] }
+    | ReplyKeyboardMarkup
     | ForceReplyMarkup;
   parseMode?: "HTML" | "Markdown" | null;
   replyToMessageId?: number;
@@ -214,7 +239,7 @@ export async function telegramSendMessage(input: {
       ? { reply_parameters: { message_id: input.replyToMessageId } }
       : {}),
     disable_web_page_preview: true,
-  });
+  }, { timeoutMs: SEND_TIMEOUT_MS, maxAttempts: SEND_ATTEMPTS });
 }
 
 export async function telegramEditMessage(input: {
@@ -235,6 +260,24 @@ export async function telegramEditMessage(input: {
     reply_markup: input.replyMarkup,
     disable_web_page_preview: true,
   });
+}
+
+/** Скачивает файл по его идентификатору (голосовые сообщения). Через тот же канал, что и остальные запросы к Telegram. */
+export async function telegramDownloadFile(fileId: string): Promise<Buffer> {
+  const token = getTelegramBotToken();
+  if (!token) throw new Error("TELEGRAM_BOT_TOKEN не задан");
+  const info = await telegramRequest<{ file_path?: string; file_size?: number }>("getFile", { file_id: fileId });
+  if (!info.file_path) throw new Error("Telegram не вернул путь к файлу");
+  if ((info.file_size ?? 0) > 20 * 1024 * 1024) throw new Error("Файл слишком большой");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 40_000);
+  try {
+    const res = await telegramFetch(`${getTelegramApiBase()}/file/bot${token}/${info.file_path}`, { method: "GET", headers: {}, signal: controller.signal });
+    if (!res.ok) throw new Error(`Скачивание файла: ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function telegramAnswerCallbackQuery(input: {

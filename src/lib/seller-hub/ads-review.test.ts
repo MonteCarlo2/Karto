@@ -19,6 +19,22 @@ describe("buildCampaignFacts", () => {
     assert.equal(f!.products[0]!.marginPercent, 25);
     assert.equal(f!.products[0]!.bidRub, 300);
   });
+  it("товар, которого уже нет в кампании, не попадает в итоги и товары, а попадает в replaced", () => {
+    const swapped = { ...campaign, bids: [{ nmId: "222", searchRub: 300 } as never] };
+    const withOld = stats({ spend: 900, orders: 5, orderSum: 7000, byNm: { "111": { name: "Старый", views: 20000, clicks: 400, spend: 700, orders: 5, orderSum: 7000 }, "222": { name: "Новый", views: 500, clicks: 10, spend: 200, orders: 0, orderSum: 0 } } });
+    const [f] = buildCampaignFacts({ campaigns: [swapped], stats: [withOld], products: [], bids: [], days: 7, storeCpo: 150 });
+    assert.equal(f!.spend, 200, "расход считается только по нынешнему товару");
+    assert.equal(f!.orders, 0);
+    assert.deepEqual(f!.products.map((x) => x.nmId), ["222"]);
+    assert.deepEqual(f!.replaced, ["Старый"]);
+    assert.equal(f!.ruleVerdict, "no_data", "по новому товару данных мало");
+  });
+  it("новый товар без статистики всё равно виден в кампании", () => {
+    const swapped = { ...campaign, bids: [{ nmId: "333", searchRub: 300 } as never] };
+    const [f] = buildCampaignFacts({ campaigns: [swapped], stats: [stats()], products: [], bids: [], days: 7, storeCpo: null });
+    assert.deepEqual(f!.products.map((x) => x.nmId), ["333"]);
+    assert.equal(f!.spend, 0);
+  });
   it("завершённые и неактивные без статистики пропускаются", () => {
     assert.equal(buildCampaignFacts({ campaigns: [{ ...campaign, status: 7 }], stats: [stats()], products: [], bids: [], days: 7, storeCpo: null }).length, 0);
   });
@@ -49,7 +65,7 @@ describe("parseReviews и actionForOption", () => {
       { kind: "pause", nmId: null, reason: "четвёртый" },
     ] }] });
     const r = parseReviews(text, [f])!;
-    assert.deepEqual(r[0]!.options.map((o) => o.kind), ["raise_bid", "deposit", "keep"]);
+    assert.deepEqual(r[0]!.options.map((o) => o.kind), ["raise_bid", "deposit"]);
   });
   it("подъём ставки отбрасывается, если ставка уже не ниже конкурентной; удаление единственного товара отбрасывается", () => {
     const high = { ...f, products: [{ ...f.products[0]!, bidRub: 600, competitiveRub: 500 }] };
@@ -61,10 +77,44 @@ describe("parseReviews и actionForOption", () => {
     assert.equal(parseReviews("не json", [f]), null);
   });
   it("числа в действиях считает программа: подъём ставки не выше конкурентной и шага, снижение на 20%", () => {
-    assert.deepEqual(actionForOption({ kind: "raise_bid", nmId: "111", reason: "" }, f), { type: "bid", advertId: "10", nmId: "111", bidRub: 375 });
-    assert.deepEqual(actionForOption({ kind: "lower_bid", nmId: "111", reason: "" }, f), { type: "bid", advertId: "10", nmId: "111", bidRub: 240 });
+    assert.deepEqual(actionForOption({ kind: "raise_bid", nmId: "111", reason: "" }, f), { type: "bid", advertId: "10", nmId: "111", bidRub: 375, previousBidRub: 300 });
+    assert.deepEqual(actionForOption({ kind: "lower_bid", nmId: "111", reason: "" }, f), { type: "bid", advertId: "10", nmId: "111", bidRub: 240, previousBidRub: 300 });
     assert.deepEqual(actionForOption({ kind: "pause", nmId: null, reason: "" }, f), { type: "pause", campaignId: "10" });
     assert.equal(actionForOption({ kind: "keep", nmId: null, reason: "" }, f), null);
     assert.equal(actionForOption({ kind: "remove_product", nmId: "111", reason: "" }, f), null); // единственный товар: пауза вместо удаления
+  });
+});
+
+describe("разбор не противоречит правилам", () => {
+  const facts = (patch: Partial<CampaignFacts> = {}, product: Partial<CampaignFacts["products"][number]> = {}): CampaignFacts => {
+    const [f] = buildCampaignFacts({ campaigns: [campaign], stats: [stats()], products: [product0], bids: [], days: 7, storeCpo: 150 });
+    return { ...f!, ...patch, products: f!.products.map((p) => ({ ...p, bidRub: 300, competitiveRub: 400, ...product })) };
+  };
+  const product0 = { nmId: "111", title: "Ведро", marginRub: 200, marginPercent: 25, stock: 50, orders28: 30 };
+  const reply = (verdict: string, kinds: string[]) => JSON.stringify({ reviews: [{ id: "10", verdict, headline: "х", summary: "у", options: kinds.map((kind) => ({ kind, nmId: "111", reason: "р" })) }] });
+
+  it("«ничего не менять» не соседствует с действиями", () => {
+    const [r] = parseReviews(reply("improve", ["keep", "lower_bid"]), [facts()])!;
+    assert.deepEqual(r!.options.map((o) => o.kind), ["lower_bid"]);
+  });
+  it("в хорошей кампании не советуют остановку и урезание", () => {
+    const [r] = parseReviews(reply("good", ["pause", "lower_bid", "keep"]), [facts()])!;
+    assert.deepEqual(r!.options.map((o) => o.kind), ["keep"]);
+  });
+  it("ставку поднимать можно только при запасе по марже", () => {
+    const [ok] = parseReviews(reply("improve", ["raise_bid"]), [facts({}, { drr: 10, marginPercent: 25 })])!;
+    assert.equal(ok!.options.length, 1);
+    const [no] = parseReviews(reply("improve", ["raise_bid"]), [facts({}, { drr: 24, marginPercent: 25 })])!;
+    assert.equal(no!.options.some((o) => o.kind === "raise_bid"), false);
+  });
+  it("в убыточную кампанию не советуют пополнять бюджет", () => {
+    const [r] = parseReviews(reply("bad", ["deposit", "pause"]), [facts({ ruleVerdict: "bad" })])!;
+    assert.deepEqual(r!.options.map((o) => o.kind), ["pause"]);
+    assert.equal(actionForOption({ kind: "deposit", nmId: null, reason: "" }, facts({ ruleVerdict: "bad" })), null);
+  });
+  it("кампания за клик создаётся только для кампании за показы и товара из неё", () => {
+    const act = actionForOption({ kind: "new_campaign_cpc", nmId: "111", reason: "" }, facts());
+    assert.equal(act?.type, "create_campaign");
+    assert.equal(actionForOption({ kind: "new_campaign_cpc", nmId: "111", reason: "" }, facts({ paymentType: "cpc" })), null);
   });
 });

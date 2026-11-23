@@ -14,6 +14,26 @@ import { runOzonInboxSync } from "@/lib/auto-replies/inbox-sync-ozon-core";
 import { ozonReviewApiBlocked } from "@/lib/auto-replies/ozon-subscription";
 import type { InboxReviewItem } from "@/lib/auto-replies/inbox-demo-data";
 import { shouldAutoSendInboxItem } from "@/lib/auto-replies/inbox-star-rules";
+import { consumeReviewScopeLimit } from "@/lib/auto-replies/inbox-review-scope";
+
+/**
+ * Фоновая отправка расходует «Лимит» объёма ответов: новое значение записываем в настройки, иначе лимит никогда не уменьшался бы
+ * и каждый тик отправлял бы ещё столько же. Читаем настройки заново прямо перед записью, чтобы не затереть свежие правки.
+ */
+async function persistReviewScopeConsumed(supabase: SupabaseClient, userId: string, mpKey: string, sent: number): Promise<void> {
+  try {
+    const { data } = await supabase.from("auto_reply_user_state").select("settings_json").eq("user_id", userId).maybeSingle();
+    const root = data?.settings_json as AutoRepliesSettingsRoot | undefined;
+    const scope = root?.marketplaces?.[mpKey]?.reviewScope;
+    if (!root || !scope || scope.mode !== "limited") return;
+    const nextConsumed = consumeReviewScopeLimit(scope, sent).limitConsumed;
+    if (nextConsumed === scope.limitConsumed) return;
+    root.marketplaces[mpKey]!.reviewScope = { ...scope, limitConsumed: nextConsumed };
+    await supabase.from("auto_reply_user_state").update({ settings_json: root, updated_at: new Date().toISOString() }).eq("user_id", userId);
+  } catch (e) {
+    console.warn("[auto-reply-inbox-cron] не удалось сохранить расход лимита", userId, mpKey, e);
+  }
+}
 
 function parseMpKey(key: string): { shopId: string; marketplaceId: AutoRepliesMarketplaceId } | null {
   const idx = key.indexOf(":");
@@ -29,6 +49,37 @@ function parseMpKey(key: string): { shopId: string; marketplaceId: AutoRepliesMa
 declare global {
   // eslint-disable-next-line no-var
   var __kartoInboxCronRunning: boolean | undefined;
+}
+
+const LOCK_ID = "inbox_lock";
+const LOCK_LEASE_MS = 5 * 60_000;
+
+/**
+ * Замок на уровне базы: если одновременно работают два сервера (боевой и чей-то второй), тик выполняет только один.
+ * Аренда на 5 минут: если держатель упал, замок освободится сам. Любая неожиданность с замком не должна останавливать работу.
+ */
+async function acquireCronLock(supabase: SupabaseClient): Promise<boolean> {
+  try {
+    const nowIso = new Date().toISOString();
+    const cutoff = new Date(Date.now() - LOCK_LEASE_MS).toISOString();
+    const taken = await supabase.from("auto_reply_cron_heartbeats").update({ last_tick_at: nowIso, updated_at: nowIso, last_result: { lock: true } }).eq("id", LOCK_ID).lt("last_tick_at", cutoff).select("id");
+    if (!taken.error && (taken.data?.length ?? 0) > 0) return true;
+    const created = await supabase.from("auto_reply_cron_heartbeats").insert({ id: LOCK_ID, last_tick_at: nowIso, updated_at: nowIso, last_result: { lock: true } }).select("id");
+    if (!created.error && (created.data?.length ?? 0) > 0) return true;
+    // Строка есть и аренда не истекла: тик выполняет другой сервер.
+    // Занято только если строка существует (нарушение уникальности). Любая другая неожиданность не должна останавливать работу.
+    return created.error?.code !== "23505";
+  } catch {
+    return true;
+  }
+}
+
+async function releaseCronLock(supabase: SupabaseClient): Promise<void> {
+  try {
+    await supabase.from("auto_reply_cron_heartbeats").update({ last_tick_at: "1970-01-01T00:00:00.000Z" }).eq("id", LOCK_ID);
+  } catch {
+    /* аренда истечёт сама */
+  }
 }
 
 export async function processAutoReplyInboxCron(
@@ -55,9 +106,15 @@ export async function processAutoReplyInboxCron(
     };
   }
   globalThis.__kartoInboxCronRunning = true;
+  let locked = false;
   try {
+    locked = await acquireCronLock(supabase);
+    if (!locked) {
+      return { users: 0, synced: 0, skipped: 0, errors: 0, zeroBalance: 0, autoSent: 0, concurrentSkip: true };
+    }
     return await processAutoReplyInboxCronInner(supabase, opts);
   } finally {
+    if (locked) await releaseCronLock(supabase);
     globalThis.__kartoInboxCronRunning = false;
   }
 }
@@ -311,6 +368,9 @@ async function processAutoReplyInboxCronInner(
 
         synced += 1;
         autoSent += Number(result.autoSentCount ?? 0);
+        if (Number(result.autoSentCount ?? 0) > 0 && mpSettings.reviewScope.mode === "limited") {
+          await persistReviewScopeConsumed(supabase, userId, mpKey, Number(result.autoSentCount));
+        }
         if ((result.autoSentCount ?? 0) > 0) {
           console.info(
             "[auto-reply-inbox-cron] auto_sent",

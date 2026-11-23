@@ -207,7 +207,7 @@ type ReadoutAction = { href?: string; label: string; onClick: () => void };
 
 function BlockAction({ action }: { action: ReadoutAction }) {
   const className =
-    "inline-flex min-h-[36px] items-center rounded-[11px] border bg-white px-3.5 text-[13px] font-semibold transition duration-200 hover:bg-[#F4F6F8] active:scale-[0.98]";
+    "inline-flex min-h-[36px] items-center rounded-[11px] border bg-white px-3.5 text-[13px] font-semibold transition duration-200 hover:bg-[var(--hub-canvas)] active:scale-[0.98]";
   const style = { borderColor: hub.ink, color: hub.ink };
   if (action.href) {
     return (
@@ -353,7 +353,7 @@ function CopyIcon({ text }: { text: string }) {
     <button
       type="button"
       aria-label={done ? "Артикул скопирован" : "Скопировать артикул WB"}
-      className="absolute left-full top-1/2 ml-1 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md opacity-0 outline-none transition duration-150 group-hover/article:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+      className="absolute left-full top-1/2 ml-1 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md opacity-0 outline-none transition duration-150 group-hover/article:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
       style={{ color: done ? hub.green : hub.textMuted }}
       onClick={() => {
         void navigator.clipboard.writeText(text).then(() => {
@@ -534,7 +534,7 @@ export function HubProductReadout({
             </div>
             <button
               type="button"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] px-2 py-1.5 text-[14px] font-semibold outline-none hover:bg-[#F4F6F8] focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] px-2 py-1.5 text-[14px] font-semibold outline-none hover:bg-[var(--hub-canvas)] focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
               style={{ ...hubSans, color: hub.text }}
               onClick={onClose}
             >
@@ -553,7 +553,7 @@ export function HubProductReadout({
                   href={storeUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-[13px] font-semibold outline-none hover:bg-[#F4F6F8] focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+                  className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-[13px] font-semibold outline-none hover:bg-[var(--hub-canvas)] focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
                   style={{ color: hub.blue }}
                 >
                   <ExternalLink className="h-3.5 w-3.5" />

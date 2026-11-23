@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { loadSellerHubTaskSettings, muteSellerHubTask, saveSellerHubTaskSettings, type TaskSettingsPayload } from "@/lib/seller-hub/client-api";
 import { GROUP_TITLE, SETTING_FIELDS, TASK_TYPE_INFO, defaultValues, validateValues, type SettingKey } from "@/lib/seller-hub/task-engine/settings-form";
 import type { SellerCatalogItem } from "@/lib/seller-hub/types";
-import { HubButton, hub, hubSans } from "./hub-ui";
+import { HubButton, hub, hubSans, hubSerif } from "./hub-ui";
 
 const GROUPS = ["stock", "sales", "economics", "content"] as const;
 const TYPE_GROUP_TITLE: Record<string, string> = { ...GROUP_TITLE, reviews: "Отзывы и вопросы" };
@@ -93,37 +93,49 @@ export function HubTaskSettings({ marketplaceId, items, onClose, onSaved }: { ma
 
   return (
     <div className="fixed inset-0 z-30">
-      <button type="button" aria-label="Закрыть настройки" className="absolute inset-0 bg-black/35" onClick={onClose} />
-      <aside role="dialog" aria-modal="true" aria-labelledby="task-settings-title" className="absolute inset-y-0 right-0 flex w-full max-w-[560px] flex-col border-l bg-white" style={{ borderColor: hub.border }}>
-        <div className="flex items-start justify-between gap-3 border-b px-5 py-4" style={{ borderColor: hub.border }}>
+      <button type="button" aria-label="Закрыть настройки" className="absolute inset-0 bg-[rgba(1,20,8,0.28)]" onClick={onClose} />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-settings-title"
+        className="hub-drawer-in absolute inset-y-0 right-0 flex w-full max-w-[580px] flex-col border-l"
+        style={{ borderColor: hub.border, backgroundColor: hub.canvas }}
+      >
+        <div className="flex items-start justify-between gap-4 px-6 pb-4 pt-5">
           <div>
-            <h2 id="task-settings-title" className="text-[18px] font-semibold" style={{ ...hubSans, color: hub.text }}>
+            <h2 id="task-settings-title" className="text-[24px] font-medium leading-[1.2] tracking-[-0.02em]" style={{ ...hubSerif, color: hub.text }}>
               Настройки задач
             </h2>
-            <p className="mt-1 text-[13px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
+            <p className="mt-1.5 max-w-[56ch] text-pretty text-[13px] leading-5" style={{ ...hubSans, color: hub.textSubtle }}>
               Здесь только то, что реально меняет правила. У каждого значения написано, что оно меняет.
             </p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-2 hover:bg-[#F4F6F8]" aria-label="Закрыть">
-            <X className="h-4 w-4" />
+          <button
+            type="button"
+            onClick={onClose}
+            className="-mr-2 rounded-[10px] p-2 outline-none transition-colors hover:bg-[var(--hub-text)]/[0.05] focus-visible:shadow-[0_0_0_2px_var(--hub-lime-ring)]"
+            style={{ color: hub.textMuted }}
+            aria-label="Закрыть"
+          >
+            <X className="h-5 w-5" strokeWidth={1.5} />
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5">
+        <div className="min-h-0 flex-1 space-y-7 overflow-y-auto overflow-x-hidden px-6 pb-6 pt-1">
           {state.status === "loading" ? <p className="text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>Загружаю настройки…</p> : null}
-          {state.status === "error" ? <p className="text-[13px]" style={{ ...hubSans, color: hub.danger }}>{state.error}</p> : null}
+          {state.status === "error" ? <p className="text-[13px]" role="alert" style={{ ...hubSans, color: hub.danger }}>{state.error}</p> : null}
 
           {state.status === "ready" ? (
             <>
-              {GROUPS.map((group) => (
-                <section key={group}>
-                  <h3 className="text-[14px] font-semibold" style={{ ...hubSans, color: hub.text }}>{GROUP_TITLE[group]}</h3>
-                  <div className="mt-2 space-y-3">
+              {GROUPS.map((group, groupIndex) => (
+                <section key={group} className={groupIndex === 0 ? "" : "border-t pt-6"} style={groupIndex === 0 ? undefined : { borderColor: hub.border }}>
+                  <h3 className="text-[15px] font-semibold tracking-[-0.01em]" style={{ ...hubSans, color: hub.text }}>{GROUP_TITLE[group]}</h3>
+                  <div className="mt-3 space-y-5">
                     {SETTING_FIELDS.filter((f) => f.group === group).map((f) => (
                       <div key={f.key}>
-                        <label className="flex items-center justify-between gap-3 text-[13px]" style={{ ...hubSans, color: hub.text }}>
+                        <label className="flex items-center justify-between gap-4 text-[14px]" style={{ ...hubSans, color: hub.text }}>
                           <span className="font-medium">{f.label}</span>
-                          <span className="flex items-center gap-1.5">
+                          <span className="flex items-center gap-2">
                             <input
                               type="number"
                               inputMode="numeric"
@@ -132,15 +144,15 @@ export function HubTaskSettings({ marketplaceId, items, onClose, onSaved }: { ma
                               value={text[f.key] ?? ""}
                               placeholder={f.optional ? "выкл." : undefined}
                               onChange={(e) => setText((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                              className="w-24 rounded-lg border px-2.5 py-1.5 text-right text-[13px] tabular-nums"
-                              style={{ borderColor: errors[f.key] ? hub.danger : hub.border }}
+                              className="h-9 w-24 rounded-[10px] border bg-white px-3 text-right text-[14px] tabular-nums outline-none transition-[border-color,box-shadow] duration-150 focus:border-[var(--hub-lime-ring)] focus:shadow-[0_0_0_3px_rgba(185,255,75,0.45)]"
+                              style={{ borderColor: errors[f.key] ? hub.danger : hub.inputBorder, color: hub.text }}
                               aria-invalid={Boolean(errors[f.key])}
                             />
                             <span className="w-10 text-[12px]" style={{ color: hub.textSubtle }}>{f.unit}</span>
                           </span>
                         </label>
-                        <p className="mt-0.5 text-[12px] leading-4" style={{ ...hubSans, color: hub.textMuted }}>{f.hint}</p>
-                        <p className="text-[11.5px] leading-4" style={{ ...hubSans, color: errors[f.key] ? hub.danger : hub.textSubtle }}>
+                        <p className="mt-1 max-w-[52ch] text-pretty text-[13px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>{f.hint}</p>
+                        <p className="text-[12px] leading-4" style={{ ...hubSans, color: errors[f.key] ? hub.danger : hub.textSubtle }}>
                           {errors[f.key] ?? `По умолчанию: ${f.defaultValue == null ? "выключено" : `${f.defaultValue} ${f.unit}`}. Допустимо: ${f.min}–${f.max}.`}
                         </p>
                       </div>
@@ -149,20 +161,20 @@ export function HubTaskSettings({ marketplaceId, items, onClose, onSaved }: { ma
                 </section>
               ))}
 
-              <section>
-                <h3 className="text-[14px] font-semibold" style={{ ...hubSans, color: hub.text }}>Какие задачи создавать</h3>
-                <p className="mt-0.5 text-[12px] leading-4" style={{ ...hubSans, color: hub.textMuted }}>Снимите галочку, и такие задачи перестанут создаваться, открытые закроются сразу.</p>
-                <div className="mt-2 space-y-3">
+              <section className="border-t pt-6" style={{ borderColor: hub.border }}>
+                <h3 className="text-[15px] font-semibold tracking-[-0.01em]" style={{ ...hubSans, color: hub.text }}>Какие задачи создавать</h3>
+                <p className="mt-1 text-[13px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>Снимите галочку, и такие задачи перестанут создаваться, открытые закроются сразу.</p>
+                <div className="mt-4 space-y-5">
                   {(["stock", "sales", "economics", "content", "reviews"] as const).map((group) => (
                     <div key={group}>
-                      <p className="text-[12px] font-semibold uppercase tracking-[0.06em]" style={{ ...hubSans, color: hub.textSubtle }}>{TYPE_GROUP_TITLE[group]}</p>
-                      <ul className="mt-1 space-y-1">
+                      <p className="text-[13px] font-semibold" style={{ ...hubSans, color: hub.textSubtle }}>{TYPE_GROUP_TITLE[group]}</p>
+                      <ul className="mt-1.5">
                         {TASK_TYPE_INFO.filter((t) => t.group === group).map((t) => (
-                          <li key={t.type}>
-                            <label className="flex cursor-pointer items-start gap-2 text-[13px] leading-5" style={{ ...hubSans, color: hub.text }}>
+                          <li key={t.type} className="border-t first:border-t-0" style={{ borderColor: hub.borderSoft }}>
+                            <label className="flex cursor-pointer items-start gap-3 py-2.5 text-[14px] leading-5" style={{ ...hubSans, color: hub.text }}>
                               <input
                                 type="checkbox"
-                                className="mt-1 h-3.5 w-3.5 shrink-0"
+                                className="mt-0.5 h-4 w-4 shrink-0"
                                 checked={!disabled.has(t.type)}
                                 onChange={(e) =>
                                   setDisabled((prev) => {
@@ -175,7 +187,7 @@ export function HubTaskSettings({ marketplaceId, items, onClose, onSaved }: { ma
                               />
                               <span>
                                 {t.label}
-                                <span className="block text-[11.5px] leading-4" style={{ color: hub.textSubtle }}>{t.hint}</span>
+                                <span className="block text-[12px] leading-4" style={{ color: hub.textSubtle }}>{t.hint}</span>
                               </span>
                             </label>
                           </li>
@@ -186,17 +198,17 @@ export function HubTaskSettings({ marketplaceId, items, onClose, onSaved }: { ma
                 </div>
               </section>
 
-              <section>
-                <h3 className="text-[14px] font-semibold" style={{ ...hubSans, color: hub.text }}>Отключено по товарам</h3>
+              <section className="border-t pt-6" style={{ borderColor: hub.border }}>
+                <h3 className="text-[15px] font-semibold tracking-[-0.01em]" style={{ ...hubSans, color: hub.text }}>Отключено по товарам</h3>
                 {muted.length === 0 ? (
-                  <p className="mt-1 text-[12.5px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>Таких товаров нет. Отключить задачи по одному товару можно в карточке задачи.</p>
+                  <p className="mt-1.5 text-[13px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>Таких товаров нет. Отключить задачи по одному товару можно в карточке задачи.</p>
                 ) : (
-                  <ul className="mt-2 space-y-1.5">
+                  <ul className="mt-2">
                     {muted.map((m) => (
-                      <li key={`${m.nmId}:${m.type}`} className="flex items-center justify-between gap-3 text-[13px]" style={{ ...hubSans, color: hub.text }}>
+                      <li key={`${m.nmId}:${m.type}`} className="flex items-center justify-between gap-3 border-t py-3 text-[14px] first:border-t-0" style={{ ...hubSans, color: hub.text, borderColor: hub.borderSoft }}>
                         <span className="min-w-0">
                           <span className="block truncate font-medium">{titleOf.get(m.nmId) ?? `Артикул ${m.nmId}`}</span>
-                          <span className="block text-[12px]" style={{ color: hub.textMuted }}>{typeLabel.get(m.type) ?? m.type}</span>
+                          <span className="block text-[12px]" style={{ color: hub.textSubtle }}>{typeLabel.get(m.type) ?? m.type}</span>
                         </span>
                         <HubButton variant="secondary" size="sm" onClick={() => unmute(m.nmId, m.type)}>Вернуть</HubButton>
                       </li>
@@ -208,7 +220,7 @@ export function HubTaskSettings({ marketplaceId, items, onClose, onSaved }: { ma
           ) : null}
         </div>
 
-        <div className="space-y-2 border-t px-5 py-4" style={{ borderColor: hub.border }}>
+        <div className="space-y-2 border-t px-6 py-4" style={{ borderColor: hub.border }}>
           <div className="flex flex-wrap gap-2">
             <HubButton loading={busy} disabled={state.status !== "ready"} onClick={save}>Сохранить</HubButton>
             <HubButton variant="secondary" disabled={state.status !== "ready" || busy} onClick={reset}>Сбросить к стандартным</HubButton>

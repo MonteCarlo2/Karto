@@ -5,7 +5,9 @@ import { defaultAdCampaignName } from "@/lib/seller-hub/ads-create";
 import { createSellerHubAdCampaign } from "@/lib/seller-hub/client-api";
 import type { AdvisorProduct } from "@/lib/seller-hub/ads-advisor";
 import type { SellerAdCampaignRow } from "@/lib/seller-hub/types";
-import { formatInt, formatRub, hub, HubButton, hubNumeric, hubSans } from "./hub-ui";
+import { Card } from "./hub-analytics-ui";
+import { isRecommended, ProductPicker } from "./hub-ads-product-picker";
+import { formatInt, hub, HubButton, hubSans } from "./hub-ui";
 
 /** Максимум кампаний за один раз: каждая создаётся отдельным запросом к WB. */
 const MAX_BULK = 100;
@@ -17,16 +19,18 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 type Result = { nmId: string; ok: boolean; message: string };
 
 /**
- * Массовое создание «1 товар = 1 кампания»: кампании создаются без запуска и без списания денег.
- * Ставка, бюджет и запуск выставляются потом, по каждой кампании отдельно и с подтверждением.
+ * Массовое создание «1 товар = 1 кампания»: товары показаны плитками с фото, самые выгодные для рекламы первыми.
+ * Кампании создаются без запуска и без списания денег: ставку, бюджет и запуск выставляют потом, по каждой отдельно.
  */
 export function HubAdsBulk({
   campaigns,
   products,
+  photos,
   onCreated,
 }: {
   campaigns: SellerAdCampaignRow[];
   products: AdvisorProduct[];
+  photos?: Map<string, string | undefined>;
   onCreated: (rows: SellerAdCampaignRow[]) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -35,16 +39,12 @@ export function HubAdsBulk({
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<Result[]>([]);
 
-  /** Товары, которых ещё нет ни в одной живой кампании, с маржой и остатком: для них реклама имеет смысл. */
+  /** Товары, которых ещё нет ни в одной живой кампании: все, а рекомендуемые (с остатком и маржой) в подборщике идут первыми. */
   const candidates = useMemo(() => {
-    const advertised = new Set(
-      campaigns.filter((c) => c.status === 4 || c.status === 9 || c.status === 11).flatMap((c) => (c.bids ?? []).map((b) => b.nmId)),
-    );
-    return products
-      .filter((p) => !advertised.has(p.nmId) && p.marginRub != null && p.marginRub > 0 && p.stock != null && p.stock > 0)
-      .sort((a, b) => (b.marginRub ?? 0) - (a.marginRub ?? 0));
+    const advertised = new Set(campaigns.filter((c) => c.status === 4 || c.status === 9 || c.status === 11).flatMap((c) => (c.bids ?? []).map((b) => b.nmId)));
+    return products.filter((p) => !advertised.has(p.nmId));
   }, [campaigns, products]);
-
+  const recommendedCount = useMemo(() => candidates.filter(isRecommended).length, [candidates]);
   const titles = useMemo(() => new Map(products.map((p) => [p.nmId, p.title])), [products]);
 
   function toggle(nmId: string) {
@@ -70,16 +70,7 @@ export function HubAdsBulk({
       try {
         const result = await createSellerHubAdCampaign({ nmId: Number(nmId), name });
         if (result.ok && result.campaignId) {
-          created.push({
-            id: String(result.campaignId),
-            name,
-            status: 4,
-            statusLabel: "Готова к запуску",
-            paymentType: "cpm",
-            budget: 0,
-            bidType: "manual",
-            bids: [],
-          });
+          created.push({ id: String(result.campaignId), name, status: 4, statusLabel: "Готова к запуску", paymentType: "cpm", budget: 0, bidType: "manual", bids: [] });
           out.push({ nmId, ok: true, message: `Кампания №${result.campaignId}` });
         } else {
           out.push({ nmId, ok: result.ok, message: result.error ?? "Кампания создана" });
@@ -104,113 +95,74 @@ export function HubAdsBulk({
   }
 
   return (
-    <div className="rounded-2xl p-4" style={{ backgroundColor: hub.surface }}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-[13.5px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-            Создать кампании для нескольких товаров
-          </p>
-          <p className="text-[12px] leading-5" style={{ ...hubSans, color: hub.textSubtle }}>
-            Один товар = одна кампания. Кампании создаются без запуска и без списания денег: ставку, бюджет и запуск вы
-            задаёте потом по каждой отдельно.
-          </p>
-        </div>
-        <HubButton variant="secondary" size="sm" onClick={() => setOpen((v) => !v)}>
+    <Card
+      title="Новые кампании"
+      hint="Один товар — одна кампания. Создаются без запуска и без списания денег: ставку, бюджет и запуск вы задаёте потом."
+      action={
+        <HubButton variant={open ? "secondary" : "primary"} size="sm" onClick={() => setOpen((v) => !v)}>
           {open ? "Скрыть" : "Выбрать товары"}
         </HubButton>
-      </div>
-
-      {open ? (
-        <div className="mt-3 space-y-3">
-          {candidates.length === 0 ? (
-            <p className="text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
-              Нет товаров, подходящих для новой кампании: у всех уже есть реклама, нет остатка или нет положительной маржи.
-            </p>
+      }
+    >
+      {!open ? (
+        <p className="text-[15.5px] leading-[1.5]" style={{ ...hubSans, color: hub.textMuted }}>
+          {candidates.length > 0 ? (
+            <>
+              Рекомендуем <strong style={{ color: hub.text }}>{formatInt(recommendedCount)}</strong> из {formatInt(candidates.length)} товаров без рекламы: у них есть остаток и положительная маржа. Остальные тоже можно выбрать.
+            </>
           ) : (
-            <div className="max-h-[360px] overflow-auto">
-              <table className="min-w-full border-collapse text-left">
-                <thead style={{ backgroundColor: hub.surfaceMuted }}>
-                  <tr>
-                    {["", "Товар", "Маржа с продажи", "Остаток", "Заказов за 28 дн."].map((label) => (
-                      <th
-                        key={label}
-                        className="border-b px-3 py-2 text-[11.5px] font-bold uppercase tracking-[0.06em]"
-                        style={{ ...hubSans, color: hub.textSubtle, borderColor: hub.borderSoft }}
-                      >
-                        {label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {candidates.map((p) => (
-                    <tr key={p.nmId} className="border-b" style={{ borderColor: hub.borderSoft }}>
-                      <td className="px-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={picked.has(p.nmId)}
-                          disabled={busy || (!picked.has(p.nmId) && picked.size >= MAX_BULK)}
-                          onChange={() => toggle(p.nmId)}
-                          aria-label={`Выбрать ${p.title}`}
-                        />
-                      </td>
-                      <td className="max-w-[320px] truncate px-3 py-2 text-[13px] font-medium" style={hubSans}>
-                        {p.title}
-                      </td>
-                      {[
-                        p.marginRub != null ? formatRub(p.marginRub) : "—",
-                        p.stock != null ? `${formatInt(p.stock)} шт.` : "—",
-                        p.orders28 != null ? formatInt(p.orders28) : "—",
-                      ].map((cell, index) => (
-                        <td key={index} className="whitespace-nowrap px-3 py-2 text-[13px]" style={{ ...hubSans, ...hubNumeric, color: hub.text }}>
-                          {cell}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            "У всех товаров уже есть реклама."
           )}
+        </p>
+      ) : (
+        <div className="space-y-5">
+          <ProductPicker
+            products={candidates}
+            photos={photos}
+            selected={picked}
+            onToggle={toggle}
+            onSelectMany={(ids) => {
+              setConfirm(false);
+              setPicked(new Set(ids.slice(0, MAX_BULK)));
+            }}
+            disabled={busy}
+            max={MAX_BULK}
+          />
+          <p className="text-[14px]" style={{ ...hubSans, color: hub.textSubtle }}>
+            Выбрано {picked.size} из {MAX_BULK} возможных за раз
+          </p>
 
           {picked.size > 0 ? (
             confirm ? (
-              <div className="space-y-2">
-                <p className="text-[12.5px] leading-5" style={{ ...hubSans, color: hub.text }}>
-                  Будет создано кампаний: {picked.size}. Каждая: один товар, ручная ставка, оплата за показы, размещение в
-                  поиске. Деньги не спишутся, показы не начнутся, пока вы не пополните бюджет и не запустите кампанию.
+              <div className="rounded-[18px] p-5" style={{ backgroundColor: "rgba(1, 20, 8, 0.045)" }}>
+                <p className="max-w-[72ch] text-[15px] leading-[1.55]" style={{ ...hubSans, color: hub.text }}>
+                  Будет создано кампаний: <strong>{picked.size}</strong>. Каждая: один товар, ручная ставка, оплата за показы, размещение в поиске. Деньги не спишутся, показы не начнутся, пока вы не пополните бюджет и не запустите кампанию.
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className="mt-4 flex flex-wrap gap-2">
                   <HubButton size="sm" loading={busy} onClick={() => void run()}>
                     Создать {picked.size}
                   </HubButton>
-                  <HubButton size="sm" variant="secondary" disabled={busy} onClick={() => setConfirm(false)}>
+                  <HubButton size="sm" variant="ghost" disabled={busy} onClick={() => setConfirm(false)}>
                     Отмена
                   </HubButton>
                 </div>
               </div>
             ) : (
-              <HubButton size="sm" onClick={() => setConfirm(true)}>
-                Создать кампании ({picked.size})
-              </HubButton>
+              <HubButton onClick={() => setConfirm(true)}>Создать кампании ({picked.size})</HubButton>
             )
           ) : null}
-          {candidates.length > 0 ? (
-            <p className="text-[12px]" style={{ ...hubSans, color: hub.textSubtle }}>
-              Выбрано {picked.size} из {MAX_BULK} возможных за раз.
-            </p>
-          ) : null}
+
           {results.length > 0 ? (
-            <ul className="space-y-0.5 text-[12.5px]" style={hubSans}>
+            <ul className="space-y-1 text-[14px]" style={hubSans}>
               {results.map((row) => (
-                <li key={row.nmId} style={{ color: row.ok ? hub.greenDark : hub.danger }}>
+                <li key={`${row.nmId}-${row.message}`} style={{ color: row.ok ? "#067A55" : hub.textMuted }}>
                   {titles.get(row.nmId) ?? row.nmId}: {row.message}
                 </li>
               ))}
             </ul>
           ) : null}
         </div>
-      ) : null}
-    </div>
+      )}
+    </Card>
   );
 }

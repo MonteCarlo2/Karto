@@ -8,6 +8,7 @@ import {
   migrateSellerHubWbToken,
   openSellerHubWbToken,
   replaceSellerHubWbToken,
+  wbTokenExpiresAt,
   type WbTokenFlowResult,
 } from "@/lib/seller-hub/wb-token";
 import { supabaseSellerHubSecretDb } from "@/lib/seller-hub/wb-token-store";
@@ -15,7 +16,7 @@ import { verifyWildberriesContentAccess } from "@/lib/services/wildberries/conte
 
 const READ_ERROR = "Не удалось прочитать подключение кабинета";
 
-function publicResult(result: WbTokenFlowResult) {
+function publicResult(result: WbTokenFlowResult, expiresAt: string | null = null) {
   if (!result.ok) {
     return {
       ok: false as const,
@@ -33,6 +34,7 @@ function publicResult(result: WbTokenFlowResult) {
     sampleCount: result.sampleCount,
     totalCards: result.totalCards ?? null,
     scopes: result.scopes,
+    expiresAt,
     keepLocal: false,
   };
 }
@@ -43,7 +45,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   }
   const opened = await openSellerHubWbToken(auth.user.id, supabaseSellerHubSecretDb(createServerClient()));
-  if (opened.ok) return NextResponse.json({ ok: true, connected: true });
+  if (opened.ok) {
+    const expiresAt = wbTokenExpiresAt(opened.token);
+    return NextResponse.json({ ok: true, connected: true, expiresAt });
+  }
   if (opened.reason === "missing") return NextResponse.json({ ok: true, connected: false });
   return NextResponse.json({ ok: false, error: READ_ERROR }, { status: 503 });
 }
@@ -85,5 +90,5 @@ export async function POST(request: NextRequest) {
         ? await migrateSellerHubWbToken(auth.user.id, apiKey, db, verify)
         : await replaceSellerHubWbToken(auth.user.id, apiKey, db, verify);
 
-  return NextResponse.json(publicResult(result), { status: result.ok ? 200 : 400 });
+  return NextResponse.json(publicResult(result, result.ok ? wbTokenExpiresAt(apiKey) : null), { status: result.ok ? 200 : 400 });
 }

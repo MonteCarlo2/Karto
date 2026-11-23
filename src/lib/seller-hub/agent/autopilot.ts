@@ -6,6 +6,7 @@ import { parseAdDepositRequest } from "@/lib/seller-hub/ads-deposit";
 import { parseAdMinusRequest } from "@/lib/seller-hub/ads-minus";
 import { parseAdRemoveNmRequest } from "@/lib/seller-hub/ads-nms";
 import { openSellerHubWbToken, safeSellerHubMessage } from "@/lib/seller-hub/wb-token";
+import { isSandboxOn } from "@/lib/seller-hub/sandbox";
 import { supabaseSellerHubSecretDb } from "@/lib/seller-hub/wb-token-store";
 import { addWbAdMinusPhrases, depositWbAdBudget, removeWbAdNm, toggleWbAdCampaign } from "@/lib/services/wildberries/ads-write-client";
 import { ACTION_SPECS } from "./actions";
@@ -25,7 +26,7 @@ export const AUTOPILOT_TYPE_LABEL: Record<AutopilotType, string> = {
   pause: "Ставить на паузу рекламные кампании",
   remove_nm: "Убирать товар из рекламной кампании",
   minus_phrases: "Добавлять минус-фразы (запросы без заказов)",
-  deposit: "Пополнять бюджет кампании (500–2000 ₽ за шаг)",
+  deposit: "Пополнять бюджет кампании (1000–5000 ₽ за шаг)",
 };
 
 /** Регулярные задачи: выполняются сами раз в сутки при включённом автопилоте, без привязки к плану. Каждое действие идёт через те же правила и суточные пределы. */
@@ -142,11 +143,12 @@ export async function runAutopilot(input: { db: SupabaseClient; userId: string; 
   const usage = await loadUsageToday(db, userId, nowMs);
 
   let token: string | null = null;
+  let sandboxOn: boolean | null = null;
   for (const p of candidates) {
     result.considered += 1;
     const plan = p.meta?.strategy?.findingId ? planById.get(p.meta.strategy.findingId) : undefined;
     const byRoutine = !p.meta?.strategy?.findingId && isRoutine(p);
-    const decision = decideAutopilot({ action: p.action, planAutopilot: byRoutine || (plan?.autopilot === true && plan?.owner_accepted === true), planRunning: byRoutine || (plan?.strategy_state as { status?: string } | null)?.status === "running", settings, usage });
+    const decision = decideAutopilot({ action: p.action, planAutopilot: byRoutine || (plan?.autopilot === true && plan?.owner_accepted === true), planRunning: byRoutine || ((plan?.strategy_state as { status?: string; pausedAt?: string } | null)?.status === "running" && !(plan?.strategy_state as { pausedAt?: string } | null)?.pausedAt), settings, usage });
     if (!decision.run) {
       result.skipped.push({ id: p.id, reason: decision.reason });
       continue;
@@ -154,6 +156,12 @@ export async function runAutopilot(input: { db: SupabaseClient; userId: string; 
     if (input.dryRun) {
       result.executed += 1;
       usage.actionsToday += 1;
+      continue;
+    }
+    // Тестовый режим: предложение остаётся открытым, в WB ничего не отправляется.
+    if (sandboxOn === null) sandboxOn = await isSandboxOn(db, userId);
+    if (sandboxOn) {
+      result.skipped.push({ id: p.id, reason: "тестовый режим: в WB ничего не отправляется" });
       continue;
     }
     if (!token) {

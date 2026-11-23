@@ -316,3 +316,20 @@ export function localRootAfterWbMigration<T extends { connections: { wildberries
     },
   };
 }
+
+/**
+ * Срок действия токена WB из самого токена (JWT, поле exp в секундах). Сам токен не возвращается и нигде не пишется.
+ * Токен WB живёт 180 дней при создании на портале, поэтому срок показываем из токена, а не выдумываем.
+ */
+export function wbTokenExpiresAt(token: string): string | null {
+  const parts = token.trim().split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const json = Buffer.from(parts[1]!.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const exp = (JSON.parse(json) as { exp?: unknown }).exp;
+    if (typeof exp !== "number" || !Number.isFinite(exp) || exp <= 0) return null;
+    return new Date(exp * 1000).toISOString();
+  } catch {
+    return null;
+  }
+}

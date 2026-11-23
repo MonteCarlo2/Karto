@@ -106,7 +106,7 @@ function httpsPostBinary(
   });
 }
 
-function getFfmpegExecutable(): string {
+export function getFfmpegExecutable(): string {
   const manual = process.env.FFMPEG_PATH?.trim();
   if (manual) return manual;
   try {

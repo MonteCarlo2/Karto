@@ -340,7 +340,7 @@ describe("demand statistical gates", () => {
     );
     assert.equal(draft?.type, "TASK_SALES_DROP");
     assert.match(String(draft?.evidence.probable_cause ?? ""), /цен/);
-    assert.match(draft?.description ?? "", /Вероятная причина/);
+    assert.match(draft?.description ?? "", /Возможная причина/);
   });
 
   it("does not compare a new card younger than 56 days", () => {

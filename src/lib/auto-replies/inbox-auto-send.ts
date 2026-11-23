@@ -26,6 +26,8 @@ import {
 
   consumeAutoReplyCredits,
 
+  getAutoReplyBalance,
+
 } from "@/lib/auto-replies-balance";
 
 export { resolveStarDeliveryMode, shouldAutoSendInboxItem } from "./inbox-star-rules";
@@ -57,6 +59,10 @@ export function markInboxItemAutoSent(item: InboxReviewItem, replyText: string):
 
     autoSendError: undefined,
 
+    autoSendAttempts: undefined,
+
+    autoSendFailedAt: undefined,
+
     sentAtLabel: `${dateLabel} · автоматически`,
 
   };
@@ -64,6 +70,11 @@ export function markInboxItemAutoSent(item: InboxReviewItem, replyText: string):
 }
 
 
+
+/** Неудача автоотправки: запоминаем причину, число попыток и время, чтобы следующая попытка была не раньше паузы. */
+function failedAutoSend(item: InboxReviewItem, message: string): InboxReviewItem {
+  return { ...item, autoSendError: message, autoSendAttempts: (item.autoSendAttempts ?? 0) + 1, autoSendFailedAt: new Date().toISOString() };
+}
 
 export async function processAutoRepliesInbox(params: {
 
@@ -101,6 +112,8 @@ export async function processAutoRepliesInbox(params: {
 
   const next = [...hydrated];
 
+  let creditsLeft: number | null = null;
+
 
 
   for (let index = 0; index < next.length; index++) {
@@ -127,17 +140,46 @@ export async function processAutoRepliesInbox(params: {
 
     if (existingDraft && existingDraft.length >= 2) {
 
-      replyText = prepareReplyForMarketplaceSend(existingDraft, params.shopSettings);
+      try {
+
+        replyText = prepareReplyForMarketplaceSend(existingDraft, params.shopSettings);
+
+      } catch (e) {
+
+        // Заготовка не прошла проверку (например, чужой язык): не ломаем остальные отзывы, этот остаётся на ручное подтверждение.
+        const message = e instanceof Error ? e.message : "Заготовка ответа не прошла проверку";
+
+        next[index] = failedAutoSend(item, message);
+
+        errors.push(message);
+
+        continue;
+
+      }
 
     } else if (emptyTemplate) {
 
-      replyText = prepareReplyForMarketplaceSend(
+      try {
 
-        resolveEmptyReviewBody(params.shopSettings.style),
+        replyText = prepareReplyForMarketplaceSend(
 
-        params.shopSettings
+          resolveEmptyReviewBody(params.shopSettings.style),
 
-      );
+          params.shopSettings
+
+        );
+
+      } catch (e) {
+
+        const message = e instanceof Error ? e.message : "Шаблон ответа не прошёл проверку";
+
+        next[index] = failedAutoSend(item, message);
+
+        errors.push(message);
+
+        continue;
+
+      }
 
     } else {
 
@@ -173,7 +215,7 @@ export async function processAutoRepliesInbox(params: {
 
         const message = e instanceof Error ? e.message : "Не удалось сгенерировать автоответ";
 
-        next[index] = { ...item, autoSendError: message };
+        next[index] = failedAutoSend(item, message);
 
         errors.push(message);
 
@@ -189,7 +231,7 @@ export async function processAutoRepliesInbox(params: {
 
       const message = "Текст ответа пустой после обработки настроек";
 
-      next[index] = { ...item, replyDraft: replyText, autoSendError: message };
+      next[index] = failedAutoSend({ ...item, replyDraft: replyText }, message);
 
       errors.push(message);
 
@@ -203,13 +245,15 @@ export async function processAutoRepliesInbox(params: {
 
 
 
+    // Сначала убеждаемся, что ответ оплачен остатком, потом отправляем, и только после успеха списываем: сбой WB не сжигает ответы.
     if (params.userId && params.supabase && shouldCharge) {
 
-      const charge = await consumeAutoReplyCredits(params.supabase, params.userId, 1);
+      // Остаток читаем один раз за проход и дальше ведём счёт сами: лишних запросов к базе на каждый отзыв нет.
+      if (creditsLeft === null) creditsLeft = await getAutoReplyBalance(params.supabase, params.userId).catch(() => 0);
 
-      if (!charge.ok) {
+      if (creditsLeft < 1) {
 
-        errors.push(charge.error ?? AUTO_REPLY_INSUFFICIENT_BALANCE_MSG);
+        errors.push(AUTO_REPLY_INSUFFICIENT_BALANCE_MSG);
 
         break;
 
@@ -223,15 +267,36 @@ export async function processAutoRepliesInbox(params: {
 
       await params.sendReply(item, replyText);
 
-      next[index] = markInboxItemAutoSent(next[index], replyText);
-
-      autoSentCount += 1;
-
     } catch (e) {
 
       const message = e instanceof Error ? e.message : "Не удалось отправить автоответ";
 
+      next[index] = failedAutoSend(next[index], message);
+
       errors.push(message);
+
+      continue;
+
+    }
+
+    next[index] = markInboxItemAutoSent(next[index], replyText);
+
+    autoSentCount += 1;
+
+    if (params.userId && params.supabase && shouldCharge) {
+
+      const charge = await consumeAutoReplyCredits(params.supabase, params.userId, 1);
+
+      if (!charge.ok) {
+
+        // Ответ уже ушёл; остаток закончился в этот же момент. Дальше не отправляем.
+        errors.push(charge.error ?? AUTO_REPLY_INSUFFICIENT_BALANCE_MSG);
+
+        break;
+
+      }
+
+      if (creditsLeft !== null) creditsLeft -= 1;
 
     }
 

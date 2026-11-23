@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { notifyPlanFinished } from "@/lib/seller-hub/notify/sources";
 import type { AgentProposal } from "@/lib/seller-hub/ads-agent-engine";
 import type { ActionableFinding } from "./ai-finding-proposals";
 import { attemptFromStrategy } from "./ai-solver-run";
@@ -60,6 +61,8 @@ export async function advanceStrategies(db: SupabaseClient, userId: string, prod
       await db.from("seller_hub_ai_findings").update({ strategy_state: state0 }).eq("id", row.id);
     }
     if (!strategy || !state0.acceptedAt || (state0.status && state0.status !== "running")) continue;
+    // План на паузе: ни шагов, ни проверок, ни итога, пока владелец не продолжит.
+    if (state0.pausedAt) continue;
     const product = row.nm_id ? productByNm.get(row.nm_id) : undefined;
     const facts = product?.ai?.facts;
     if (!product || !facts || !row.nm_id) continue;
@@ -73,9 +76,13 @@ export async function advanceStrategies(db: SupabaseClient, userId: string, prod
       const prior = Array.isArray(row.attempts) ? (row.attempts as unknown[]) : [];
       const attempts = [...prior, attemptFromStrategy(strategy, state, row.title)].slice(-3);
       await db.from("seller_hub_ai_findings").update({ strategy_state: state, owner_accepted: false, signal_fp: null, attempts, status: "open" }).eq("id", row.id);
+      await notifyPlanFinished(db, userId, { id: String(row.id), title: row.title, worked: false, resolvedAt: state.resolvedAt ?? new Date(nowMs).toISOString() });
       continue;
     }
     if (changed) await db.from("seller_hub_ai_findings").update({ strategy_state: state }).eq("id", row.id);
+    if (changed && (state.status === "worked" || state.status === "observed")) {
+      await notifyPlanFinished(db, userId, { id: String(row.id), title: row.title, worked: state.status === "worked" ? true : null, resolvedAt: state.resolvedAt ?? new Date(nowMs).toISOString() });
+    }
     if (state.status !== "running") continue;
 
     const due = dueProgramSteps(strategy, { doneSteps: state.doneSteps ?? [], lastPriceDoneAtMs: state.lastPriceDoneAt ? Date.parse(state.lastPriceDoneAt) : null, acceptedAtMs: Date.parse(state.acceptedAt!), nowMs, current: state.current, forced: state.forcedSteps });

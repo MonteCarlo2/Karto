@@ -21,6 +21,8 @@ export const SETTABLE_TASK_STATUSES: readonly TaskStatus[] = ["active", "in_prog
 
 export type TaskStatusPatch =
   | { status: "completed" }
+  /** Вернуть в работу: отменяет «Выполнено» (отметка человека) и «Отложить». */
+  | { status: "active" }
   | { status: "snoozed"; snoozeUntil: string };
 
 export type TaskStatusWriteDecision = "apply" | "missing" | "closed";
@@ -91,6 +93,7 @@ export function parseTaskStatusPatch(
   if (!body || typeof body !== "object") return { ok: false, error: "Нужен JSON" };
   const raw = body as Record<string, unknown>;
   if (raw.status === "completed") return { ok: true, patch: { status: "completed" } };
+  if (raw.status === "active") return { ok: true, patch: { status: "active" } };
   if (raw.status === "snoozed") {
     if (typeof raw.snoozeUntil !== "string" || !raw.snoozeUntil.trim()) {
       return { ok: false, error: "Нужна дата, до которой отложить задачу" };

@@ -41,7 +41,10 @@ function actionFor(event: EventRowForTask): TaskActionType {
   return "NONE";
 }
 
-export function taskFromEvent(event: EventRowForTask, storeId: string, now: string, id: string): SellerTask {
+/** Человек может поправить заголовок и описание перед созданием: берём его текст, а не текст уведомления. */
+export type TaskTextOverrides = { title?: string; description?: string };
+
+export function taskFromEvent(event: EventRowForTask, storeId: string, now: string, id: string, overrides: TaskTextOverrides = {}): SellerTask {
   const severity = SEVERITY[event.severity] ?? "opportunity";
   return {
     id,
@@ -54,8 +57,8 @@ export function taskFromEvent(event: EventRowForTask, storeId: string, now: stri
     category: CATEGORY[event.event_group] ?? "sales",
     severity,
     status: "active",
-    title: event.title,
-    description: event.detail.slice(0, 600),
+    title: overrides.title?.trim().slice(0, 160) || event.title,
+    description: overrides.description?.trim().slice(0, 600) || event.detail.slice(0, 600),
     reason: "Создана вами из уведомления в разделе «События».",
     evidence: { event_kind: event.kind, event_group: event.event_group },
     recommendation: "",

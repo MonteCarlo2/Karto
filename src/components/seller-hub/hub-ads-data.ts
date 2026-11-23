@@ -148,6 +148,7 @@ export function useAdsData({
       marginPercent: fact.marginPercent,
       stock: fact.stockFbo != null || fact.stockFbs != null ? (fact.stockFbo ?? 0) + (fact.stockFbs ?? 0) : null,
       orders28: fact.orders,
+      coverDays: fact.coverDays ?? null,
     }));
   }, [snapshot]);
   const titles = useMemo(() => new Map(advisorProducts.map((p) => [p.nmId, p.title])), [advisorProducts]);

@@ -14,6 +14,8 @@ import {
   updateSellerHubClubDiscount,
   updateSellerHubPrices,
 } from "@/lib/seller-hub/client-api";
+import { SANDBOX_MESSAGE } from "@/lib/seller-hub/sandbox";
+import { isSandboxOnClient } from "@/lib/seller-hub/sandbox-client";
 import type { SellerAdCampaignRow } from "@/lib/seller-hub/types";
 
 /**
@@ -37,7 +39,9 @@ export function describeAgentAction(a: AgentAction, campaigns: SellerAdCampaignR
     case "remove_nm":
       return `убрать товар ${a.nmId} из кампании «${name(a.campaignId)}»`;
     case "create_campaign":
-      return `создать тестовую кампанию «${a.name}» (без запуска и без списания денег)`;
+      return a.paymentType === "cpc"
+        ? `создать кампанию с оплатой за клик «${a.name}» (без запуска и без списания денег; WB сам поставит минимальную ставку)`
+        : `создать тестовую кампанию «${a.name}» (без запуска и без списания денег)`;
     case "price":
       return `изменить цену товара ${a.nmId} для покупателя с ${a.currentRub.toLocaleString("ru-RU")} ₽ до ${a.targetRub.toLocaleString("ru-RU")} ₽ (скидка продавца ${a.discount}% остаётся)`;
     case "characteristics":
@@ -61,16 +65,18 @@ export function describeAgentAction(a: AgentAction, campaigns: SellerAdCampaignR
   }
 }
 
-export type AgentExecResult = { ok: boolean; error?: string; createdId?: string | null };
+export type AgentExecResult = { ok: boolean; error?: string; createdId?: string | null; /** Действие остановлено тестовым режимом: в WB ничего не отправлено. */ simulated?: boolean };
 
 export async function executeAgentAction(a: AgentAction): Promise<AgentExecResult> {
+  // Тестовый режим: действие агента не уходит в WB. Проверяем здесь, в единственной точке входа браузерных действий агента.
+  if (await isSandboxOnClient()) return { ok: false, error: SANDBOX_MESSAGE, simulated: true };
   if (a.type === "deposit") return depositSellerHubAdBudget({ campaignId: Number(a.campaignId), sum: a.sumRub });
   if (a.type === "pause") return toggleSellerHubAd({ campaignId: Number(a.campaignId), action: "pause" });
   if (a.type === "resume") return toggleSellerHubAd({ campaignId: Number(a.campaignId), action: "start" });
   if (a.type === "add_nm") return addSellerHubAdNm({ advertId: Number(a.campaignId), nmId: Number(a.nmId) });
   if (a.type === "remove_nm") return removeSellerHubAdNm({ advertId: Number(a.campaignId), nmId: Number(a.nmId) });
   if (a.type === "create_campaign") {
-    const created = await createSellerHubAdCampaign({ nmId: Number(a.nmId), name: a.name });
+    const created = await createSellerHubAdCampaign({ nmId: Number(a.nmId), name: a.name, ...(a.paymentType === "cpc" ? { paymentType: "cpc" as const } : {}) });
     return { ok: created.ok, error: created.error, createdId: created.ok && created.campaignId ? String(created.campaignId) : null };
   }
   if (a.type === "characteristics") return updateSellerHubCard({ nmId: Number(a.nmId), characteristics: a.changes.map((c) => ({ id: c.charcId, value: c.value, numeric: c.numeric })) });
@@ -124,7 +130,7 @@ export function applyActionToCampaigns(a: AgentAction, campaigns: SellerAdCampai
     case "remove_nm":
       return campaigns.map((c) => (c.id === a.campaignId ? { ...c, bids: (c.bids ?? []).filter((b) => b.nmId !== a.nmId) } : c));
     case "create_campaign":
-      return createdId ? [...campaigns, { id: createdId, name: a.name, status: 4, statusLabel: "Готова к запуску", paymentType: "cpm", budget: 0, bidType: "manual", bids: [] }] : campaigns;
+      return createdId ? [...campaigns, { id: createdId, name: a.name, status: 4, statusLabel: "Готова к запуску", paymentType: a.paymentType === "cpc" ? "cpc" : "cpm", budget: 0, bidType: "manual", bids: [] }] : campaigns;
     case "daily_limit":
       return campaigns.map((c) => (c.id === a.campaignId ? { ...c, dailyLimit: a.enabled ? { limitRub: a.limitRub, carryOver: a.carryOver, requiredRub: c.dailyLimit?.requiredRub ?? null } : null } : c));
     case "price":

@@ -2,7 +2,7 @@
 
 import { AlertTriangle } from "lucide-react";
 import type { SellerBlockedCards } from "@/lib/seller-hub/types";
-import { formatInt, hub, HubPanel, hubSans } from "./hub-ui";
+import { formatInt, hub, hubSans } from "./hub-ui";
 
 /**
  * Риски, о которых сообщает сам WB: заблокированные карточки. Пока карточка заблокирована, она не продаёт совсем,
@@ -12,11 +12,11 @@ export function HubTasksRisks({ blocked }: { blocked: SellerBlockedCards | null 
   if (!blocked || blocked.cards.length === 0) return null;
   const shown = blocked.cards.slice(0, 5);
   return (
-    <HubPanel className="px-5 py-4">
+    <section className="rounded-[14px] px-5 py-4" style={{ backgroundColor: hub.dangerSoft }} aria-labelledby="blocked-title">
       <div className="flex items-start gap-3">
-        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" style={{ color: hub.danger }} />
+        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" strokeWidth={1.5} style={{ color: hub.danger }} />
         <div className="min-w-0">
-          <h2 className="text-[15px] font-semibold" style={{ ...hubSans, color: hub.text }}>
+          <h2 id="blocked-title" className="text-[15px] font-semibold" style={{ ...hubSans, color: hub.text }}>
             WB заблокировал карточек: {formatInt(blocked.cards.length)}
           </h2>
           <p className="mt-1 text-[13px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
@@ -42,6 +42,6 @@ export function HubTasksRisks({ blocked }: { blocked: SellerBlockedCards | null 
           ) : null}
         </div>
       </div>
-    </HubPanel>
+    </section>
   );
 }

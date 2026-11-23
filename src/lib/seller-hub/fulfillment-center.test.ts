@@ -120,7 +120,9 @@ describe("центр логистики: предложения", () => {
       products: [{ nmId: "1", title: "Ведро", deliveries: 20, perDelivery: 100, priorPerDelivery: 80, changePercent: 25, returns: 8, returnRate: 0.4, returnCost: 300, logisticsTotal: 1000, revenue: 5000, shareOfRevenue: 0.2, storage: 0, acceptance: 0, overpay: 400, highReturn: true }],
     };
     const r = buildFulfillmentProposals(base({ costs }));
-    assert.match(r.find((x) => x.id === "returns_high")!.detail, /Ведро \(8 из 20, 40%\)/);
+    const returns = r.find((x) => x.id === "returns_high")!;
+    assert.match(returns.detail, /Доля возвратов выше нормы/);
+    assert.doesNotMatch(returns.detail, /Ведро/, "названия товаров в предложении не перечисляем");
     assert.match(r.find((x) => x.id === "cost_growth")!.detail, /400/);
     assert.equal(buildFulfillmentProposals(base()).some((x) => x.id === "returns_high"), false);
   });

@@ -12,7 +12,7 @@ import {
   setCachedWildberriesSync,
   wildberriesTokenKey,
 } from "@/lib/services/wildberries/server-cache";
-import { mergeInboxReviewLists } from "@/lib/auto-replies/inbox-item-merge";
+import { mergeInboxReviewLists, reconcileAnsweredElsewhere } from "@/lib/auto-replies/inbox-item-merge";
 import { sortInboxItemsByReviewDate } from "@/lib/auto-replies/inbox-review-scope";
 import { finishInboxSyncPipeline, type InboxSyncMode } from "@/lib/auto-replies/inbox-sync-finish";
 import {
@@ -143,7 +143,9 @@ export async function runWildberriesInboxSync(input: {
         usage: mp.usage ?? input.usage,
         existingItems: staleItems,
       });
-      mergedBeforePipeline = sortInboxItemsByReviewDate(mergeInboxItems(staleItems, freshItems));
+      // Фоновая загрузка берёт все неотвеченные: что у нас ждёт ответа, а в выдаче WB его нет, уже отвечено в кабинете.
+      const reconciled = reconcileAnsweredElsewhere(staleItems, freshItems, { complete: slice.progress?.unansweredComplete === true, marketplaceId: "wildberries" });
+      mergedBeforePipeline = sortInboxItemsByReviewDate(mergeInboxItems(reconciled, freshItems));
     } catch (e) {
       mergedBeforePipeline = sortInboxItemsByReviewDate([...staleItems]);
       const message =

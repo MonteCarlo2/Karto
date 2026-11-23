@@ -8,8 +8,13 @@ import { clusterBidKey } from "@/lib/seller-hub/ads-cluster-bid";
 import { keepKey, parseKeepQueries, serializeKeepQueries } from "@/lib/seller-hub/ads-keep-queries";
 import type { QueryRelevance } from "@/lib/seller-hub/ads-query-relevance";
 import type { SellerAdClusters, SellerAdsStats } from "@/lib/seller-hub/types";
-import { formatInt, hub, HubButton, hubNumeric, hubSans } from "./hub-ui";
+import { HelpTip } from "./hub-help-tip";
+import { formatInt, hub, HubButton, hubSans } from "./hub-ui";
 import { useUserSetting } from "./use-user-setting";
+
+const MONO = { fontFamily: "var(--font-geist-mono), ui-monospace, monospace", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.04em" } as const;
+const GRID = "md:grid-cols-[minmax(0,2.4fr)_repeat(5,minmax(64px,0.7fr))_minmax(150px,1.3fr)]";
+const DIVIDER = "rgba(1, 20, 8, 0.1)";
 
 function percent(value: number | null): string {
   return value == null ? "—" : `${value.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}%`;
@@ -44,6 +49,8 @@ export function HubAdsClusters({
   const [confirmKey, setConfirmKey] = useState<string | null>(null);
   const [minusBusy, setMinusBusy] = useState(false);
   const [minusDone, setMinusDone] = useState<Record<string, string>>({});
+  const [wastedLimit, setWastedLimit] = useState(10);
+  const [workingLimit, setWorkingLimit] = useState(10);
 
   const pairs = useMemo(
     () =>
@@ -184,16 +191,20 @@ export function HubAdsClusters({
   }
 
   const header = (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <p className="text-[13px] font-semibold" style={{ ...hubSans, color: hub.text }}>
+    <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 text-[22px] font-semibold leading-7 tracking-[-0.02em]" style={{ ...hubSans, color: hub.text }}>
           Поисковые запросы рекламы
-        </p>
-        <p className="text-[12px] leading-5" style={{ ...hubSans, color: hub.textSubtle }}>
-          Какие запросы приводят заказы, а на каких уходят клики впустую. Данные WB, период как в сводке.
+          <HelpTip title="Что это за запросы" align="left">
+            <p>Фразы, которые вводили покупатели, когда увидели вашу рекламу. По каждой видно показы, клики и заказы за выбранный период.</p>
+            <p className="mt-2">В список попадают запросы минимум со 100 показами. Запросы с кликами, но без заказов можно добавить в минус-фразы.</p>
+          </HelpTip>
+        </div>
+        <p className="mt-1 text-[15.5px] leading-[1.5]" style={{ ...hubSans, color: hub.textMuted }}>
+          Какие запросы приводят заказы, а какие тратят деньги впустую.
         </p>
       </div>
-      <HubButton variant="secondary" size="sm" loading={loading} onClick={() => void load(clusters != null)} disabled={pairs.length === 0}>
+      <HubButton variant="secondary" loading={loading} onClick={() => void load(clusters != null)} disabled={pairs.length === 0}>
         {clusters ? "Обновить" : "Загрузить запросы"}
       </HubButton>
     </div>
@@ -204,7 +215,7 @@ export function HubAdsClusters({
       <div>
         {header}
         {error ? (
-          <p className="mt-2 text-[13px]" style={{ ...hubSans, color: hub.danger }}>
+          <p className="mt-3 text-[15px]" style={{ ...hubSans, color: hub.danger }}>
             {error}
           </p>
         ) : null}
@@ -213,168 +224,192 @@ export function HubAdsClusters({
   }
 
   const label = (row: ClusterRow) => `${titles.get(row.nmId) ?? row.nmId} · ${campaignNames.get(row.advertId) ?? row.advertId}`;
-  const table = (rows: ClusterRow[], max: number) => (
-    <div className="overflow-x-auto">
-      <table className="min-w-full border-collapse text-left">
-        <thead style={{ backgroundColor: hub.surfaceMuted }}>
-          <tr>
-            {["Запрос", "Товар и кампания", "Показы", "Клики", "CTR", "Заказы", "Позиция", "Ставка кластера"].map((name) => (
-              <th
-                key={name}
-                className="border-b px-3 py-2 text-[11.5px] font-bold uppercase tracking-[0.06em]"
-                style={{ ...hubSans, color: hub.textSubtle, borderColor: hub.borderSoft }}
-              >
-                {name}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.slice(0, max).map((row) => (
-            <tr key={`${row.advertId}-${row.nmId}-${row.query}`} className="border-b" style={{ borderColor: hub.borderSoft }}>
-              <td className="px-3 py-2 text-[13px] font-medium" style={hubSans}>
-                {row.query}
-              </td>
-              <td className="max-w-[260px] truncate px-3 py-2 text-[12.5px]" style={{ ...hubSans, color: hub.textMuted }}>
-                {label(row)}
-              </td>
-              {[
-                formatInt(row.views),
-                formatInt(row.clicks),
-                percent(row.ctr),
-                formatInt(row.orders),
-                row.avgPos != null ? row.avgPos.toLocaleString("ru-RU", { maximumFractionDigits: 1 }) : "—",
-              ].map((cell, index) => (
-                <td key={index} className="whitespace-nowrap px-3 py-2 text-[13px]" style={{ ...hubSans, ...hubNumeric, color: hub.text }}>
-                  {cell}
-                </td>
-              ))}
-              <td className="px-3 py-2 text-[12.5px]" style={hubSans}>
-                {(() => {
-                  const key = clusterBidKey(row.advertId, row.nmId, row.query);
-                  const own = clusterBids[key];
-                  const editing = bidEdit?.key === key ? bidEdit : null;
-                  if (editing) {
-                    return (
-                      <div className="space-y-1.5">
-                        {editing.step === "edit" ? (
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              inputMode="numeric"
-                              value={editing.value}
-                              onChange={(e) => setBidEdit({ ...editing, value: e.target.value.replace(/\D/g, "") })}
-                              className="w-20 rounded-md border px-2 py-1 text-[13px]"
-                              style={{ borderColor: hub.border }}
-                              placeholder="₽"
-                              aria-label="Ставка кластера, ₽ за 1000 показов"
-                            />
-                            <HubButton size="sm" disabled={!editing.value || Number(editing.value) <= 0} onClick={() => setBidEdit({ ...editing, step: "confirm" })}>
-                              Далее
-                            </HubButton>
-                            <HubButton size="sm" variant="secondary" onClick={() => setBidEdit(null)}>
-                              Отмена
-                            </HubButton>
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            <p style={{ color: hub.text }}>
-                              {editing.step === "reset"
-                                ? `Сбросить ставку кластера «${row.query}»? Он вернётся к ставке кампании.`
-                                : `Поставить на кластер «${row.query}» ставку ${Number(editing.value).toLocaleString("ru-RU")} ₽ за 1000 показов?`}
-                            </p>
-                            <div className="flex gap-1.5">
-                              <HubButton size="sm" loading={bidBusy} onClick={() => void applyBid()}>
-                                Подтвердить
-                              </HubButton>
-                              <HubButton size="sm" variant="secondary" disabled={bidBusy} onClick={() => setBidEdit(null)}>
-                                Отмена
-                              </HubButton>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-                  return (
-                    <div className="flex flex-wrap items-center gap-2 whitespace-nowrap">
-                      <span style={{ color: hub.text }}>{own != null ? `${own.toLocaleString("ru-RU")} ₽` : "как у кампании"}</span>
-                      <button
-                        type="button"
-                        className="underline"
-                        style={{ color: hub.textMuted }}
-                        onClick={() => setBidEdit({ key, advertId: row.advertId, nmId: row.nmId, query: row.query, value: own != null ? String(Math.round(own)) : "", step: "edit" })}
-                      >
+  const table = (rows: ClusterRow[], max: number, more: () => void) => (
+    <div>
+      <div className={`hidden gap-x-4 border-b pb-3 text-[14px] md:grid ${GRID}`} style={{ ...hubSans, color: hub.textSubtle, borderColor: "rgba(1, 20, 8, 0.14)" }}>
+        <span>Запрос</span>
+        <span className="text-right">Показы</span>
+        <span className="text-right">Клики</span>
+        <span className="text-right">CTR</span>
+        <span className="text-right">Заказы</span>
+        <span className="text-right">Позиция</span>
+        <span>Ставка кластера</span>
+      </div>
+      <ul className="divide-y" style={{ borderColor: DIVIDER }}>
+        {rows.slice(0, max).map((row) => {
+          const key = clusterBidKey(row.advertId, row.nmId, row.query);
+          const own = clusterBids[key];
+          const editing = bidEdit?.key === key ? bidEdit : null;
+          return (
+            <li key={`${row.advertId}-${row.nmId}-${row.query}`} className="py-3.5" style={{ borderColor: DIVIDER }}>
+              <div className={`grid items-center gap-x-4 gap-y-2 ${GRID}`}>
+                <div className="min-w-0">
+                  <p className="text-[16.5px] font-semibold leading-[1.3] [overflow-wrap:anywhere]" style={{ ...hubSans, color: hub.text }}>
+                    {row.query}
+                  </p>
+                  <p className="mt-0.5 truncate text-[13.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                    {label(row)}
+                  </p>
+                </div>
+                {[
+                  ["Показы", formatInt(row.views)],
+                  ["Клики", formatInt(row.clicks)],
+                  ["CTR", percent(row.ctr)],
+                  ["Заказы", formatInt(row.orders)],
+                  ["Позиция", row.avgPos != null ? row.avgPos.toLocaleString("ru-RU", { maximumFractionDigits: 1 }) : "—"],
+                ].map(([name, value]) => (
+                  <p key={name} className="flex items-baseline justify-between gap-3 md:justify-end" style={MONO}>
+                    <span className="text-[13.5px] md:hidden" style={{ ...hubSans, letterSpacing: 0, color: hub.textSubtle }}>
+                      {name}
+                    </span>
+                    <span className="text-[17px] font-medium" style={{ color: name === "Заказы" && row.orders > 0 ? "#067A55" : hub.text }}>
+                      {value}
+                    </span>
+                  </p>
+                ))}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-[15px]" style={{ ...hubSans, color: own != null ? hub.text : hub.textSubtle, fontWeight: own != null ? 600 : 400 }}>
+                    {own != null ? `${own.toLocaleString("ru-RU")} ₽` : "как у кампании"}
+                  </span>
+                  {!editing ? (
+                    <>
+                      <button type="button" className="rounded-full px-3 py-1 text-[14px] font-semibold outline-none transition-colors hover:bg-black/[0.06]" style={{ ...hubSans, color: hub.text, backgroundColor: "rgba(1, 20, 8, 0.045)" }} onClick={() => setBidEdit({ key, advertId: row.advertId, nmId: row.nmId, query: row.query, value: own != null ? String(Math.round(own)) : "", step: "edit" })}>
                         {own != null ? "Изменить" : "Задать"}
                       </button>
                       {own != null ? (
-                        <button type="button" className="underline" style={{ color: hub.textMuted }} onClick={() => setBidEdit({ key, advertId: row.advertId, nmId: row.nmId, query: row.query, value: String(Math.round(own)), step: "reset" })}>
+                        <button type="button" className="text-[14px] underline underline-offset-2" style={{ ...hubSans, color: hub.textMuted }} onClick={() => setBidEdit({ key, advertId: row.advertId, nmId: row.nmId, query: row.query, value: String(Math.round(own)), step: "reset" })}>
                           Сбросить
                         </button>
                       ) : null}
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              {editing ? (
+                <div className="mt-3 rounded-[16px] p-4" style={{ backgroundColor: "rgba(1, 20, 8, 0.045)" }}>
+                  {editing.step === "edit" ? (
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <span className="text-[15px] font-semibold" style={{ ...hubSans, color: hub.text }}>
+                        Ставка кластера, ₽ за 1000 показов
+                      </span>
+                      <input inputMode="numeric" value={editing.value} onChange={(e) => setBidEdit({ ...editing, value: e.target.value.replace(/\D/g, "") })} className="h-10 w-28 rounded-full border bg-transparent px-4 text-[15px] outline-none focus-visible:shadow-[0_0_0_3px_var(--hub-lime-ring)]" style={{ borderColor: "rgba(1, 20, 8, 0.25)", color: hub.text }} placeholder="₽" aria-label="Ставка кластера, ₽ за 1000 показов" />
+                      <HubButton size="sm" disabled={!editing.value || Number(editing.value) <= 0} onClick={() => setBidEdit({ ...editing, step: "confirm" })}>
+                        Далее
+                      </HubButton>
+                      <HubButton size="sm" variant="ghost" onClick={() => setBidEdit(null)}>
+                        Отмена
+                      </HubButton>
                     </div>
-                  );
-                })()}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-[15.5px] leading-[1.5]" style={{ ...hubSans, color: hub.text }}>
+                        {editing.step === "reset"
+                          ? `Сбросить ставку кластера «${row.query}»? Он вернётся к ставке кампании.`
+                          : `Поставить на кластер «${row.query}» ставку ${Number(editing.value).toLocaleString("ru-RU")} ₽ за 1000 показов?`}
+                      </p>
+                      <div className="flex flex-wrap gap-2.5">
+                        <HubButton size="sm" loading={bidBusy} onClick={() => void applyBid()}>
+                          Подтвердить
+                        </HubButton>
+                        <HubButton size="sm" variant="ghost" disabled={bidBusy} onClick={() => setBidEdit(null)}>
+                          Отмена
+                        </HubButton>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+      {rows.length > max ? (
+        <div className="mt-3 flex justify-center">
+          <HubButton size="sm" variant="secondary" onClick={more}>
+            Показать ещё {Math.min(10, rows.length - max)} из {formatInt(rows.length - max)}
+          </HubButton>
+        </div>
+      ) : null}
     </div>
   );
 
+  const wastedRows = analysis.wasted.filter((r) => !keep.has(keepKey(r.nmId, r.query)));
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-7">
       {header}
       {bidMessage ? (
-        <p className="text-[12.5px] font-semibold" style={{ ...hubSans, color: bidMessage.startsWith("Ставка") ? hub.greenDark : hub.danger }}>
+        <p className="text-[15px] font-semibold" style={{ ...hubSans, color: bidMessage.startsWith("Ставка") ? "#067A55" : hub.danger }}>
           {bidMessage}
         </p>
       ) : null}
       {analysis.rows.length === 0 ? (
-        <p className="text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
+        <p className="text-[15.5px]" style={{ ...hubSans, color: hub.textMuted }}>
           WB не вернул запросов за этот период (в список попадают запросы минимум со 100 показами).
         </p>
       ) : (
         <>
-          <p className="text-[12px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
-            Всего запросов: {formatInt(analysis.rows.length)}. Конверсия клика в заказ по рекламе магазина:{" "}
-            {percent(analysis.storeCr)}
-            {analysis.wasteClicks != null
-              ? `, то есть в среднем ${formatInt(Math.round(analysis.wasteClicks / 2))} кликов на заказ. «Пустыми» считаем запросы с ${formatInt(analysis.wasteClicks)} и более кликами без заказов.`
-              : ". Заказов по рекламе за период нет, поэтому «пустые» запросы не определяем."}
-          </p>
+          <div className="flex flex-wrap gap-x-10 gap-y-4">
+            <div>
+              <p className="text-[14.5px]" style={{ ...hubSans, color: hub.textSubtle }}>Запросов</p>
+              <p className="mt-2 text-[28px] font-medium leading-none" style={{ ...MONO, color: hub.text }}>{formatInt(analysis.rows.length)}</p>
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5 text-[14.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                Клик в заказ по рекламе
+                <HelpTip title="Как считаем пустые запросы" align="left">
+                  <p>Конверсия клика в заказ посчитана по всей рекламе магазина за период.</p>
+                  <p className="mt-2">
+                    {analysis.wasteClicks != null
+                      ? `В среднем нужно около ${formatInt(Math.round(analysis.wasteClicks / 2))} кликов на заказ. Пустыми считаем запросы с ${formatInt(analysis.wasteClicks)} и более кликами без заказов.`
+                      : "Заказов по рекламе за период нет, поэтому пустые запросы не определяем."}
+                  </p>
+                </HelpTip>
+              </div>
+              <p className="mt-2 text-[28px] font-medium leading-none" style={{ ...MONO, color: hub.text }}>{percent(analysis.storeCr)}</p>
+            </div>
+            {analysis.wasteClicks != null ? (
+              <div>
+                <p className="text-[14.5px]" style={{ ...hubSans, color: hub.textSubtle }}>Пустой запрос</p>
+                <p className="mt-2 text-[28px] font-medium leading-none" style={{ ...MONO, color: hub.text }}>
+                  от {formatInt(analysis.wasteClicks)} <span className="text-[16px]" style={{ ...hubSans, letterSpacing: 0, color: hub.textSubtle }}>кликов без заказа</span>
+                </p>
+              </div>
+            ) : null}
+          </div>
+
           {analysis.wasted.length > 0 ? (
-            <div
-              className="rounded-xl border px-4 py-3"
-              style={{ borderColor: hub.border, backgroundColor: hub.dangerSoft }}
-            >
-              <p className="mb-2 text-[13.5px] font-semibold" style={{ ...hubSans, color: hub.danger }}>
-                Кандидаты в минус-фразы: {formatInt(analysis.wasted.length)}
+            <section>
+              <p className="text-[19px] font-semibold tracking-[-0.01em]" style={{ ...hubSans, color: hub.text }}>
+                Запросы, которые тратят деньги впустую: {formatInt(wastedRows.length)}
               </p>
-              <p className="mb-2 text-[13px] leading-5" style={{ ...hubSans, color: hub.text }}>
-                <strong>Что сделать:</strong> добавьте эти запросы в минус-фразы: кнопкой ниже или в кабинете WB (кампания →
-                товар → «Минус-фразы»). Сначала проверьте, что запрос действительно нерелевантен товару, а не просто мало
-                времени в выдаче.
+              <p className="mt-1 max-w-[78ch] text-[15.5px] leading-[1.5]" style={{ ...hubSans, color: hub.textMuted }}>
+                Клики есть, заказов нет. Добавьте нерелевантные в минус-фразы, чтобы не платить за них. Сначала убедитесь, что запрос не подходит товару.
               </p>
               {relError ? (
-                <p className="mb-2 text-[12.5px]" style={{ ...hubSans, color: hub.danger }}>
+                <p className="mt-2 text-[15px]" style={{ ...hubSans, color: hub.danger }}>
                   {relError}
                 </p>
               ) : null}
-              {table(analysis.wasted.filter((r) => !keep.has(keepKey(r.nmId, r.query))), 10)}
-              <div className="mt-3 space-y-2">
+              <div className="mt-4">{table(wastedRows, wastedLimit, () => setWastedLimit((n) => n + 10))}</div>
+
+              <p className="mt-8 text-[17px] font-semibold" style={{ ...hubSans, color: hub.text }}>
+                Что сделать с этими запросами
+              </p>
+              <ul className="mt-2 divide-y" style={{ borderColor: DIVIDER }}>
                 {wastedGroups.map(([key, group]) => (
-                  <div key={key} className="rounded-lg px-3 py-2" style={{ backgroundColor: hub.surface }}>
-                    <p className="text-[13px] font-medium" style={{ ...hubSans, color: hub.text }}>
-                      {titles.get(group.nmId) ?? group.nmId} · {campaignNames.get(group.advertId) ?? group.advertId}
+                  <li key={key} className="py-4" style={{ borderColor: DIVIDER }}>
+                    <p className="text-[16px] font-semibold" style={{ ...hubSans, color: hub.text }}>
+                      {titles.get(group.nmId) ?? group.nmId}
+                      <span className="font-normal" style={{ color: hub.textSubtle }}> · {campaignNames.get(group.advertId) ?? group.advertId}</span>
                     </p>
-                    <ul className="mt-1 space-y-1">
+                    <ul className="mt-2 space-y-2">
                       {group.queries.map((q) => {
                         const r = relevance[key]?.[q.toLowerCase()];
-                        const tone = r?.verdict === "irrelevant" ? hub.danger : r?.verdict === "relevant" ? hub.green : hub.textMuted;
+                        const tone = r?.verdict === "irrelevant" ? hub.danger : r?.verdict === "relevant" ? "#067A55" : hub.textMuted;
                         return (
-                          <li key={q} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px]" style={hubSans}>
-                            <span className="font-medium" style={{ color: hub.text }}>
+                          <li key={q} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[15.5px]" style={hubSans}>
+                            <span className="font-semibold" style={{ color: hub.text }}>
                               {q}
                             </span>
                             {r ? (
@@ -383,7 +418,7 @@ export function HubAdsClusters({
                                 {r.reason ? `: ${r.reason}` : ""}
                               </span>
                             ) : null}
-                            <button type="button" onClick={() => keepQuery(group.nmId, q)} className="text-[12px] underline" style={{ color: hub.textMuted }}>
+                            <button type="button" onClick={() => keepQuery(group.nmId, q)} className="text-[14px] underline underline-offset-2" style={{ color: hub.textMuted }}>
                               Оставить, не предлагать больше
                             </button>
                           </li>
@@ -391,53 +426,54 @@ export function HubAdsClusters({
                       })}
                     </ul>
                     {!relevance[key] ? (
-                      <div className="mt-2">
+                      <div className="mt-3">
                         <HubButton size="sm" variant="secondary" loading={checking === key} onClick={() => void checkRelevance(key, group)}>
-                          Проверить смысл нейросетью (около $0,001)
+                          Проверить, подходят ли запросы товару
                         </HubButton>
                       </div>
                     ) : null}
                     {minusDone[key] ? (
-                      <p className="mt-1 text-[12.5px] font-semibold" style={{ ...hubSans, color: hub.greenDark }}>
+                      <p className="mt-3 text-[15px] font-semibold" style={{ ...hubSans, color: "#067A55" }}>
                         {minusDone[key]}
                       </p>
                     ) : confirmKey === key ? (
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className="text-[12.5px]" style={{ ...hubSans, color: hub.text }}>
+                      <div className="mt-3 flex flex-wrap items-center gap-2.5">
+                        <span className="text-[15px]" style={{ ...hubSans, color: hub.text }}>
                           Добавить {activeQueries(key, group).length} фраз в минус-фразы этой кампании для товара? Уже стоящие фразы сохранятся.
                         </span>
                         <HubButton size="sm" loading={minusBusy} onClick={() => void addMinus(key, group)}>
                           Подтвердить
                         </HubButton>
-                        <HubButton size="sm" variant="secondary" disabled={minusBusy} onClick={() => setConfirmKey(null)}>
+                        <HubButton size="sm" variant="ghost" disabled={minusBusy} onClick={() => setConfirmKey(null)}>
                           Отмена
                         </HubButton>
                       </div>
                     ) : (
-                      <div className="mt-2">
+                      <div className="mt-3">
                         {activeQueries(key, group).length > 0 ? (
-                          <HubButton size="sm" variant="secondary" onClick={() => setConfirmKey(key)}>
+                          <HubButton size="sm" onClick={() => setConfirmKey(key)}>
                             Добавить в минус-фразы ({activeQueries(key, group).length})
                           </HubButton>
                         ) : (
-                          <p className="text-[12.5px]" style={{ ...hubSans, color: hub.textMuted }}>
-                            Нейросеть не нашла нерелевантных запросов: в минус-фразы добавлять нечего. Если заказов нет, смотрите цену, ставку и карточку.
+                          <p className="text-[15px]" style={{ ...hubSans, color: hub.textMuted }}>
+                            Нерелевантных запросов не нашлось: в минус-фразы добавлять нечего. Если заказов нет, смотрите цену, ставку и карточку.
                           </p>
                         )}
                       </div>
                     )}
-                  </div>
+                  </li>
                 ))}
-              </div>
-            </div>
+              </ul>
+            </section>
           ) : null}
+
           {analysis.working.length > 0 ? (
-            <div>
-              <p className="mb-1 text-[13px] font-semibold" style={{ ...hubSans, color: hub.text }}>
+            <section>
+              <p className="text-[19px] font-semibold tracking-[-0.01em]" style={{ ...hubSans, color: hub.text }}>
                 Запросы, которые приводят заказы
               </p>
-              {table(analysis.working, 10)}
-            </div>
+              <div className="mt-4">{table(analysis.working, workingLimit, () => setWorkingLimit((n) => n + 10))}</div>
+            </section>
           ) : null}
         </>
       )}

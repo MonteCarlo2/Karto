@@ -8,7 +8,7 @@ export const TASK_CATEGORY_LABEL: Record<TaskCategory, string> = {
   reviews: "Отзывы и вопросы",
 };
 
-const CATEGORY_ORDER: TaskCategory[] = ["economics", "stock", "sales", "content", "reviews"];
+export const CATEGORY_ORDER: TaskCategory[] = ["economics", "stock", "sales", "content", "reviews"];
 
 export type TaskCategoryRow = {
   category: TaskCategory;

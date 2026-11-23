@@ -12,6 +12,7 @@ import {
   type CoverRow,
 } from "@/lib/seller-hub/logistics";
 import { loadSellerHubRegionOrders, loadSellerHubWarehouseStocks } from "@/lib/seller-hub/client-api";
+import { snapshotTimeMs } from "@/lib/seller-hub/complete-days";
 import { csvCell } from "@/lib/seller-hub/task-engine/report";
 import { useUserSetting } from "./use-user-setting";
 import { ACCEPTANCE_SLOTS_ENABLED } from "@/lib/seller-hub/feature-flags";
@@ -24,76 +25,96 @@ import {
   formatInt,
   hub,
   HubButton,
+  HubTabs,
   HubEmptyState,
-  HubInput,
-  HubPanel,
-  HubSegmented,
-  hubNumeric,
   hubSans,
-  MetricTile,
 } from "./hub-ui";
+import { clearEvidenceFocus, peekEvidenceFocus, revealEvidence } from "./evidence-focus";
+import { FCard as Card, Headline, HubPanel, Thumb } from "./hub-fulfillment-ui";
+import { cn } from "@/lib/utils";
+import { TreemapChart as DistrictMosaic } from "./hub-analytics-viz";
+import { LoadingBlock, Segmented, StatBlock, StatStrip } from "./hub-analytics-ui";
+import { registerHubCache } from "./hub-cache-registry";
 
-type Tab = "overview" | "regions" | "plan" | "warehouses" | "acceptance" | "cost";
+type Tab = "overview" | "regions" | "plan" | "acceptance" | "cost";
 type Days = "30" | "60" | "90";
 
-const TH = "border-b px-3 py-2.5 text-[11.5px] font-bold uppercase tracking-[0.06em]";
+/** Сколько строк показываем сразу: у продавца с сотнями товаров экран остаётся компактным, остальное за кнопкой. */
+const COVER_SHOWN = 8;
+const REGIONS_SHOWN = 8;
+const PLAN_SHOWN = 10;
+const MONO = { fontFamily: "var(--font-geist-mono), ui-monospace, monospace", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.05em" } as const;
+
+/** Доля целым процентом; меньше процента — «<1%», чтобы небольшой остаток не превращался в «0%». */
+function shareLabel(v: number): string {
+  return v > 0 && v < 0.01 ? "<1%" : `${Math.round(v * 100)}%`;
+}
 
 function pct(value: number): string {
   return `${(value * 100).toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`;
 }
 
-function Th({ children }: { children: string }) {
-  return (
-    <th className={TH} style={{ ...hubSans, color: hub.textSubtle, borderColor: hub.borderSoft }}>
-      {children}
-    </th>
-  );
-}
+/** Округа: оттенки одного цвета от самого крупного к самому мелкому. */
+const DISTRICT_RAMP = ["#12201A", "#244034", "#3A6049", "#5F8A66", "#92B77A", "#C4E08A", "#E4F2BF"];
 
-function Td({ children, strong }: { children: React.ReactNode; strong?: boolean }) {
-  return (
-    <td
-      className="whitespace-nowrap px-3 py-2.5 text-[13px]"
-      style={{ ...hubSans, ...hubNumeric, color: hub.text, fontWeight: strong ? 600 : 400 }}
-    >
-      {children}
-    </td>
-  );
+/** Уже загруженные остатки и заказы по регионам: при возврате в раздел показываются мгновенно. */
+const LOGISTICS_CACHE = registerHubCache(new Map<string, { at: number; result: Awaited<ReturnType<typeof loadLogisticsPair>> }>());
+async function loadLogisticsPair(nmIds: number[], days: number, refresh: boolean) {
+  const [stocksResult, ordersResult] = await Promise.all([
+    loadSellerHubWarehouseStocks({ nmIds, refresh }).catch(() => null),
+    loadSellerHubRegionOrders({ days, refresh }).catch(() => null),
+  ]);
+  return { stocksResult, ordersResult };
 }
+const LOGISTICS_FRESH_MS = 5 * 60 * 1000;
 
-function Card({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+const LEVEL_COLOR: Record<CoverRow["level"], string> = { soon14: "#C8453F", soon30: "#D9912B", ok: "#2A3A30" };
+
+/** Столбики из точек: каждая точка — один товар (или несколько, если товаров много). Высота столбца — сколько товаров в группе по запасу. */
+
+/** Поле с кнопками «−» и «+», чтобы число не печатать руками. Корректное значение пишется сразу, пустое и неверное остаётся в поле. */
+function Stepper({ label, value, onChange, min, max, step = 1, suffix }: { label: string; value: string; onChange: (text: string) => void; min: number; max: number; step?: number; suffix?: string }) {
+  const n = Number(value);
+  const valid = Number.isInteger(n) && n >= min && n <= max;
+  const bump = (d: number) => onChange(String(Math.min(max, Math.max(min, (valid ? n : min) + d))));
+  const btn = "flex h-10 w-10 items-center justify-center rounded-full text-[20px] font-medium leading-none transition-colors hover:bg-black/[0.06]";
   return (
-    <section className="rounded-2xl p-4" style={{ backgroundColor: hub.surface }}>
-      <p className="text-[14px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-        {title}
+    <div>
+      <p className="mb-1.5 text-[14px]" style={{ ...hubSans, color: hub.textMuted }}>
+        {label}
       </p>
-      {hint ? (
-        <p className="mb-3 mt-0.5 text-[12.5px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
-          {hint}
-        </p>
-      ) : (
-        <div className="mb-3" />
-      )}
-      {children}
-    </section>
-  );
-}
-
-const LEVEL_COLOR: Record<CoverRow["level"], string> = { soon14: hub.danger, soon30: hub.warn, ok: hub.greenDark };
-
-/** Полоса запаса: длина в днях до нуля, шкала до 180 дней. */
-function CoverBar({ days, level }: { days: number; level: CoverRow["level"] }) {
-  const width = Math.max(2, Math.min(100, (days / 180) * 100));
-  return (
-    <div className="h-2 w-full rounded-full" style={{ backgroundColor: hub.canvas }}>
-      <div className="h-2 rounded-full" style={{ width: `${width}%`, backgroundColor: LEVEL_COLOR[level] }} />
+      <div className="inline-flex items-center gap-1 rounded-full border p-1" style={{ borderColor: valid ? "rgba(1, 20, 8, 0.18)" : hub.danger, backgroundColor: hub.surface }}>
+        <button type="button" onClick={() => bump(-step)} className={btn} style={{ color: hub.text }} aria-label="Меньше">
+          −
+        </button>
+        <input value={value} onChange={(e) => onChange(e.target.value)} inputMode="numeric" className="w-[60px] bg-transparent text-center text-[18px] font-medium outline-none" style={{ fontFamily: "var(--font-geist-mono), ui-monospace, monospace", color: hub.text }} aria-label={label} />
+        {suffix ? <span className="pr-1 text-[14px]" style={{ ...hubSans, color: hub.textSubtle }}>{suffix}</span> : null}
+        <button type="button" onClick={() => bump(step)} className={btn} style={{ color: hub.text }} aria-label="Больше">
+          +
+        </button>
+      </div>
     </div>
   );
 }
 
 /** Логистика: запас по товарам, спрос по регионам покупателей, остатки по складам WB и план отгрузки. Только чтение, данные WB. */
 export function HubLogistics({ snapshot, connected }: { snapshot?: SellerCatalogSnapshot; connected?: boolean }) {
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>(() => (peekEvidenceFocus("cost") ? "cost" : "overview"));
+  const costAnchor = peekEvidenceFocus("cost")?.anchor;
+  useEffect(() => {
+    if (!costAnchor) return;
+    const stop = revealEvidence(costAnchor);
+    return () => {
+      stop();
+      clearEvidenceFocus();
+    };
+    // фокус одноразовый: берём один раз при открытии вкладки
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const [coverAll, setCoverAll] = useState(false);
+  const [whAll, setWhAll] = useState(false);
+  const [regionsAll, setRegionsAll] = useState(false);
+  const [planAll, setPlanAll] = useState(false);
   const [days, setDays] = useUserSetting<Days>("logistics.days", "30");
   const [stocks, setStocks] = useState<SellerWarehouseStocks | null>(null);
   const [orders, setOrders] = useState<SellerRegionOrders | null>(null);
@@ -118,6 +139,7 @@ export function HubLogistics({ snapshot, connected }: { snapshot?: SellerCatalog
   };
 
   const items = snapshot?.items;
+  const photos = useMemo(() => new Map((snapshot?.items ?? []).map((item) => [item.externalId, item.imageUrl ?? undefined])), [snapshot?.items]);
   const nmIds = useMemo(
     () => (items ?? []).map((item) => Number(item.externalId)).filter((id) => Number.isInteger(id) && id > 0),
     [items],
@@ -133,11 +155,7 @@ export function HubLogistics({ snapshot, connected }: { snapshot?: SellerCatalog
   /** Данные кэшируются на сервере (Supabase): грузим при открытии, пустого экрана с кнопкой нет. */
   const fetchAll = useCallback(
     async (refresh: boolean) => {
-      const [stocksResult, ordersResult] = await Promise.all([
-        loadSellerHubWarehouseStocks({ nmIds, refresh }).catch(() => null),
-        loadSellerHubRegionOrders({ days: Number(days), refresh }).catch(() => null),
-      ]);
-      return { stocksResult, ordersResult };
+      return loadLogisticsPair(nmIds, Number(days), refresh);
     },
     [nmIds, days],
   );
@@ -163,15 +181,29 @@ export function HubLogistics({ snapshot, connected }: { snapshot?: SellerCatalog
   }, []);
 
   const requestKey = connected && nmIds.length > 0 ? `${nmIds.length}|${days}` : "";
-  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const [, setLoadedKey] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const loading = refreshing || (requestKey !== "" && loadedKey !== requestKey);
 
   useEffect(() => {
     if (!requestKey) return;
     let cancelled = false;
+    // Повторное открытие раздела: сразу показываем то, что уже загружали, и тихо обновляем, если данным больше 5 минут.
+    const cached = LOGISTICS_CACHE.get(requestKey);
+    if (cached) {
+      void Promise.resolve().then(() => {
+        if (cancelled) return;
+        apply(cached.result);
+        setLoadedKey(requestKey);
+      });
+      if (Date.now() - cached.at < LOGISTICS_FRESH_MS) {
+        return () => {
+          cancelled = true;
+        };
+      }
+    }
     void fetchAll(false).then((result) => {
       if (cancelled) return;
+      if (result.stocksResult?.ok && result.ordersResult?.ok) LOGISTICS_CACHE.set(requestKey, { at: Date.now(), result });
       apply(result);
       setLoadedKey(requestKey);
     });
@@ -259,44 +291,38 @@ export function HubLogistics({ snapshot, connected }: { snapshot?: SellerCatalog
   const fbsOnly = stocks != null && wbTotal === 0;
   const nearest = cover[0] ?? null;
 
-  return (
-    <div className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricTile label="Ваш склад (FBS)" value={`${formatInt(ownTotal)} шт.`} sub="по данным каталога" />
-        <MetricTile
-          label="Склады WB (FBO)"
-          value={stocks ? `${formatInt(wbTotal)} шт.` : "—"}
-          sub={stocks ? `в пути к клиенту ${formatInt(inWay)} шт.` : "загружаю"}
-        />
-        <MetricTile
-          label={`Заказов за ${days} дн.`}
-          value={demand ? formatInt(demand.total) : "—"}
-          sub={orders ? `${formatInt(demand?.districts.length ?? 0)} округов, без отмен` : "загружаю"}
-        />
-        <MetricTile
-          label="Запаса в среднем хватит"
-          value={averageCover != null ? `${formatInt(Math.round(averageCover))} дн.` : "—"}
-          sub={nearest ? `ближайший товар: ${formatInt(Math.round(nearest.daysCover))} дн.` : "по общему остатку и спросу"}
-          tone={urgent.length > 0 ? "warn" : "default"}
-        />
-      </div>
+  const ROW = "border-t";
+  const rowStyle = { borderColor: "rgba(1, 20, 8, 0.09)" } as const;
+  const baseMs = snapshotTimeMs(snapshot);
+  const zeroDate = (d: number) => (baseMs > 0 ? new Date(baseMs + d * 86_400_000).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }) : "");
+  const covBuckets = [
+    { label: "до 14 дн.", test: (d: number) => d < 14, color: LEVEL_COLOR.soon14 },
+    { label: "14–30", test: (d: number) => d >= 14 && d < 30, color: LEVEL_COLOR.soon30 },
+    { label: "30–60", test: (d: number) => d >= 30 && d < 60, color: LEVEL_COLOR.ok },
+    { label: "60–120", test: (d: number) => d >= 60 && d < 120, color: LEVEL_COLOR.ok },
+    { label: "120–365", test: (d: number) => d >= 120 && d < 365, color: LEVEL_COLOR.ok },
+    { label: "больше года", test: (d: number) => d >= 365, color: LEVEL_COLOR.ok },
+  ].map((b) => ({ label: b.label, color: b.color, count: cover.filter((r) => b.test(r.daysCover)).length }));
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3" style={{ borderColor: hub.border }}>
-        <HubSegmented<Tab>
-          layoutId="logistics-tabs"
+  return (
+    <div className="space-y-9">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <HubTabs<Tab>
+          label="Разделы логистики"
           value={tab}
           onChange={setTab}
           options={[
-            { id: "overview", label: `Обзор${urgent.length > 0 ? ` · ${urgent.length}` : ""}` },
+            { id: "overview", label: "Обзор", count: urgent.length > 0 ? urgent.length : undefined },
             { id: "regions", label: "Регионы" },
             { id: "cost", label: "Стоимость" },
             { id: "plan", label: "Отгрузка" },
-            { id: "warehouses", label: "Склады" },
             ...(ACCEPTANCE_SLOTS_ENABLED ? [{ id: "acceptance" as const, label: "Слоты приёмки" }] : []),
           ]}
         />
-        <div className="flex flex-wrap items-center gap-2">
-          <HubSegmented<Days>
+        <div className="flex flex-wrap items-center gap-2 pb-3">
+          <Segmented<Days>
+            size="sm"
+            label="Период"
             layoutId="logistics-days"
             value={days}
             onChange={setDays}
@@ -306,114 +332,181 @@ export function HubLogistics({ snapshot, connected }: { snapshot?: SellerCatalog
               { id: "90", label: "90 дн." },
             ]}
           />
-          <HubButton variant="secondary" size="sm" loading={loading} onClick={() => void refresh()}>
-            Обновить
-          </HubButton>
         </div>
       </div>
 
+      <Headline
+        items={[
+          { value: `${formatInt(ownTotal)} шт.`, label: "На вашем складе", note: "по каталогу кабинета" },
+          { value: stocks ? `${formatInt(wbTotal)} шт.` : "—", label: "На складах WB", note: stocks ? `в пути к клиенту ${formatInt(inWay)} шт.` : "загружаю" },
+          { value: demand ? formatInt(demand.total) : "—", label: `Заказов за ${days} дн.`, note: orders ? `${formatInt(demand?.districts.length ?? 0)} округов, без отмен` : "загружаю" },
+          { value: averageCover != null ? `${formatInt(Math.round(averageCover))} дн.` : "—", label: "Запаса в среднем", note: nearest ? `ближайший товар — ${formatInt(Math.round(nearest.daysCover))} дн.` : "по остатку и спросу", color: urgent.length > 0 ? LEVEL_COLOR.soon30 : undefined },
+        ]}
+      />
+
       {errors.map((message) => (
-        <p key={message} className="text-[13px]" style={{ ...hubSans, color: hub.danger }}>
-          {message}. WB ограничивает частоту запросов: попробуйте обновить через минуту.
+        <p key={message} className="text-[14.5px]" style={{ ...hubSans, color: hub.danger }}>
+          {message}. WB ограничивает частоту запросов.{" "}
+          <button type="button" className="font-semibold underline underline-offset-2" onClick={() => void refresh()}>
+            Повторить
+          </button>
         </p>
       ))}
       {notes.map((message) => (
-        <p key={message} className="text-[12.5px]" style={{ ...hubSans, color: hub.warn }}>
+        <p key={message} className="text-[14px]" style={{ ...hubSans, color: hub.warn }}>
           {message}
         </p>
       ))}
       {orders?.truncated ? (
-        <p className="text-[12.5px]" style={{ ...hubSans, color: hub.warn }}>
+        <p className="text-[14px]" style={{ ...hubSans, color: hub.warn }}>
           WB отдал больше строк, чем помещается в выгрузку: цифры по заказам занижены. Выберите период короче.
         </p>
       ) : null}
 
       {tab === "overview" ? (
-        <div className="space-y-4">
-          <Card
-            title="Запас по товарам"
-            hint={
-              !orders || !stocks
-                ? "Загружаю спрос и остатки…"
-                : urgent.length > 0
-                  ? `Товаров, которые закончатся в течение 30 дней: ${formatInt(urgent.length)}. Меньше 14 дней — отгружайте, меньше 30 — пора заказывать или производить.`
-                  : nearest
-                    ? `Срочных рисков нет: ближайший к нулю товар хватит на ${formatInt(Math.round(nearest.daysCover))} дн. Ниже — товары с самым коротким запасом.`
-                    : "За выбранный период заказов нет, запас считать не из чего."
-            }
-          >
-            {cover.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full border-collapse text-left">
-                  <thead style={{ backgroundColor: hub.surfaceMuted }}>
-                    <tr>
-                      <Th>Товар</Th>
-                      <Th>Заказов в день</Th>
-                      <Th>Ваш склад</Th>
-                      <Th>Склады WB</Th>
-                      <Th>Хватит</Th>
-                      <th className={TH} style={{ ...hubSans, color: hub.textSubtle, borderColor: hub.borderSoft, minWidth: 140 }} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cover.slice(0, 10).map((row) => (
-                      <tr key={row.nmId} className="border-b" style={{ borderColor: hub.borderSoft }}>
-                        <td className="max-w-[280px] truncate px-3 py-2.5 text-[13px] font-medium" style={hubSans}>
-                          {titles.get(row.nmId) ?? row.nmId}
-                        </td>
-                        <Td>{row.dailyDemand.toLocaleString("ru-RU")}</Td>
-                        <Td>{formatInt(row.ownStock)}</Td>
-                        <Td>{formatInt(row.wbStock)}</Td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-[13px] font-semibold" style={{ ...hubSans, ...hubNumeric, color: LEVEL_COLOR[row.level] }}>
-                          {row.daysCover > 365 ? "> 365 дн." : `${formatInt(Math.round(row.daysCover))} дн.`}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <CoverBar days={row.daysCover} level={row.level} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+        <div className="space-y-6">
+          <Card title="Запас по товарам" hint={!orders || !stocks ? undefined : cover.length === 0 ? "За выбранный период заказов нет, запас считать не из чего" : urgent.length > 0 ? "Меньше 14 дней — пора отгружать, меньше 30 — заказывать или производить" : nearest ? `Срочных рисков нет: ближайший к нулю товар хватит на ${formatInt(Math.round(nearest.daysCover))} дн.` : undefined}>
+            {!orders || !stocks ? (
+              <LoadingBlock title="Считаю запас" height={140} />
+            ) : cover.length > 0 ? (
+              <StatStrip cols={3}>
+                <StatBlock label="Закончится меньше чем за 14 дней" value={formatInt(covBuckets[0]!.count)} color={covBuckets[0]!.count > 0 ? LEVEL_COLOR.soon14 : undefined} sub={covBuckets[0]!.count > 0 ? "пора отгружать" : "срочного нет"} />
+                <StatBlock label="Хватит на 14–30 дней" value={formatInt(covBuckets[1]!.count)} color={covBuckets[1]!.count > 0 ? LEVEL_COLOR.soon30 : undefined} sub={covBuckets[1]!.count > 0 ? "пора заказывать" : "таких нет"} />
+                <StatBlock label="Хватит больше чем на 30 дней" value={formatInt(cover.length - covBuckets[0]!.count - covBuckets[1]!.count)} sub="запас в порядке" />
+              </StatStrip>
             ) : null}
           </Card>
 
-          <Card
-            title="Куда уходят заказы"
-            hint="Доля заказов по округам покупателей за период, без отмен. Показывает, где у вас спрос и куда выгодно держать товар поближе."
-          >
-            {demand && demand.districts.length > 0 ? (
-              <ul className="space-y-2">
-                {demand.districts.slice(0, 8).map((row) => {
-                  const have = stockByDistrict.get(row.district) ?? 0;
-                  return (
-                    <li key={row.district} className="grid grid-cols-[150px_1fr_130px] items-center gap-3">
-                      <span className="truncate text-[13px] font-medium" style={{ ...hubSans, color: hub.text }}>
-                        {row.district}
-                      </span>
-                      <div className="h-2.5 rounded-full" style={{ backgroundColor: hub.canvas }}>
-                        <div className="h-2.5 rounded-full" style={{ width: `${Math.max(2, row.share * 100)}%`, backgroundColor: hub.blue }} />
+          <div className="space-y-6">
+          {cover.length > 0 ? (
+            <Card title="Что закончится раньше всего" hint="От самого срочного; дата — когда товар кончится при нынешнем спросе">
+              <div className="hidden items-center gap-x-5 border-b pb-3 text-[12px] font-semibold uppercase tracking-[0.07em] md:grid md:grid-cols-[minmax(0,1fr)_92px_92px_120px]" style={{ ...hubSans, color: hub.textSubtle, borderColor: "rgba(1, 20, 8, 0.12)" }}>
+                <span>Товар</span>
+                <span className="text-right">Остаток</span>
+                <span className="text-right">В день</span>
+                <span className="text-right">Хватит на</span>
+              </div>
+              <ul className={cn(coverAll && "max-h-[640px] overflow-y-auto pr-2")}>
+                {(coverAll ? cover : cover.slice(0, COVER_SHOWN)).map((row) => (
+                  <li key={row.nmId} className="grid items-center gap-x-5 gap-y-2 border-b py-3.5 md:grid-cols-[minmax(0,1fr)_92px_92px_120px]" style={{ borderColor: "rgba(1, 20, 8, 0.08)" }}>
+                    <div className="flex min-w-0 items-center gap-4">
+                      <Thumb src={photos.get(row.nmId)} className="h-[56px] w-[43px]" />
+                      <p className="line-clamp-2 min-w-0 text-[15.5px] font-semibold leading-[1.3]" style={{ ...hubSans, color: hub.text }}>
+                        {titles.get(row.nmId) ?? row.nmId}
+                      </p>
+                    </div>
+                    <p className="flex items-baseline justify-between md:block md:text-right" style={MONO}>
+                      <span className="text-[13px] md:hidden" style={{ ...hubSans, letterSpacing: 0, color: hub.textSubtle }}>Остаток</span>
+                      <span className="text-[17px] font-medium" style={{ color: hub.text }}>{formatInt(row.ownStock + row.wbStock)}</span>
+                    </p>
+                    <p className="flex items-baseline justify-between md:block md:text-right" style={MONO}>
+                      <span className="text-[13px] md:hidden" style={{ ...hubSans, letterSpacing: 0, color: hub.textSubtle }}>В день</span>
+                      <span className="text-[17px] font-medium" style={{ color: hub.text }}>{row.dailyDemand.toLocaleString("ru-RU")}</span>
+                    </p>
+                    <div className="flex items-baseline justify-between gap-3 md:block md:text-right">
+                      <span className="text-[13px] md:hidden" style={{ ...hubSans, color: hub.textSubtle }}>Хватит на</span>
+                      <div>
+                        <p className="whitespace-nowrap text-[22px] font-semibold leading-none" style={{ ...MONO, color: row.level === "ok" ? hub.text : LEVEL_COLOR[row.level] }}>
+                          {row.daysCover > 365 ? "> 365" : formatInt(Math.round(row.daysCover))}
+                          <span className="ml-1.5 text-[13px] font-medium" style={{ ...hubSans, letterSpacing: 0, color: hub.textMuted }}>дн.</span>
+                        </p>
+                        <p className="mt-1.5 text-[12.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                          {row.daysCover > 365 ? "больше года" : baseMs > 0 ? `до ${zeroDate(row.daysCover)}` : ""}
+                        </p>
                       </div>
-                      <span className="text-right text-[12.5px]" style={{ ...hubSans, ...hubNumeric, color: hub.textMuted }}>
-                        {pct(row.share)} · {formatInt(row.orders)} зак.{stockTotalReal > 0 ? ` · WB ${formatInt(have)}` : ""}
-                      </span>
-                    </li>
-                  );
-                })}
+                    </div>
+                  </li>
+                ))}
               </ul>
+              {cover.length > COVER_SHOWN ? (
+                <div className="mt-4">
+                  <HubButton size="sm" variant="secondary" onClick={() => setCoverAll((v) => !v)}>
+                    {coverAll ? "Свернуть" : `Показать все (${cover.length})`}
+                  </HubButton>
+                </div>
+              ) : null}
+            </Card>
+          ) : null}
+
+          <Card title="Где лежит товар" hint="Ваш склад (FBS) и склады Wildberries (FBO)">
+            {!stocks ? (
+              <LoadingBlock title="Загружаю остатки" height={180} />
             ) : (
-              <p className="text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
-                {orders ? "За этот период заказов по регионам нет." : "Загружаю заказы по регионам…"}
-              </p>
+              <div className="grid gap-x-12 gap-y-8 md:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
+                <div className="grid grid-cols-2 content-start gap-x-6 gap-y-8 md:grid-cols-1">
+                  {[
+                    { n: ownTotal, label: "На вашем складе", share: ownTotal + wbTotal > 0 ? ownTotal / (ownTotal + wbTotal) : null },
+                    { n: wbTotal, label: "На складах WB", share: ownTotal + wbTotal > 0 ? wbTotal / (ownTotal + wbTotal) : null },
+                  ].map((x) => (
+                    <div key={x.label} className="min-w-0">
+                      <p className="whitespace-nowrap text-[34px] font-semibold leading-none" style={{ ...MONO, color: hub.text }}>
+                        {formatInt(x.n)}
+                        <span className="ml-1.5 text-[16px] font-medium" style={{ ...hubSans, letterSpacing: 0, color: hub.textMuted }}>шт.</span>
+                      </p>
+                      <p className="mt-3 text-[15px] font-medium" style={{ ...hubSans, color: hub.text }}>{x.label}</p>
+                      <p className="mt-1 text-[13.5px]" style={{ ...hubSans, color: hub.textMuted }}>{x.share != null ? `${shareLabel(x.share)} всего товара` : "—"}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="min-w-0">
+                {warehouses.length > 0 ? (
+                  <ul className={cn(whAll && "max-h-[520px] overflow-y-auto pr-2")}>
+                    {(whAll ? warehouses : warehouses.slice(0, 4)).map((w) => (
+                      <li key={w.warehouseId} className="flex items-center justify-between gap-6 border-b py-3.5" style={rowStyle}>
+                        <div className="min-w-0">
+                          <p className="truncate text-[15px] font-medium" style={{ ...hubSans, color: hub.text }}>{w.warehouseName}</p>
+                          <p className="mt-1 text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
+                            {[isRealDistrict(w.district) ? w.district : null, `${formatInt(w.products)} арт.`, w.inWayToClient > 0 ? `в пути ${formatInt(w.inWayToClient)}` : null].filter(Boolean).join(" · ")}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-[19px] font-semibold leading-none" style={{ ...MONO, color: hub.text }}>{formatInt(w.quantity)}</p>
+                          <p className="mt-2 text-[13px]" style={{ ...hubSans, color: hub.textSubtle }}>{wbTotal > 0 ? shareLabel(w.quantity / wbTotal) : ""}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-[15px] leading-[1.55]" style={{ ...hubSans, color: hub.textMuted }}>
+                    На складах WB вашего товара сейчас нет: вы работаете со своего склада.
+                  </p>
+                )}
+                {warehouses.length > 4 ? (
+                  <div className="mt-4">
+                    <HubButton size="sm" variant="secondary" onClick={() => setWhAll((v) => !v)}>
+                      {whAll ? "Свернуть" : `Показать все склады (${warehouses.length})`}
+                    </HubButton>
+                  </div>
+                ) : null}
+                </div>
+              </div>
             )}
           </Card>
 
-          {fbsOnly ? (
-            <p className="rounded-2xl px-4 py-3 text-[12.5px] leading-5" style={{ ...hubSans, backgroundColor: hub.surface, color: hub.textMuted }}>
-              Вы работаете со своего склада (FBS): у WB товара почти нет. Вкладки «Отгрузка» и «Склады» полезны, если вы
-              отправляете или планируете отправлять товар на склады WB (FBO).
-            </p>
-          ) : null}
+          </div>
+
+          <Card title="Куда уходят заказы" hint="Доля заказов по округам покупателей за период, без отмен: где у вас спрос и куда выгодно держать товар поближе">
+            {demand && demand.districts.length > 0 ? (
+              <DistrictMosaic
+                height={320}
+                format={(n) => `${formatInt(n)} зак.`}
+                items={demand.districts.map((row, i) => ({
+                  id: row.district,
+                  title: row.district,
+                  value: row.orders,
+                  color: DISTRICT_RAMP[Math.min(i, DISTRICT_RAMP.length - 1)]!,
+                  ink: i < 4 ? ("light" as const) : ("dark" as const),
+                  note: stockTotalReal > 0 ? `на складах WB ${formatInt(stockByDistrict.get(row.district) ?? 0)} шт.` : undefined,
+                }))}
+              />
+            ) : orders ? (
+              <p className="text-[15.5px]" style={{ ...hubSans, color: hub.textMuted }}>
+                За этот период заказов по регионам нет.
+              </p>
+            ) : (
+              <LoadingBlock title="Загружаю заказы по регионам" height={200} />
+            )}
+          </Card>
         </div>
       ) : null}
 
@@ -421,198 +514,143 @@ export function HubLogistics({ snapshot, connected }: { snapshot?: SellerCatalog
 
       {tab === "acceptance" && ACCEPTANCE_SLOTS_ENABLED ? <HubAcceptance connected={connected} ownWarehouses={new Set(warehouses.map((w) => w.warehouseName))} /> : null}
 
-      {tab === "regions" && orders ? <HubWeekdayProfile orders={orders} days={Number(days)} /> : null}
-
-      {tab === "regions" && orders ? <HubDistrictCancels rows={orders.rows} /> : null}
-
       {tab === "regions" ? (
-        demand && demand.districts.length > 0 ? (
-          <div className="overflow-x-auto rounded-2xl p-4" style={{ backgroundColor: hub.surface }}>
-            <p className="mb-2 text-[12px] leading-5" style={{ ...hubSans, color: hub.textSubtle }}>
-              Доля спроса — сколько заказов приходится на округ покупателя. Доля остатка — какая часть вашего товара на складах
-              WB лежит в этом округе. Если спрос заметно больше остатка, округ недообеспечен: покупатели ждут доставку из других
-              регионов.
-            </p>
-            <table className="min-w-full border-collapse text-left">
-              <thead style={{ backgroundColor: hub.surfaceMuted }}>
-                <tr>
-                  <Th>Округ покупателей</Th>
-                  <Th>Заказов</Th>
-                  <Th>Доля спроса</Th>
-                  <Th>Остаток на складах WB</Th>
-                  <Th>Доля остатка</Th>
-                  <Th>Разрыв</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {demand.districts.map((row) => {
+        <div className="space-y-6">
+          {orders ? <HubWeekdayProfile orders={orders} days={Number(days)} /> : null}
+          {orders ? <HubDistrictCancels rows={orders.rows} /> : null}
+          {demand && demand.districts.length > 0 ? (
+            <Card
+              title="Спрос и остатки по округам"
+              hint={stockTotalReal > 0 ? "Доля спроса — сколько заказов приходится на округ покупателя. Доля остатка — какая часть вашего товара на складах WB лежит в этом округе. Если спрос заметно больше остатка, округ недообеспечен" : "Сколько заказов приходится на каждый округ покупателей. На складах WB сейчас нет вашего товара, поэтому остатки по округам не показываем: после поставки на WB рядом со спросом появится доля остатка"}
+            >
+              <div className={cn("hidden items-center gap-x-6 border-b pb-3 text-[12px] font-semibold uppercase tracking-[0.07em] md:grid", stockTotalReal > 0 ? "md:grid-cols-[minmax(0,1fr)_96px_120px_120px_120px]" : "md:grid-cols-[minmax(0,1fr)_96px_120px]")} style={{ ...hubSans, color: hub.textSubtle, borderColor: "rgba(1, 20, 8, 0.12)" }}>
+                <span>Округ</span>
+                <span className="text-right">Заказов</span>
+                <span className="text-right">Доля спроса</span>
+                {stockTotalReal > 0 ? <span className="text-right">Доля остатка</span> : null}
+                {stockTotalReal > 0 ? <span className="text-right">Разрыв</span> : null}
+              </div>
+              <ul>
+                {(regionsAll ? demand.districts : demand.districts.slice(0, REGIONS_SHOWN)).map((row) => {
                   const have = stockByDistrict.get(row.district) ?? 0;
                   const stockShare = stockTotalReal > 0 ? have / stockTotalReal : 0;
                   const gap = stockTotalReal > 0 ? row.share - stockShare : null;
+                  const cell = "flex items-baseline justify-between gap-3 md:block md:text-right";
+                  const lab = "text-[13px] md:hidden";
                   return (
-                    <tr key={row.district} className="border-b" style={{ borderColor: hub.borderSoft }}>
-                      <td className="px-3 py-2.5 text-[13px] font-medium" style={hubSans}>
-                        {row.district}
-                      </td>
-                      <Td>{formatInt(row.orders)}</Td>
-                      <Td>{pct(row.share)}</Td>
-                      <Td>{stockTotalReal > 0 ? `${formatInt(have)} шт.` : "—"}</Td>
-                      <Td>{stockTotalReal > 0 ? pct(stockShare) : "—"}</Td>
-                      <td
-                        className="whitespace-nowrap px-3 py-2.5 text-[13px] font-semibold"
-                        style={{ ...hubSans, ...hubNumeric, color: gap == null ? hub.textSubtle : gap > 0.1 ? hub.danger : hub.greenDark }}
-                      >
-                        {gap == null ? "нет остатков WB" : `${gap > 0 ? "+" : ""}${(gap * 100).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} п. п.`}
-                      </td>
-                    </tr>
+                    <li key={row.district} className={cn("grid items-center gap-x-6 gap-y-2 border-b py-4", stockTotalReal > 0 ? "md:grid-cols-[minmax(0,1fr)_96px_120px_120px_120px]" : "md:grid-cols-[minmax(0,1fr)_96px_120px]")} style={rowStyle}>
+                      <p className="text-[16.5px] font-semibold" style={{ ...hubSans, color: hub.text }}>{row.district}</p>
+                      <p className={cell} style={MONO}><span className={lab} style={{ ...hubSans, letterSpacing: 0, color: hub.textSubtle }}>Заказов</span><span className="text-[19px] font-medium" style={{ color: hub.text }}>{formatInt(row.orders)}</span></p>
+                      <p className={cell} style={MONO}><span className={lab} style={{ ...hubSans, letterSpacing: 0, color: hub.textSubtle }}>Доля спроса</span><span className="text-[19px] font-semibold" style={{ color: hub.text }}>{pct(row.share)}</span></p>
+                      {stockTotalReal > 0 ? <p className={cell} style={MONO}><span className={lab} style={{ ...hubSans, letterSpacing: 0, color: hub.textSubtle }}>Доля остатка</span><span className="text-[19px] font-medium" style={{ color: hub.text }}>{pct(stockShare)}</span></p> : null}
+                      {gap != null ? <p className={cell} style={MONO}><span className={lab} style={{ ...hubSans, letterSpacing: 0, color: hub.textSubtle }}>Разрыв</span><span className="text-[19px] font-medium" style={{ color: gap > 0.1 ? LEVEL_COLOR.soon14 : hub.text }}>{gap > 0 ? "+" : ""}{(gap * 100).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} п. п.</span></p> : null}
+                    </li>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="rounded-2xl px-5 py-6 text-[13px]" style={{ ...hubSans, color: hub.textMuted, backgroundColor: hub.surface }}>
-            {orders ? "За этот период заказов по регионам нет." : "Загружаю заказы по регионам…"}
-          </p>
-        )
+              </ul>
+              {demand.districts.length > REGIONS_SHOWN ? (
+                <div className="mt-4">
+                  <HubButton size="sm" variant="secondary" onClick={() => setRegionsAll((v) => !v)}>
+                    {regionsAll ? "Свернуть" : `Показать все округа (${demand.districts.length})`}
+                  </HubButton>
+                </div>
+              ) : null}
+            </Card>
+          ) : (
+            <Card title="Спрос и остатки по округам">
+              {orders ? <p className="text-[15.5px]" style={{ ...hubSans, color: hub.textMuted }}>За этот период заказов по регионам нет.</p> : <LoadingBlock title="Загружаю заказы по регионам" height={240} />}
+            </Card>
+          )}
+        </div>
       ) : null}
 
       {tab === "plan" ? (
-        <div className="space-y-3 rounded-2xl p-4" style={{ backgroundColor: hub.surface }}>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="text-[12.5px]" style={{ ...hubSans, color: hub.textMuted }}>
-              Запас на, дней
-              <HubInput value={coverDays} onChange={(e) => setCoverDays(e.target.value)} inputMode="numeric" className="mt-1 w-28" />
-            </label>
-            <label className="text-[12.5px]" style={{ ...hubSans, color: hub.textMuted }}>
-              Кратность короба, шт.
-              <HubInput value={multiple} onChange={(e) => setMultiple(e.target.value)} inputMode="numeric" className="mt-1 w-28" />
-            </label>
-            <p className="max-w-xl text-[12px] leading-5" style={{ ...hubSans, color: hub.textSubtle }}>
-              Нужный запас = заказов в день по округу × дни запаса − остаток на складах WB этого округа, вверх до кратности
-              короба. Спрос из заказов покупателей этого округа за выбранный период. Виртуальный «Склад WB» к округу не
-              относится.
-            </p>
+        <Card
+          first
+          title="План отгрузки на склады WB"
+          hint="Нужный запас = заказов в день по округу × дни запаса − остаток на складах WB этого округа, вверх до кратности короба"
+          action={
+            planNeeded.length > 0 ? (
+              <HubButton variant="secondary" size="sm" onClick={downloadPlan}>
+                Скачать план (CSV)
+              </HubButton>
+            ) : undefined
+          }
+        >
+          <div className="mb-8 flex flex-wrap items-end gap-x-10 gap-y-5">
+            <div>
+              <Stepper label="На сколько дней нужен запас" value={coverDays} onChange={setCoverDays} min={1} max={365} step={5} suffix="дн." />
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {[14, 30, 45, 60, 90].map((d) => (
+                  <button key={d} type="button" onClick={() => setCoverDays(String(d))} className="rounded-full border px-3.5 py-1 text-[13.5px] font-medium transition-colors hover:bg-black/[0.04]" style={{ ...hubSans, borderColor: String(d) === coverDays ? "#12201A" : "rgba(1, 20, 8, 0.16)", backgroundColor: String(d) === coverDays ? "#12201A" : "transparent", color: String(d) === coverDays ? "#FFFFFF" : hub.textMuted }}>
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Stepper label="Кратность короба" value={multiple} onChange={setMultiple} min={1} max={1000} suffix="шт." />
           </div>
           {!paramsValid ? (
-            <p className="text-[13px]" style={{ ...hubSans, color: hub.danger }}>
+            <p className="text-[15px]" style={{ ...hubSans, color: hub.danger }}>
               Запас — от 1 до 365 дней, кратность — целое число от 1.
             </p>
           ) : !orders || !stocks ? (
-            <p className="text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
-              Загружаю спрос и остатки…
-            </p>
+            <LoadingBlock title="Загружаю спрос и остатки" height={200} />
           ) : planNeeded.length === 0 ? (
-            <p className="text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
+            <p className="text-[15.5px]" style={{ ...hubSans, color: hub.text }}>
               Остатков на складах WB хватает на {coverNum} дн. по всем округам, отгрузка не нужна.
             </p>
           ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-[13.5px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-                  К отгрузке на склады WB: {formatInt(planTotal)} шт. по {formatInt(planNeeded.length)} позициям
-                </p>
-                <HubButton variant="secondary" size="sm" onClick={downloadPlan}>
-                  Скачать план (CSV)
-                </HubButton>
+              <div className="grid grid-cols-3 gap-y-6 border-y py-7" style={{ borderColor: "rgba(1, 20, 8, 0.12)" }}>
+                {[
+                  { v: `${formatInt(planTotal)} шт.`, l: "всего к отгрузке" },
+                  { v: formatInt(planNeeded.length), l: "позиций" },
+                  { v: formatInt(new Set(planNeeded.map((r) => r.district)).size), l: "округов" },
+                ].map((x, i) => (
+                  <div key={x.l} className={cn("pr-4", i > 0 && "border-l pl-7")} style={{ borderColor: "rgba(1, 20, 8, 0.12)" }}>
+                    <p className="text-[34px] font-semibold leading-none" style={{ ...MONO, color: hub.text }}>{x.v}</p>
+                    <p className="mt-3.5 text-[14.5px]" style={{ ...hubSans, color: hub.textMuted }}>{x.l}</p>
+                  </div>
+                ))}
               </div>
               {fbsOnly ? (
-                <p className="text-[12.5px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
-                  Сейчас у WB почти нет вашего товара, поэтому план показывает, сколько понадобилось бы, чтобы закрыть спрос
-                  по округам со складов WB. При работе с FBS это справка, а не обязательная отгрузка.
+                <p className="mt-5 text-[14.5px] leading-[1.55]" style={{ ...hubSans, color: hub.textMuted }}>
+                  У WB почти нет вашего товара, поэтому план показывает, сколько понадобилось бы для закрытия спроса со складов WB. При работе с FBS это справка.
                 </p>
               ) : null}
-              <div className="overflow-x-auto">
-                <table className="min-w-full border-collapse text-left">
-                  <thead style={{ backgroundColor: hub.surfaceMuted }}>
-                    <tr>
-                      <Th>Товар</Th>
-                      <Th>Округ</Th>
-                      <Th>Заказов в день</Th>
-                      <Th>Остаток в округе</Th>
-                      <Th>Хватит дней</Th>
-                      <Th>Отгрузить, шт.</Th>
-                      <Th>На вашем складе</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {planNeeded.slice(0, 60).map((row) => (
-                      <tr key={`${row.nmId}-${row.district}`} className="border-b" style={{ borderColor: hub.borderSoft }}>
-                        <td className="max-w-[260px] truncate px-3 py-2.5 text-[13px] font-medium" style={hubSans}>
-                          {titles.get(row.nmId) ?? row.nmId}
-                        </td>
-                        <td className="px-3 py-2.5 text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
-                          {row.district}
-                        </td>
-                        <Td>{row.dailyDemand.toLocaleString("ru-RU")}</Td>
-                        <Td>{formatInt(row.stock)}</Td>
-                        <Td>{row.daysCover == null ? "—" : row.daysCover.toLocaleString("ru-RU")}</Td>
-                        <Td strong>{formatInt(row.need)}</Td>
-                        <Td>{formatInt(ownStock.get(row.nmId) ?? 0)}</Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ul>
+                {(planAll ? planNeeded.slice(0, 200) : planNeeded.slice(0, PLAN_SHOWN)).map((row) => (
+                  <li key={`${row.nmId}-${row.district}`} className={cn("flex flex-wrap items-center gap-x-8 gap-y-3 py-5", ROW)} style={rowStyle}>
+                    <Thumb src={photos.get(row.nmId)} />
+                    <div className="min-w-[220px] flex-1">
+                      <p className="line-clamp-2 text-[16px] font-semibold leading-[1.3] [overflow-wrap:anywhere]" style={{ ...hubSans, color: hub.text }}>
+                        {titles.get(row.nmId) ?? row.nmId}
+                      </p>
+                      <p className="mt-2 text-[14px]" style={{ ...hubSans, color: hub.textMuted }}>
+                        в округ {row.district} · {row.dailyDemand.toLocaleString("ru-RU")} в день · у вас {formatInt(ownStock.get(row.nmId) ?? 0)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[28px] font-semibold leading-none" style={{ ...MONO, color: hub.text }}>
+                        {formatInt(row.need)}
+                        <span className="ml-1.5 text-[14px] font-medium" style={{ ...hubSans, letterSpacing: 0, color: hub.textMuted }}>шт.</span>
+                      </p>
+                      <p className="mt-2.5 text-[13.5px]" style={{ ...hubSans, color: hub.textSubtle }}>отгрузить</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {planNeeded.length > PLAN_SHOWN ? (
+                <div className="mt-4">
+                  <HubButton size="sm" variant="secondary" onClick={() => setPlanAll((v) => !v)}>
+                    {planAll ? "Свернуть" : `Показать все (${planNeeded.length})`}
+                  </HubButton>
+                </div>
+              ) : null}
             </>
           )}
-        </div>
-      ) : null}
-
-      {tab === "warehouses" ? (
-        <div className="space-y-3 rounded-2xl p-4" style={{ backgroundColor: hub.surface }}>
-          <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{ backgroundColor: hub.canvas }}>
-            <div>
-              <p className="text-[13.5px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-                Ваш склад (FBS)
-              </p>
-              <p className="text-[12px]" style={{ ...hubSans, color: hub.textMuted }}>
-                Остаток по каталогу кабинета; отгрузки на склады WB берутся отсюда.
-              </p>
-            </div>
-            <p className="text-[18px] font-semibold" style={{ ...hubSans, ...hubNumeric, color: hub.text }}>
-              {formatInt(ownTotal)} шт.
-            </p>
-          </div>
-          {warehouses.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse text-left">
-                <thead style={{ backgroundColor: hub.surfaceMuted }}>
-                  <tr>
-                    <Th>Склад WB</Th>
-                    <Th>Округ</Th>
-                    <Th>Остаток, шт.</Th>
-                    <Th>Артикулов</Th>
-                    <Th>В пути к клиенту</Th>
-                    <Th>В пути от клиента</Th>
-                    <Th>Доля остатка</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {warehouses.map((w) => (
-                    <tr key={w.warehouseId} className="border-b" style={{ borderColor: hub.borderSoft }}>
-                      <td className="px-3 py-2.5 text-[13px] font-medium" style={hubSans}>
-                        {w.warehouseName}
-                      </td>
-                      <td className="px-3 py-2.5 text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
-                        {isRealDistrict(w.district) ? w.district : "—"}
-                      </td>
-                      <Td strong>{formatInt(w.quantity)}</Td>
-                      <Td>{formatInt(w.products)}</Td>
-                      <Td>{formatInt(w.inWayToClient)}</Td>
-                      <Td>{formatInt(w.inWayFromClient)}</Td>
-                      <Td>{wbTotal > 0 ? pct(w.quantity / wbTotal) : "—"}</Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
-              {stocks ? "На складах WB вашего товара сейчас нет." : "Загружаю остатки по складам WB…"}
-            </p>
-          )}
-        </div>
+        </Card>
       ) : null}
     </div>
   );

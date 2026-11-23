@@ -11,21 +11,28 @@ import {
   markLinkTokenUsed,
   saveTelegramVerifyCode,
   setTelegramSession,
+  updateTelegramReviewMessageIds,
   verifyTelegramEmailCode,
 } from "./telegram-db";
 import { sendTelegramLinkVerificationEmail } from "@/lib/send-telegram-link-email";
 import { completeTelegramLink } from "./link-flow";
 import { TELEGRAM_WELCOME_GUEST } from "./bot-profile";
+import { handleAssistantMessage } from "./assistant";
+import { handleActionCallback, handleAskCallback } from "./actions";
+import { handleDepositSumStep, handleQuickCallback, quickDepsFor } from "./quick-commands";
+import { handleVoiceMessage } from "./voice";
+import { ASSISTANT_CLOSED_HTML, assistantAllowed } from "./access";
 import { confirmSemiReviewReply } from "./semi-confirm-server";
 import { regenerateTelegramReviewDraft } from "./regenerate-server";
 import { applyTelegramEditedDraft } from "./edit-draft-server";
-import { deleteTelegramReviewCard } from "./send-review-card";
+import { deleteTelegramReviewCard, sendTelegramReviewCard } from "./send-review-card";
+import { strictIntent } from "./assistant-text";
 import type { InboxReviewItem } from "@/lib/auto-replies/inbox-demo-data";
 import type { AutoRepliesMarketplaceId } from "@/lib/auto-replies/types";
 
 type TgUser = { id: number; username?: string; first_name?: string };
 type TgChat = { id: number };
-type TgMessage = { message_id: number; text?: string; chat: TgChat; from?: TgUser };
+type TgMessage = { message_id: number; text?: string; chat: TgChat; from?: TgUser; voice?: { file_id: string; duration?: number }; audio?: { file_id: string; duration?: number } };
 type TgCallback = {
   id: string;
   data?: string;
@@ -254,6 +261,22 @@ async function handleEditTextStep(
   }
 }
 
+/** Редактирование отменено: карточка отзыва с прежним черновиком возвращается в чат. */
+async function restoreEditedReviewCard(supabase: SupabaseClient, chat: TgChat, payload: Record<string, unknown>): Promise<void> {
+  const messageRowId = String(payload.messageRowId ?? "");
+  const { data: row } = await supabase.from("auto_reply_telegram_review_messages").select("*").eq("id", messageRowId).maybeSingle();
+  if (!row || row.status !== "pending") return;
+  const item = await loadInboxItem(supabase, row.user_id, row.shop_id, row.marketplace_id, row.review_id);
+  if (!item) return;
+  const promptMessageId = Number(payload.promptMessageId ?? 0);
+  if (promptMessageId > 0) {
+    const { telegramDeleteMessage } = await import("./bot-api");
+    await telegramDeleteMessage({ chatId: chat.id, messageId: promptMessageId }).catch(() => undefined);
+  }
+  const msg = await sendTelegramReviewCard({ chatId: chat.id, item: { ...item, replyDraft: row.reply_draft }, messageRowId: row.id, status: "pending", footer: "↩️ Редактирование отменено, ответ без изменений" });
+  await updateTelegramReviewMessageIds(supabase, { messageRowId: row.id, telegramMessageId: msg.message_id, hasPhoto: msg.has_photo, extraMessageIds: msg.extra_message_ids });
+}
+
 async function handleRegenHintStep(
   supabase: SupabaseClient,
   text: string,
@@ -319,6 +342,38 @@ async function handleCallback(
   cb: TgCallback
 ): Promise<void> {
   const data = cb.data?.trim() ?? "";
+  // Кнопки помощника (действия, вопрос агенту, быстрые команды) доступны только открытым аккаунтам.
+  if (/^(ax|nq|qa):/.test(data)) {
+    const owner = await fetchTelegramLinkByTelegramUserId(supabase, cb.from.id);
+    if (!owner || !assistantAllowed(owner.user_id)) {
+      await telegramAnswerCallbackQuery({ callbackQueryId: cb.id, text: "Эта функция пока недоступна", showAlert: true }).catch(() => undefined);
+      return;
+    }
+  }
+  // Кнопки действий агента (цена, реклама): подтверждение, отмена, откат.
+  if (data.startsWith("ax:")) {
+    try {
+      // Выполнение может идти до минуты: не держим опрос и webhook, ответ уходит в чат, когда готов.
+      void handleActionCallback(supabase, cb).catch((e) => console.error("[telegram] кнопка действия:", e instanceof Error ? e.message : String(e)));
+    } catch (e) {
+      console.error("[telegram] кнопка действия:", e instanceof Error ? e.message : String(e));
+      await telegramAnswerCallbackQuery({ callbackQueryId: cb.id, text: "Не получилось. Попробуйте ещё раз", showAlert: true }).catch(() => undefined);
+    }
+    return;
+  }
+  // Выбор кампании, суммы или товара для быстрой команды.
+  if (data.startsWith("qa:")) {
+    void handleQuickCallback(supabase, cb, quickDepsFor(supabase)).catch(async (e) => {
+      console.error("[telegram] быстрая кнопка:", e instanceof Error ? e.message : String(e));
+      await telegramAnswerCallbackQuery({ callbackQueryId: cb.id, text: "Не получилось. Попробуйте ещё раз", showAlert: true }).catch(() => undefined);
+    });
+    return;
+  }
+  // Кнопка «Спросить агента» под уведомлением.
+  if (data.startsWith("nq:")) {
+    void handleAskCallback(supabase, cb, (link, text) => handleAssistantMessage(supabase, link, text)).catch((e) => console.error("[telegram] кнопка «Спросить агента»:", e instanceof Error ? e.message : String(e)));
+    return;
+  }
   const [action, shortId] = data.split(":");
   if (!action || !shortId) {
     await telegramAnswerCallbackQuery({ callbackQueryId: cb.id, text: "Неизвестная команда" });
@@ -386,8 +441,7 @@ async function handleCallback(
     });
     await telegramSendMessage({
       chatId,
-      text: "✏️ Отредактируйте черновик выше и отправьте одним сообщением. Затем появится карточка с кнопками подтверждения.",
-      parseMode: null,
+      text: "✏️ <b>Редактирование ответа</b>\n\nИзмените текст выше и отправьте его одним сообщением: я покажу карточку на подтверждение.\n\n<i>Передумали? Напишите «отмена», и всё останется как было.</i>",
     });
     return;
   }
@@ -505,7 +559,15 @@ async function handleMessage(
     return;
   }
 
-  const session = await getTelegramSession(supabase, from.id);
+  let session = await getTelegramSession(supabase, from.id);
+  // Редактирование ответа на отзыв: «отмена» или любая команда меню выходит из него и возвращает карточку отзыва, иначе следующее сообщение стало бы текстом ответа.
+  const cancelWord = /^(отмена|отменить|назад|не надо|стоп)$/i.test(text);
+  if (session?.state === "awaiting_edit_text" && (cancelWord || strictIntent(text) !== null)) {
+    await restoreEditedReviewCard(supabase, chat, session.payload).catch((e) => console.error("[telegram] карточка отзыва не вернулась:", e instanceof Error ? e.message : String(e)));
+    await clearTelegramSession(supabase, from.id);
+    if (cancelWord) return;
+    session = null;
+  }
   if (session?.state === "awaiting_email") {
     await handleEmailStep(supabase, text, from, chat);
     return;
@@ -523,6 +585,18 @@ async function handleMessage(
     await handleRegenHintStep(supabase, text, from, chat, session.payload);
     return;
   }
+  if (session?.state === "awaiting_deposit_sum") {
+    const owner = await fetchTelegramLinkByTelegramUserId(supabase, from.id);
+    if (owner && owner.chat_id === chat.id) {
+      // Команды меню и новые просьбы выходят из ожидания суммы, остальное считается суммой.
+      const looksLikeSum = /^[\d\s.,]+(тыс\S*|к)?\s*(₽|руб\S*|р)?$|^(отмена|отменить|стоп|назад)$/i.test(text.trim()) || /^\d/.test(text.trim());
+      if (looksLikeSum) {
+        void handleDepositSumStep(text, session.payload, { userId: owner.user_id, chatId: chat.id, telegramUserId: from.id }, quickDepsFor(supabase)).catch((e) => console.error("[telegram] своя сумма:", e instanceof Error ? e.message : String(e)));
+        return;
+      }
+      await clearTelegramSession(supabase, from.id);
+    }
+  }
 
   const linked = await fetchTelegramLinkByTelegramUserId(supabase, from.id);
   if (!linked) {
@@ -530,7 +604,17 @@ async function handleMessage(
       chatId: chat.id,
       text: "Сначала подключите аккаунт: ссылка из кабинета KARTO или /link",
     });
+    return;
   }
+  // Помощник отвечает только в личном чате, который привязан к аккаунту.
+  if (linked.chat_id !== chat.id) return;
+  if (!assistantAllowed(linked.user_id)) {
+    await telegramSendMessage({ chatId: chat.id, text: ASSISTANT_CLOSED_HTML });
+    return;
+  }
+  // Ответ агента может занять до минуты: webhook отвечает Telegram сразу, а ответ уходит в чат, когда будет готов.
+  // Так Telegram не считает запрос зависшим и не шлёт его повторно, а другие сообщения не ждут в очереди.
+  void handleAssistantMessage(supabase, { user_id: linked.user_id, chat_id: linked.chat_id, telegram_user_id: linked.telegram_user_id }, text).catch((e) => console.error("[telegram] помощник:", e));
 }
 
 export async function handleTelegramWebhookUpdate(
@@ -543,5 +627,10 @@ export async function handleTelegramWebhookUpdate(
   }
   if (update.message?.text) {
     await handleMessage(supabase, update.message);
+    return;
+  }
+  // Голосовое сообщение: распознаём и отвечаем как на текст. Долгая работа не держит опрос и webhook.
+  if (update.message && (update.message.voice || update.message.audio)) {
+    void handleVoiceMessage(supabase, update.message).catch((e) => console.error("[telegram] голосовое:", e instanceof Error ? e.message : String(e)));
   }
 }

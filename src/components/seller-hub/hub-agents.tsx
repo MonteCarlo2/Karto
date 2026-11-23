@@ -1,45 +1,76 @@
 "use client";
 
+import type { SellerProductEvent } from "@/lib/seller-hub/event-engine/types";
+import type { TaskFocus } from "./task-focus";
 import { useState } from "react";
 import Link from "next/link";
-import { Megaphone, MessageSquare, Tag, Truck, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, Megaphone, Pause, Play, ShieldCheck, Tag, Truck, Zap } from "lucide-react";
 import { readHubJournal } from "@/lib/seller-hub/journal";
 import { readHubScenarios, writeHubScenarios, type HubScenario } from "@/lib/seller-hub/scenarios";
-import { hub, HubButton, HubPanel, hubSans } from "./hub-ui";
+import { hub, HubButton, hubSans } from "./hub-ui";
 import { HubActionJournal } from "./hub-action-journal";
 import { HubAgentsAds } from "./hub-agents-ads";
 import { HubAiActivity } from "./hub-ai-activity";
 import { HubAutopilot } from "./hub-autopilot";
 import { HubAgentReport } from "./hub-agent-report";
 import { HubAiRules } from "./hub-ai-rules";
-import { HubAiChat } from "./hub-ai-chat";
 import { HubAgentsLogistics } from "./hub-agents-logistics";
+import { HubAgentsOverview, type AgentsTab } from "./hub-agents-overview";
+import { AgentTabs, agentDateTime } from "./hub-agents-ui";
+import { PanelGroup, PanelRow, PanelSection, PanelStat } from "./hub-agents-panel";
+import { AgentDrawer } from "./hub-agents-drawer";
+import { AgentSwitch } from "./hub-agents-ui";
+import { useUserSetting } from "./use-user-setting";
+import { AccessSwitches } from "./hub-agents-settings";
+import { SettingsWindow, type SettingsNavItem } from "./hub-settings-window";
+import { useAutoAi } from "./use-auto-ai";
 import type { FulfillmentTab } from "@/lib/seller-hub/fulfillment-center";
 import type { SellerAdCampaignRow, SellerCatalogSnapshot } from "@/lib/seller-hub/types";
 
-const AGENT_FACE: Record<HubScenario["agent"], { icon: LucideIcon; wash: string; mark: string; ink: string }> = {
-  prices: { icon: Tag, wash: "#F3FFE0", mark: "#B9FF4B", ink: "#0E1116" },
-  ads: { icon: Megaphone, wash: "#E8F0FE", mark: "#2F6FED", ink: "#FFFFFF" },
-  comms: { icon: MessageSquare, wash: "#E7F6C9", mark: "#1F4E3D", ink: "#B9FF4B" },
+/**
+ * Раздел «Агенты»: один агент с несколькими направлениями работы. Здесь и только здесь он настраивается (правила, автопилот, пределы) и отчитывается (журнал).
+ * В остальных разделах кабинета видны только его предложения с кнопкой «Выполнить».
+ */
+
+type ScenarioAgent = HubScenario["agent"];
+
+type Panel = "setup" | "journal" | null;
+type Direction = "comms" | "rules" | "proposals";
+type Area = "access" | "autopilot" | "prices" | "ads" | "logistics";
+
+const DIRECTIONS: Array<{ id: Direction; label: string; hint: string }> = [
+  { id: "comms", label: "Отзывы и автоответы", hint: "Ответы на отзывы и вопросы покупателей" },
+  { id: "proposals", label: "Ждёт решения", hint: "Предложения агента по рекламе" },
+];
+
+const RULES_NAV: Array<SettingsNavItem<Area>> = [
+  { id: "access", label: "Доступ", icon: ShieldCheck, hint: "Что агенту можно", description: "Где агент может действовать и в каком режиме он работает." },
+  { id: "autopilot", label: "Автопилот", icon: Zap, hint: "Что делает сам", description: "Что агент выполняет сам, пока вы заняты." },
+  { id: "prices", label: "Цены", icon: Tag, hint: "Границы изменений", description: "Пределы, за которые агент не выйдет, меняя цены и скидки." },
+  { id: "ads", label: "Реклама", icon: Megaphone, hint: "Правила агента", description: "Когда агент предлагает действия по рекламе и сколько ему можно тратить." },
+  { id: "logistics", label: "Логистика", icon: Truck, hint: "Напоминания", description: "О чём и когда агент напоминает по заказам и поставкам." },
+];
+
+/** Старые адреса из других разделов («Настроить агента») открывают нужное место. Цены, реклама и логистика теперь вкладки в «Правилах агента»; очередь рекламных предложений открывается как «Ждёт решения». */
+function resolveTab(value: string | null): { panel: Panel; open: Direction | null; area: Area } {
+  if (value === "journal") return { panel: "journal", open: null, area: "access" };
+  if (value === "ads" || value === "logistics" || value === "prices") return { panel: "setup", open: "rules", area: value };
+  if (value === "rules") return { panel: "setup", open: "rules", area: "access" };
+  if (value === "comms" || value === "proposals") return { panel: "setup", open: value, area: "access" };
+  return { panel: null, open: null, area: "access" };
+}
+
+const AGENT_NOTE: Record<"prices" | "comms", string> = {
+  prices: "В WB уходит только тот список, который вы подтвердили.",
+  comms: "Агент не заменяет автоответы, а подсказывает, где отзывы мешают продажам.",
 };
 
-const AGENT_LABEL = {
-  prices: "Агент цен",
-  ads: "Агент рекламы",
-  comms: "Агент коммуникаций",
-} as const;
-
-const AGENT_DUTY: Record<HubScenario["agent"], string> = {
-  prices: "Предлагает скидку на товары с запасом и держит стоп-лосс. В WB уходит только список, который вы подтвердили.",
-  ads: "Смотрит активные кампании и предлагает паузу, если баланс продвижения пустой. Ставки сам не поднимает.",
-  comms: "Ответы на отзывы живут в уже готовых автоответах. Здесь агент только напоминает, что отправка идёт оттуда.",
-};
-
-const AGENT_TASKS: Record<HubScenario["agent"], string[]> = {
+const AGENT_TASKS: Record<"prices" | "comms", string[]> = {
   prices: ["Чуть увеличь скидку на товары с запасом", "Покажи товары без цены"],
-  ads: ["Поставь на паузу рекламу с пустым балансом", "Какие кампании сейчас активны?"],
   comms: ["Что с отзывами без ответа?", "Открой автоответы по этому магазину"],
 };
+
+const JOURNAL_WORD: Record<"prices" | "comms", string> = { prices: "скид", comms: "отзыв" };
 
 const SCHEDULE_LABEL = {
   once: "один раз",
@@ -47,27 +78,90 @@ const SCHEDULE_LABEL = {
   manual: "вручную",
 } as const;
 
-export function HubAgents({ onAsk, snapshot, connected, onAdsUpdate, onOpenFulfillment }: { onAsk: (prompt?: string) => void; snapshot?: SellerCatalogSnapshot; connected?: boolean; onAdsUpdate?: (campaigns: SellerAdCampaignRow[]) => void; onOpenFulfillment?: (tab: FulfillmentTab) => void }) {
-  const [rows, setRows] = useState<HubScenario[]>(() => readHubScenarios());
-  const [tab, setTab] = useState<HubScenario["agent"] | "logistics">(() => {
-    // Переход из других разделов («Настроить агента») открывает нужного агента.
-    if (typeof window === "undefined") return "prices";
+export function HubAgents({ onAsk, snapshot, connected, onAdsUpdate, onOpenFulfillment, onOpenTasks, onOpenKb, onOpenSection, events }: { events?: SellerProductEvent[]; onAsk: (prompt?: string) => void; snapshot?: SellerCatalogSnapshot; connected?: boolean; onAdsUpdate?: (campaigns: SellerAdCampaignRow[]) => void; onOpenFulfillment?: (tab: FulfillmentTab) => void; onOpenTasks?: (focus?: TaskFocus) => void; onOpenKb?: (id: string) => void; onOpenSection?: (id: string) => void }) {
+  const [state, setState] = useState<{ panel: Panel; open: Direction | null; area: Area }>(() => {
+    if (typeof window === "undefined") return { panel: null, open: null, area: "access" };
     try {
       const wanted = sessionStorage.getItem("karto-hub-agents-tab");
       sessionStorage.removeItem("karto-hub-agents-tab");
-      return wanted === "ads" || wanted === "comms" || wanted === "prices" || wanted === "logistics" ? wanted : "prices";
+      return resolveTab(wanted);
     } catch {
-      return "prices";
+      return { panel: null, open: null, area: "access" };
     }
   });
-  const visible = rows.filter((row) => row.agent === tab);
-  const planned = visible.filter((row) => row.status !== "done");
-  const doneWeek = rows.filter((row) => {
-    if (row.agent !== tab || row.status !== "done") return false;
-    return Date.now() - new Date(row.createdAt).getTime() < 7 * 24 * 60 * 60 * 1000;
-  }).length;
-  const lastRun = [...rows.filter((row) => row.agent === tab)].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-  const journalCount = readHubJournal().filter((row) => row.title.toLowerCase().includes(tab === "prices" ? "скид" : tab === "ads" ? "реклам" : "отзыв")).length;
+  const [prefill, setPrefill] = useState<{ text: string; n: number } | null>(null);
+  const [sandbox, setSandbox] = useUserSetting<boolean>("agent.sandbox", true);
+  const autoAi = useAutoAi();
+  const [journalTab, setJournalTab] = useState<"actions" | "plans" | "week">("actions");
+
+  const goTab = (tab: AgentsTab) => setState(tab === "overview" ? { panel: null, open: null, area: "access" } : resolveTab(tab));
+  const close = () => setState((prev) => ({ ...prev, panel: null }));
+
+  return (
+    <>
+      <HubAgentsOverview snapshot={snapshot} onTab={goTab} onAsk={onAsk} prefill={prefill} onOpenTasks={onOpenTasks} onOpenKb={onOpenKb} onOpenSection={onOpenSection} events={events} />
+
+      <SettingsWindow open={state.panel === "setup" && state.open === "rules"} onClose={close} title="Правила агента" subtitle="Что агент может делать и в каких границах" items={RULES_NAV} active={state.area} onSelect={(area) => setState((prev) => ({ ...prev, area }))}>
+        {state.area === "access" ? (
+          <div className="space-y-9">
+            <PanelSection title="Режим работы">
+              <PanelGroup>
+                <PanelRow title="Тестовый режим" hint={sandbox ? "Агент работает как обычно, но в Wildberries ничего не отправляет" : "Боевой режим: подтверждённые действия уходят в Wildberries"} control={<AgentSwitch checked={sandbox} onChange={setSandbox} label="Тестовый режим" />} />
+                <PanelRow title="Анализ по изменению данных" hint="Агент сам пересматривает карточки и кампании, когда меняются данные кабинета" control={<AgentSwitch checked={autoAi.enabled} onChange={autoAi.setEnabled} label="Анализ по изменению данных" />} />
+              </PanelGroup>
+            </PanelSection>
+            <AccessSwitches />
+          </div>
+        ) : null}
+        {state.area === "autopilot" ? <HubAutopilot /> : null}
+        {state.area === "prices" ? <HubAiRules part="limits" /> : null}
+        {state.area === "ads" ? <HubAgentsAds snapshot={snapshot} connected={connected} onAdsUpdate={onAdsUpdate} rulesOnly /> : null}
+        {state.area === "logistics" ? <HubAgentsLogistics snapshot={snapshot} connected={connected} onOpenFulfillment={(t) => onOpenFulfillment?.(t)} remindersOnly /> : null}
+      </SettingsWindow>
+
+      {DIRECTIONS.map((d) => (
+        <AgentDrawer key={d.id} modal open={state.panel === "setup" && state.open === d.id} title={d.label} subtitle={d.hint} onClose={close}>
+          {d.id === "proposals" ? <HubAgentsAds snapshot={snapshot} connected={connected} onAdsUpdate={onAdsUpdate} /> : null}
+          {d.id === "comms" ? (
+            <ScenarioDirection
+              agent="comms"
+              onAsk={(prompt) => {
+                close();
+                if (prompt) setPrefill({ text: prompt, n: Date.now() });
+              }}
+            />
+          ) : null}
+        </AgentDrawer>
+      ))}
+
+      <AgentDrawer modal open={state.panel === "journal"} title="Журнал" subtitle="Что агент и вы делали в кабинете" onClose={close}>
+        <div className="space-y-7">
+          <AgentTabs
+            label="Журнал"
+            value={journalTab}
+            onChange={setJournalTab}
+            options={[
+              { id: "actions", label: "Действия" },
+              { id: "plans", label: "Планы" },
+              { id: "week", label: "Неделя" },
+            ]}
+          />
+          {journalTab === "actions" ? <HubActionJournal /> : journalTab === "plans" ? <HubAiActivity /> : <HubAgentReport />}
+        </div>
+      </AgentDrawer>
+    </>
+  );
+}
+
+/** Направления «Цены» и «Отзывы»: сводка, быстрые задачи для чата и расписание сценариев. */
+function ScenarioDirection({ agent, onAsk }: { agent: Extract<ScenarioAgent, "prices" | "comms">; onAsk: (prompt?: string) => void }) {
+  const [rows, setRows] = useState<HubScenario[]>(() => readHubScenarios());
+  const [now] = useState(() => Date.now());
+  const mine = rows.filter((row) => row.agent === agent);
+  const planned = mine.filter((row) => row.status !== "done");
+  const doneWeek = mine.filter((row) => row.status === "done" && now - new Date(row.createdAt).getTime() < 7 * 24 * 60 * 60 * 1000).length;
+  const lastRun = [...mine].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  const journalCount = readHubJournal().filter((row) => row.title.toLowerCase().includes(JOURNAL_WORD[agent])).length;
 
   function patch(id: string, status: HubScenario["status"]) {
     const next = rows.map((row) => (row.id === id ? { ...row, status } : row));
@@ -76,233 +170,96 @@ export function HubAgents({ onAsk, snapshot, connected, onAdsUpdate, onOpenFulfi
   }
 
   return (
-    <div className="space-y-4">
-      <HubAiChat titleByNm={new Map((snapshot?.items ?? []).map((item) => [String(item.externalId), item.title]))} cardByNm={new Map((snapshot?.items ?? []).map((item) => [String(item.externalId), { title: item.title, vendorCode: item.vendorCode, description: item.description ?? "" }]))} />
-      <HubAiActivity />
-      <HubAiRules />
-      <HubAutopilot />
-      <HubAgentReport />
-      <HubPanel className="px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="text-[14px] font-semibold" style={{ color: hub.text }}>Автоответы на отзывы и вопросы</p>
-            <p className="text-[13px] leading-5" style={{ color: hub.textMuted }}>Работают отдельным модулем: правила ответов, стиль бренда, проверка перед отправкой. Здесь агенты их не заменяют, а подсказывают, где отзывы мешают продажам.</p>
-          </div>
-          <Link href="/studio/auto-replies/workspace" className="inline-flex">
-            <HubButton variant="secondary">Открыть автоответы</HubButton>
-          </Link>
-        </div>
-      </HubPanel>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {(Object.keys(AGENT_LABEL) as HubScenario["agent"][]).map((id) => {
-          const face = AGENT_FACE[id];
-          const Icon = face.icon;
-          const activeCount = rows.filter((row) => row.agent === id && row.status === "active").length;
-          const selected = tab === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTab(id)}
-              className="flex items-center gap-3 rounded-2xl border px-4 py-4 text-left transition duration-150 hover:-translate-y-0.5"
-              style={{
-                backgroundColor: selected ? face.wash : "#FFFFFF",
-                borderColor: selected ? face.mark : hub.border,
-              }}
-            >
-              <span
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                style={{ backgroundColor: face.mark, color: face.ink }}
-              >
-                <Icon className="h-5 w-5" strokeWidth={2.25} />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[15px] font-semibold" style={{ color: hub.text }}>
-                  {AGENT_LABEL[id]}
-                </span>
-                <span className="mt-1 block text-[12px]" style={{ color: hub.textSubtle }}>
-                  {activeCount > 0 ? `${activeCount} в расписании` : "в расписании пусто"}
-                </span>
-              </span>
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          onClick={() => setTab("logistics")}
-          className="flex items-center gap-3 rounded-2xl border px-4 py-4 text-left transition duration-150 hover:-translate-y-0.5"
-          style={{ backgroundColor: tab === "logistics" ? "#FFF4E0" : "#FFFFFF", borderColor: tab === "logistics" ? "#E6A23C" : hub.border }}
-        >
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: "#E6A23C", color: "#FFFFFF" }}>
-            <Truck className="h-5 w-5" strokeWidth={2.25} />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-[15px] font-semibold" style={{ color: hub.text }}>
-              Агент логистики
-            </span>
-            <span className="mt-1 block text-[12px]" style={{ color: hub.textSubtle }}>
-              заказы, поставки, склад
-            </span>
-          </span>
-        </button>
-      </div>
-
-      {tab === "logistics" ? (
-        <HubAgentsLogistics snapshot={snapshot} connected={connected} onOpenFulfillment={(t) => onOpenFulfillment?.(t)} />
-      ) : tab === "ads" ? (
-        <HubAgentsAds snapshot={snapshot} connected={connected} onAdsUpdate={onAdsUpdate} />
-      ) : (
-      <>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]">
-      <HubPanel>
-        <div className="space-y-3 px-5 py-4">
-          <h2 className="text-[18px] font-semibold" style={hubSans}>
-            Что умеет {AGENT_LABEL[tab].toLowerCase()}
-          </h2>
-          <p className="text-[14px] leading-relaxed" style={{ color: hub.textMuted }}>
-            {AGENT_DUTY[tab]}
-          </p>
-          {tab === "comms" ? (
-            <Link href="/studio/auto-replies/workspace" className="inline-flex">
-              <HubButton size="sm">Открыть автоответы</HubButton>
-            </Link>
-          ) : null}
-          <div className="flex flex-col gap-2">
-            {AGENT_TASKS[tab].map((task) => (
-              <button
-                key={task}
-                type="button"
-                onClick={() => onAsk(task)}
-                className="rounded-xl border px-3 py-2.5 text-left text-[14px] font-medium transition hover:bg-[#B9FF4B]/30"
-                style={{ color: hub.text, borderColor: hub.border }}
-              >
-                {task}
-              </button>
-            ))}
-          </div>
-          <p className="text-[13px] leading-relaxed" style={{ color: hub.textMuted }}>
-            Регулярная задача остаётся в расписании. Сама она кабинет не меняет: каждое применение всё равно через «Применить».
-          </p>
-          <ExampleStepper agent={tab} />
-        </div>
-      </HubPanel>
-      <HubPanel>
-        <div className="space-y-4 px-5 py-4">
-          <h2 className="text-[18px] font-semibold" style={hubSans}>Сейчас по этому агенту</h2>
-          <Metric label="Выполнено за 7 дней" value={String(doneWeek)} hint="сценарии со статусом «завершён»" />
-          <Metric label="Записей в журнале" value={String(journalCount)} hint="по словам этого агента, без оценки денег" />
-          <Metric
-            label="Последний запуск"
-            value={lastRun ? new Date(lastRun.createdAt).toLocaleString("ru-RU") : "ещё не было"}
-            hint="Деньги и время не считаем: в снимке нет такой величины."
+    <div className="space-y-9">
+      {agent === "comms" ? (
+        <PanelGroup>
+          <PanelRow
+            title="Автоответы на отзывы"
+            hint="Правила ответов, стиль бренда, проверка перед отправкой"
+            control={
+              <Link href="/studio/auto-replies/workspace" className="inline-flex">
+                <HubButton variant="dark" size="sm">
+                  Открыть
+                  <ArrowUpRight className="h-4 w-4" />
+                </HubButton>
+              </Link>
+            }
           />
-        </div>
-      </HubPanel>
-      </div>
+        </PanelGroup>
+      ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-      <HubPanel>
-        <div className="border-b px-5 py-4" style={{ borderColor: hub.borderSoft }}>
-          <h2 className="text-[18px] font-semibold" style={hubSans}>
-            Запланировано
-          </h2>
-        </div>
+      <dl className="grid grid-cols-3 gap-x-6 rounded-[18px] px-5 py-5" style={{ backgroundColor: "rgba(46, 90, 67, 0.045)" }}>
+        <PanelStat value={doneWeek} label="выполнено за 7 дней" />
+        <PanelStat value={journalCount} label="записей в журнале" />
+        <PanelStat value={lastRun ? agentDateTime(lastRun.createdAt) : "—"} label="последний запуск" />
+      </dl>
+
+      <PanelSection title="Быстрые задачи" hint="Нажмите, и текст появится в поле задачи агента.">
+        <PanelGroup>
+          {AGENT_TASKS[agent].map((task) => (
+            <div key={task} style={{ borderColor: "rgba(1, 20, 8, 0.08)" }}>
+              <button type="button" onClick={() => onAsk(task)} className="group/row flex w-full items-center justify-between gap-4 rounded-lg py-3.5 text-left text-[14.5px] font-medium outline-none transition-colors duration-150 focus-visible:shadow-[0_0_0_2px_var(--hub-lime-ring)]" style={{ ...hubSans, color: hub.text }}>
+                <span className="min-w-0 [overflow-wrap:anywhere]">{task}</span>
+                <ArrowUpRight className="h-4 w-4 shrink-0 transition-transform duration-150 group-hover/row:-translate-y-0.5 group-hover/row:translate-x-0.5" style={{ color: hub.textSubtle }} aria-hidden />
+              </button>
+            </div>
+          ))}
+        </PanelGroup>
+      </PanelSection>
+
+      <PanelSection title={planned.length > 0 ? `По расписанию · ${planned.length}` : "По расписанию"}>
         {planned.length === 0 ? (
-          <p className="px-5 py-6 text-[14px]" style={{ color: hub.textMuted }}>
-            У {AGENT_LABEL[tab].toLowerCase()} нет задач в расписании. Пример сверху откроет KARTO с готовым текстом.
+          <p className="px-0.5 text-[13.5px] leading-5" style={{ ...hubSans, color: hub.textSubtle }}>
+            Пока пусто. Поставьте задачу агенту в чате, и она появится здесь, если оставить её регулярной.
           </p>
         ) : (
           <ul>
             {planned.map((row) => (
-              <li key={row.id} className="border-b px-5 py-4 last:border-b-0" style={{ borderColor: hub.borderSoft }}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-[15px] font-semibold" style={{ color: hub.text }}>
-                    {row.title}
-                  </h3>
-                  <span className="text-[12px] font-semibold" style={{ color: hub.textMuted }}>
-                    {row.status === "paused" ? "на паузе" : "активен"} · {SCHEDULE_LABEL[row.schedule]}
-                  </span>
-                </div>
-                <ol className="mt-2 list-decimal space-y-1 pl-5 text-[14px]" style={{ color: hub.text }}>
-                  {row.steps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-                <p className="mt-2 text-[13px]" style={{ color: hub.textMuted }}>
-                  Стоп-лосс: не опускать ориентир маржи ниже {row.stopLossMarginPct}% без отдельного подтверждения.
-                </p>
-                <div className="mt-3">
+              <li key={row.id} className="border-t py-4 first:border-t-0" style={{ borderColor: "rgba(1, 20, 8, 0.08)" }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[14.5px] font-semibold leading-5 [overflow-wrap:anywhere]" style={{ ...hubSans, color: hub.text }}>
+                      {row.title}
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-1.5 text-[12.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: row.status === "paused" ? "#F59E0B" : "#10B981" }} aria-hidden />
+                      {row.status === "paused" ? "на паузе" : "активен"} · {SCHEDULE_LABEL[row.schedule]}
+                    </p>
+                  </div>
                   {row.status === "active" ? (
                     <HubButton size="sm" variant="secondary" onClick={() => patch(row.id, "paused")}>
+                      <Pause className="h-3.5 w-3.5" />
                       Пауза
                     </HubButton>
                   ) : (
                     <HubButton size="sm" variant="secondary" onClick={() => patch(row.id, "active")}>
-                      Снять с паузы
+                      <Play className="h-3.5 w-3.5" />
+                      Включить
                     </HubButton>
                   )}
                 </div>
+                <ol className="mt-2.5 space-y-1">
+                  {row.steps.map((step, i) => (
+                    <li key={step} className="flex gap-2.5 text-[13.5px] leading-5 [overflow-wrap:anywhere]" style={{ ...hubSans, color: hub.textMuted }}>
+                      <span className="w-4 shrink-0 text-right tabular-nums" style={{ color: hub.textSubtle }}>
+                        {i + 1}
+                      </span>
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+                <p className="mt-2 text-[12.5px] leading-5" style={{ ...hubSans, color: hub.textSubtle }}>
+                  Стоп-лосс: маржа не ниже {row.stopLossMarginPct}% без отдельного подтверждения.
+                </p>
               </li>
             ))}
           </ul>
         )}
-      </HubPanel>
-      <HubActionJournal />
-      </div>
-      </>
-      )}
-    </div>
-  );
-}
+      </PanelSection>
 
-const EXAMPLE: Record<HubScenario["agent"], Array<{ title: string; text: string }>> = {
-  prices: [
-    { title: "Задача", text: "Чуть увеличь скидку на товары с запасом." },
-    { title: "Отбор", text: "Беру SKU с ценой и остатком больше 3." },
-    { title: "Превью", text: "Скидка +5 п.п., не выше 40%. Было → станет по каждой строке." },
-    { title: "Применить", text: "В WB уходит только после «подходит» и «Применить»." },
-  ],
-  ads: [
-    { title: "Задача", text: "Поставь на паузу рекламу с пустым балансом." },
-    { title: "Отбор", text: "Активные кампании из снимка, баланс продвижения равен нулю." },
-    { title: "Превью", text: "Список: название, статус сейчас → пауза." },
-    { title: "Применить", text: "Пауза уходит только по кнопке. Ставки агент не поднимает." },
-  ],
-  comms: [
-    { title: "Задача", text: "Что с отзывами без ответа?" },
-    { title: "Ответ", text: "Цифра из снимка, без отправки в WB." },
-    { title: "Черновик", text: "Текст ответа живёт в автоответах, не здесь." },
-    { title: "Отправка", text: "Режим отправки задаётся в рабочем пространстве отзывов." },
-  ],
-};
-
-function ExampleStepper({ agent }: { agent: HubScenario["agent"] }) {
-  return (
-    <ol className="rounded-2xl border px-4 py-4" style={{ borderColor: hub.border }}>
-      {EXAMPLE[agent].map((step, index) => (
-        <li key={step.title} className="relative flex gap-3 pb-4 last:pb-0">
-          {index < EXAMPLE[agent].length - 1 ? (
-            <span className="absolute bottom-0 left-[13px] top-7 w-px bg-[#E3E6EB]" aria-hidden />
-          ) : null}
-          <span className="relative z-[1] flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#B9FF4B] text-[12px] font-bold text-[#0E1116]">
-            {index + 1}
-          </span>
-          <span>
-            <span className="block text-[14px] font-semibold" style={{ color: hub.text }}>{step.title}</span>
-            <span className="mt-0.5 block text-[13px]" style={{ color: hub.textMuted }}>{step.text}</span>
-          </span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-function Metric({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <div>
-      <p className="text-[12px] font-semibold uppercase tracking-[0.06em]" style={{ color: hub.textSubtle }}>{label}</p>
-      <p className="mt-1 text-[22px] font-semibold leading-none" style={{ color: hub.text }}>{value}</p>
-      <p className="mt-1 text-[12px]" style={{ color: hub.textMuted }}>{hint}</p>
+      <p className="px-0.5 text-[12.5px] leading-5" style={{ ...hubSans, color: hub.textSubtle }}>
+        {AGENT_NOTE[agent]}
+      </p>
     </div>
   );
 }

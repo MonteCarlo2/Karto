@@ -51,7 +51,7 @@ export function CardSellability({
             setText(result.text);
           });
         }}
-        className="inline-flex h-10 items-center rounded-[11px] border-2 bg-white px-3.5 text-[13.5px] font-semibold outline-none hover:bg-[#F4F6F8] disabled:opacity-45"
+        className="inline-flex h-10 items-center rounded-[11px] border-2 bg-white px-3.5 text-[13.5px] font-semibold outline-none hover:bg-[var(--hub-canvas)] disabled:opacity-45"
         style={{ ...hubSans, borderColor: hub.ink, color: hub.ink }}
       >
         {loading ? "Читаю карточку" : "Разобрать продажность"}

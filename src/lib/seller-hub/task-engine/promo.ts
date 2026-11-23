@@ -5,6 +5,9 @@ import type { PromoOfferFact, TaskDraft, TaskFact } from "./types";
 
 /** Через сколько дней после начала акции предлагать вступить: дальше окно разумного решения закрывается. */
 const OFFER_HORIZON_DAYS = 14;
+
+/** Рост спроса (акция, реклама) советуем, только если запаса хватает минимум на столько дней: иначе сначала поставка. Общий порог для задач и подсказок. */
+export const MIN_COVER_FOR_GROWTH_DAYS = 14;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function rub(value: number): string {
@@ -147,13 +150,15 @@ export function rulePromoLoss(fact: TaskFact, now: string): TaskDraft | null {
  * Товар не в акции, которую можно подать, цена входа даёт положительную маржу, товар в наличии.
  * Рост продаж не обещается: WB не сообщает, на сколько акция его увеличит.
  */
-export function rulePromoOpportunity(fact: TaskFact, now: string): TaskDraft | null {
-  const nowMs = Date.parse(now);
-  if (!Number.isFinite(nowMs)) return null;
-  if (fact.stock == null || fact.stock <= 0) return null;
-  // Запас на пару дней продаж: акция всё равно съест остаток раньше, чем довезём новое.
-  if (fact.coverDays != null && fact.coverDays < 7) return null;
-  const hits = (fact.promoOffers ?? [])
+/**
+ * Акции, в которые товар стоит подать: единое правило для задачи и для подсказок карточек и рекламы, чтобы они не спорили.
+ * Нужны остаток, запас хода, цена входа с положительной маржой после списаний WB, управляемая акция, близкий старт.
+ */
+export function promoOpportunityOffers(fact: TaskFact, nowMs: number): PromoOfferFact[] {
+  if (fact.stock == null || fact.stock <= 0) return [];
+  // Запаса мало: акция съест остаток раньше, чем довезём новое. Сначала поставка.
+  if (fact.coverDays != null && fact.coverDays < MIN_COVER_FOR_GROWTH_DAYS) return [];
+  return (fact.promoOffers ?? [])
     .filter((o) => {
       if (o.inPromo !== false || !o.canManage || o.planPrice == null) return false;
       if (o.cohort !== "boost" && o.cohort !== "hold") return false;
@@ -163,6 +168,17 @@ export function rulePromoOpportunity(fact: TaskFact, now: string): TaskDraft | n
       return days == null || days <= OFFER_HORIZON_DAYS;
     })
     .sort((a, b) => (b.marginPromoRub ?? 0) - (a.marginPromoRub ?? 0));
+}
+
+/** Акции, где товар уже участвует и цена входа убыточна: по ним задача велит выйти, входить в другие нельзя. */
+export function promoLossOffers(fact: TaskFact, nowMs: number): PromoOfferFact[] {
+  return (fact.promoOffers ?? []).filter((o) => o.inPromo === true && o.cohort === "loss" && o.planPrice != null && o.marginPromoRub != null && !ended(o, nowMs));
+}
+
+export function rulePromoOpportunity(fact: TaskFact, now: string): TaskDraft | null {
+  const nowMs = Date.parse(now);
+  if (!Number.isFinite(nowMs)) return null;
+  const hits = promoOpportunityOffers(fact, nowMs);
   const best = hits[0];
   if (!best || best.planPrice == null || best.marginPromoRub == null) return null;
   const names = hits.map((o) => `«${o.promoName}»`).join(", ");
@@ -189,7 +205,7 @@ export function rulePromoOpportunity(fact: TaskFact, now: string): TaskDraft | n
       promo_count: hits.length,
       stock: fact.stock,
     },
-    recommendation: `Если хотите участвовать, добавьте товар в «${best.promoName}» на странице «Акции». Прирост заказов WB не гарантирует: смотрите на маржу ${rub(best.marginPromoRub)} на штуке и остаток ${fact.stock.toLocaleString("ru-RU")} шт.`,
+    recommendation: `Если хотите участвовать, добавьте товар в «${best.promoName}» на странице «Акции». Прирост заказов WB не гарантирует: смотрите на маржу ${rub(best.marginPromoRub)} на штуке и остаток ${(fact.stock ?? 0).toLocaleString("ru-RU")} шт.`,
     actionType: "OPEN_PROMOTIONS",
     businessImpactType: "SALES_GROWTH",
     eventKind: null,

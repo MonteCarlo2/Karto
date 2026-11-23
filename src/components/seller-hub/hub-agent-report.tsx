@@ -2,41 +2,72 @@
 
 import { useEffect, useState } from "react";
 import { loadSellerHubAgentReports, type AgentReportView } from "@/lib/seller-hub/client-api";
-import { HubButton, HubPanel, hub } from "./hub-ui";
+import { AgentSkeleton } from "./hub-agents-ui";
+import { PanelEmpty, PanelSection, PanelStat } from "./hub-agents-panel";
+import { hub, hubNumeric, hubSans } from "./hub-ui";
 
 const OUTCOME: Record<string, string> = { worked: "сработало", not_worked: "не сработало", observed: "наблюдение завершено" };
-const fmt = (key: string) => new Date(`${key}T12:00:00+03:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+export const reportDay = (key: string) => new Date(`${key}T12:00:00+03:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 
-/** Недельный отчёт о работе агентов. Появляется после первой закончившейся недели, если задача включена в правилах автопилота. */
+/** Недельный отчёт о работе агента. Появляется после первой закончившейся недели, если задача включена в правилах автопилота. */
 export function HubAgentReport() {
   const [reports, setReports] = useState<AgentReportView[] | null>(null);
-  const [open, setOpen] = useState(false);
   useEffect(() => {
     void loadSellerHubAgentReports().then((r) => setReports(r.ok ? r.reports : []));
   }, []);
-  const latest = reports?.[0];
-  if (!latest) return null;
+  if (reports == null) return <AgentSkeleton rows={4} className="max-w-xl" />;
+  const latest = reports[0];
+  if (!latest) return <PanelEmpty>Первый недельный отчёт появится после закончившейся недели. Он включается в правилах автопилота.</PanelEmpty>;
   const p = latest.payload;
+  const finishedCount = p.plans.worked + p.plans.notWorked + p.plans.observed;
   return (
-    <HubPanel className="px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-[14px] font-semibold" style={{ color: hub.text }}>Отчёт агентов за {fmt(p.period.start)} – {fmt(p.period.end)}</p>
-          <p className="text-[13px] leading-5" style={{ color: hub.textMuted }}>
-            Выполнено действий: {p.actions.total} (вами {p.actions.byUser}, автопилотом {p.actions.byAgent}), ошибок: {p.actions.errors}. Планов закончилось: {p.plans.worked + p.plans.notWorked + p.plans.observed}, идёт: {p.plans.running}. Ждут решения: {p.openProposals}.
+    <div className="space-y-9">
+      <PanelSection title={`${reportDay(p.period.start)} – ${reportDay(p.period.end)}`} hint="Только работа агента. Деньги и прибыль смотрите в разделе «Финансы».">
+        <dl className="grid grid-cols-3 gap-x-6 gap-y-7 rounded-[18px] px-5 py-5" style={{ backgroundColor: "rgba(46, 90, 67, 0.045)" }}>
+          <PanelStat value={p.actions.total} label="действий в кабинете" />
+          <PanelStat value={p.actions.byUser} label="подтвердили вы" />
+          <PanelStat value={p.actions.byAgent} label="сделал автопилот" />
+          <PanelStat value={p.actions.errors} label="ошибок" tone={p.actions.errors > 0 ? "danger" : undefined} />
+          <PanelStat value={p.plans.running} label="планов идёт" />
+          <PanelStat value={p.openProposals} label="ждут решения" />
+        </dl>
+      </PanelSection>
+
+      <PanelSection title="Что сделано">
+        {p.actions.list.length > 0 ? (
+          <ul>
+            {p.actions.list.map((a) => (
+              <li key={a.label} className="flex items-baseline justify-between gap-4 border-t py-2.5 first:border-t-0" style={{ ...hubSans, borderColor: "rgba(1, 20, 8, 0.08)", color: hub.text }}>
+                <span className="min-w-0 text-[14px] [overflow-wrap:anywhere]">{a.label}</span>
+                <span className="text-[14px] font-semibold" style={hubNumeric}>
+                  {a.count}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-0.5 text-[13.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+            Действий в кабинете за неделю не было.
           </p>
-        </div>
-        <HubButton variant="secondary" onClick={() => setOpen((v) => !v)}>{open ? "Свернуть" : "Подробнее"}</HubButton>
-      </div>
-      {open ? (
-        <div className="mt-2 space-y-2">
-          {p.actions.list.length > 0 ? <ul className="text-[13px]" style={{ color: hub.text }}>{p.actions.list.map((a) => <li key={a.label}>{a.label}: {a.count}</li>)}</ul> : <p className="text-[13px]" style={{ color: hub.textMuted }}>Действий в кабинете за неделю не было.</p>}
-          {p.finished.map((f) => (
-            <p key={f.title} className="text-[13px] leading-5" style={{ color: hub.text }}>{f.title}: {OUTCOME[f.outcome]}{f.reason ? `. ${f.reason}` : ""}</p>
-          ))}
-          <p className="text-[12px] leading-4" style={{ color: hub.textMuted }}>Деньги и прибыль смотрите в разделе «Финансы»: здесь только работа агентов.</p>
-        </div>
-      ) : null}
-    </HubPanel>
+        )}
+      </PanelSection>
+
+      <PanelSection title={`Закончившиеся планы · ${finishedCount}`}>
+        {p.finished.length > 0 ? (
+          <ul>
+            {p.finished.map((f) => (
+              <li key={f.title} className="border-t py-2.5 text-[14px] leading-5 first:border-t-0 [overflow-wrap:anywhere]" style={{ ...hubSans, borderColor: "rgba(1, 20, 8, 0.08)", color: hub.text }}>
+                {f.title}: {OUTCOME[f.outcome]}
+                {f.reason ? <span style={{ color: hub.textSubtle }}>. {f.reason}</span> : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-0.5 text-[13.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+            За эту неделю ни один план не дошёл до итога.
+          </p>
+        )}
+      </PanelSection>
+    </div>
   );
 }

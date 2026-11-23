@@ -3,6 +3,7 @@ import type { AgentAction } from "@/lib/seller-hub/ads-agent-engine";
 import { recordAction } from "@/lib/seller-hub/action-log";
 import { moscowDateKey } from "@/lib/seller-hub/complete-days";
 import { openSellerHubWbToken } from "@/lib/seller-hub/wb-token";
+import { isSandboxOn } from "@/lib/seller-hub/sandbox";
 import { supabaseSellerHubSecretDb } from "@/lib/seller-hub/wb-token-store";
 import { decideAutopilot, executeAutopilotAction, loadAutopilotSettings, loadUsageToday, logName, type RoutineId, type ServerExecResult } from "./autopilot";
 import { ensureWeeklyReport } from "./report";
@@ -63,6 +64,7 @@ export async function runMinusRoutine(input: {
   const doneKeys = new Set((existing ?? []).map((r) => String((r as { proposal_key: string }).proposal_key)));
 
   let token: string | null = null;
+  let sandboxOn: boolean | null = null;
   for (const c of candidates) {
     const key = `routine-minus:${c.advertId}:${c.nmId}:${day}`;
     if (doneKeys.has(key)) continue;
@@ -76,6 +78,12 @@ export async function runMinusRoutine(input: {
     if (input.dryRun) {
       result.executed += 1;
       usage.actionsToday += 1;
+      continue;
+    }
+    // Тестовый режим: регулярная задача ничего не отправляет в WB.
+    if (sandboxOn === null) sandboxOn = await isSandboxOn(db, userId);
+    if (sandboxOn) {
+      result.skipped.push("тестовый режим: в WB ничего не отправляется");
       continue;
     }
     if (!token) {

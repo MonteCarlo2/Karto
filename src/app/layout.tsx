@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Dancing_Script, Geist, Geist_Mono, Great_Vibes, Manrope, Playfair_Display } from "next/font/google";
+import { Dancing_Script, Geist, Geist_Mono, Great_Vibes, Inter, Manrope, Playfair_Display, Source_Serif_4 } from "next/font/google";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { ToastProvider } from "@/components/ui/toast";
@@ -28,6 +28,21 @@ const manrope = Manrope({
   variable: "--font-manrope",
   subsets: ["latin", "cyrillic"],
   weight: ["300", "400", "500", "600", "700", "800"],
+  display: "swap",
+});
+
+/** Seller Hub: интерфейс и цифры (с кириллицей). */
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin", "cyrillic"],
+  display: "swap",
+});
+
+/** Seller Hub: заголовки страниц. */
+const sourceSerif = Source_Serif_4({
+  variable: "--font-source-serif",
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
@@ -123,7 +138,7 @@ export default function RootLayout({
   return (
     <html lang="ru" className="scroll-smooth">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${manrope.variable} ${playfairDisplay.variable} ${greatVibes.variable} ${dancingScript.variable} antialiased min-h-screen flex flex-col bg-background text-foreground`}
+        className={`${geistSans.variable} ${geistMono.variable} ${manrope.variable} ${inter.variable} ${sourceSerif.variable} ${playfairDisplay.variable} ${greatVibes.variable} ${dancingScript.variable} antialiased min-h-screen flex flex-col bg-background text-foreground`}
         suppressHydrationWarning
       >
         <script

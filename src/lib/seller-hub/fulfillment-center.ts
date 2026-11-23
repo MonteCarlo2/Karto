@@ -33,6 +33,12 @@ export type FulfillmentProposal = {
   detail: string;
   /** Куда перейти, чтобы разобраться. */
   tab?: FulfillmentTab;
+  /** Куда привести человека, чтобы он увидел, откуда цифры: вкладка внутри раздела и блок на ней. */
+  evidence?: { sub: "speed" | "cost"; anchor: "speed-gauge" | "order-hours" | "weekday-rhythm" | "cost-table" };
+  /** Для советов: что именно сделать (одной фразой в повелительном наклонении). */
+  advice?: string;
+  /** Для советов: почему это стоит сделать, одно-два предложения с цифрами. */
+  why?: string;
   /** Исполняемое действие: собрать из этих заданий новую поставку. */
   buildSupply?: { orderIds: number[] };
 };
@@ -58,7 +64,36 @@ export const MIN_SUPPLIES_FOR_HOURS = 5;
 /** Доля заказов, пришедших после обычного часа отправки, выше которой даём совет. */
 export const LATE_SHARE = 0.3;
 
-const mskHour = (ms: number) => Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Moscow", hour: "2-digit", hour12: false }).format(ms)) % 24;
+/** Формат создаётся один раз: на тысячах заказов создание форматтера в каждом вызове тормозило расчёт. */
+const mskHourFmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Moscow", hour: "2-digit", hour12: false });
+const mskHour = (ms: number) => Number(mskHourFmt.format(ms)) % 24;
+
+export type OrderHoursProfile = {
+  /** Час (по Москве), когда вы обычно закрываете поставки. */
+  usualHour: number;
+  closedSupplies: number;
+  /** Сколько заказов пришло в каждый час суток по Москве (без отмен). */
+  hours: number[];
+  total: number;
+  /** Заказы, пришедшие позже обычного часа отправки. */
+  late: number;
+};
+
+/** Когда приходят заказы и когда вы закрываете поставки. Одни и те же цифры и в совете, и в блоке-доказательстве. */
+export function orderHoursProfile(orders: SellerOrderRow[], supplies: SellerSupplyRow[], nowMs: number): OrderHoursProfile | null {
+  const closedHours = supplies
+    .filter((s) => s.type === "fbs" && s.done && s.closedAt && nowMs - Date.parse(s.closedAt) <= 30 * 86_400_000)
+    .map((s) => mskHour(Date.parse(s.closedAt!)))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  if (closedHours.length < MIN_SUPPLIES_FOR_HOURS) return null;
+  const usualHour = closedHours[Math.floor(closedHours.length / 2)]!;
+  const active = orders.filter((o) => !isCanceledOrder(o) && o.createdAt && Number.isFinite(Date.parse(o.createdAt)));
+  const hours = Array.from({ length: 24 }, () => 0);
+  for (const o of active) hours[mskHour(Date.parse(o.createdAt!))]! += 1;
+  const late = active.filter((o) => mskHour(Date.parse(o.createdAt!)) > usualHour).length;
+  return { usualHour, closedSupplies: closedHours.length, hours, total: active.length, late };
+}
 
 const LEVEL_ORDER: Record<ProposalLevel, number> = { action: 0, watch: 1, info: 2 };
 
@@ -176,6 +211,11 @@ export function buildFulfillmentProposals(input: FulfillmentInput): FulfillmentP
         id: "slow_shipping",
         kind: "slow_shipping",
         level: "watch",
+        advice: "Передавайте поставки в доставку каждый день",
+        why: `Типичный заказ ждёт передачи в доставку ${hoursText(speed.medianHours)}, а ${Math.round(speed.over24Share * 100)}% заказов уходят дольше суток${
+          worse && speed.trend ? `; за последнюю неделю типичное ожидание выросло до ${hoursText(speed.trend.recentMedian)}` : ""
+        }. Чем быстрее заказ уходит, тем быстрее его получает покупатель.`,
+        evidence: { sub: "speed", anchor: "speed-gauge" },
         title: "Заказы отгружаются медленнее, чем могли бы",
         detail: `Медиана от заказа до передачи в доставку ${hoursText(speed.medianHours)}, дольше суток уходит ${Math.round(speed.over24Share * 100)}% заказов${
           worse && speed.trend ? `. За последнюю неделю медиана ${hoursText(speed.trend.recentMedian)}, неделей раньше была ${hoursText(speed.trend.previousMedian)}` : ""
@@ -186,27 +226,22 @@ export function buildFulfillmentProposals(input: FulfillmentInput): FulfillmentP
   }
 
   // 6. Время отправки: когда вы обычно закрываете поставки и сколько заказов приходит позже.
-  const closedHours = input.supplies
-    .filter((s) => s.type === "fbs" && s.done && s.closedAt && nowMs - Date.parse(s.closedAt) <= 30 * 86_400_000)
-    .map((s) => mskHour(Date.parse(s.closedAt!)))
-    .filter(Number.isFinite)
-    .sort((a, b) => a - b);
-  if (closedHours.length >= MIN_SUPPLIES_FOR_HOURS) {
-    const usual = closedHours[Math.floor(closedHours.length / 2)]!;
-    const active = orders.filter((o) => !isCanceledOrder(o) && o.createdAt && Number.isFinite(Date.parse(o.createdAt)));
-    if (active.length >= MIN_SPEED_ORDERS) {
-      const late = active.filter((o) => mskHour(Date.parse(o.createdAt!)) > usual).length;
-      const share = late / active.length;
-      if (share >= LATE_SHARE) {
-        out.push({
-          id: "late_orders",
-          kind: "late_orders",
-          level: "watch",
-          title: `${Math.round(share * 100)}% заказов приходит после вашей обычной отправки`,
-          detail: `Вы чаще всего закрываете поставки около ${String(usual).padStart(2, "0")}:00 по Москве, а ${late} из ${active.length} заказов за неделю появились позже. Они ждут следующего дня. Если добавить вторую отправку ближе к вечеру, такие заказы уйдут быстрее.`,
-          tab: "deliveries",
-        });
-      }
+  const hoursProfile = orderHoursProfile(orders, input.supplies, nowMs);
+  if (hoursProfile && hoursProfile.total >= MIN_SPEED_ORDERS) {
+    const { usualHour: usual, late, total } = hoursProfile;
+    const share = late / total;
+    if (share >= LATE_SHARE) {
+      out.push({
+        id: "late_orders",
+        kind: "late_orders",
+        level: "watch",
+        advice: "Добавьте вторую отправку ближе к вечеру",
+        why: `Вы обычно закрываете поставки около ${String(usual).padStart(2, "0")}:00 по Москве, а ${late} из ${total} заказов за неделю пришли позже и ждут следующего дня.`,
+        title: `${Math.round(share * 100)}% заказов приходит после вашей обычной отправки`,
+        detail: `Вы чаще всего закрываете поставки около ${String(usual).padStart(2, "0")}:00 по Москве, а ${late} из ${total} заказов за неделю появились позже. Они ждут следующего дня. Если добавить вторую отправку ближе к вечеру, такие заказы уйдут быстрее.`,
+        tab: "deliveries",
+        evidence: { sub: "speed", anchor: "order-hours" },
+      });
     }
   }
 
@@ -219,6 +254,9 @@ export function buildFulfillmentProposals(input: FulfillmentInput): FulfillmentP
         id: "no_ship_days",
         kind: "no_ship_days",
         level: "watch",
+        advice: `Отгружайте пораньше и в такие дни: ${gaps.map((d) => WEEKDAY_SHORT[d.index]).join(", ")}`,
+        why: `В эти дни за последние поставки вы не закрывали ни одной, и заказы ждали ${text}, при обычном ожидании ${hoursText(speed.medianHours)}. Отправка в такой день или сборка заказов заранее сократит ожидание.`,
+        evidence: { sub: "speed", anchor: "weekday-rhythm" },
         title: `В дни без отправок заказы ждут дольше: ${gaps.map((d) => WEEKDAY_SHORT[d.index]).join(", ")}`,
         detail: `За последние поставки в эти дни недели вы не закрывали ни одной поставки, а заказы, пришедшие в эти дни, ждали отправки типично: ${text}, при общем типичном ожидании ${hoursText(speed.medianHours)}. Если есть возможность, добавьте отправку в такой день или собирайте заказы заранее.`,
         tab: "deliveries",
@@ -230,16 +268,15 @@ export function buildFulfillmentProposals(input: FulfillmentInput): FulfillmentP
   const costs = input.costs;
   if (costs && costs.highReturnCount > 0) {
     const hot = costs.products.filter((p) => p.highReturn).sort((a, b) => b.returnCost - a.returnCost);
-    const names = hot
-      .slice(0, 3)
-      .map((p) => `${p.title} (${p.returns} из ${p.deliveries}, ${Math.round((p.returnRate ?? 0) * 100)}%)`)
-      .join("; ");
     out.push({
       id: "returns_high",
       kind: "returns_high",
       level: "watch",
+      advice: "Проверьте упаковку и карточки товаров с возвратами",
+      why: `У ${hot.length} ${plural(hot.length, "товара", "товаров", "товаров")} доля возвратов выше нормы, в среднем по магазину возвращают ${Math.round((costs.shopReturnRate ?? 0) * 100)}%. Частые причины: повреждения при упаковке, несоответствие размера или описания фото; каждый возврат стоит вам обратной логистики.`,
+      evidence: { sub: "cost", anchor: "cost-table" },
       title: `Много возвратов у ${hot.length} ${plural(hot.length, "товара", "товаров", "товаров")}`,
-      detail: `${names}. В среднем по магазину возвращают ${Math.round((costs.shopReturnRate ?? 0) * 100)}%. Частые причины: повреждения при упаковке, несоответствие размера или описания фото. Проверьте упаковку и карточку; каждый возврат стоит вам обратной логистики.`,
+      detail: `Доля возвратов выше нормы. В среднем по магазину возвращают ${Math.round((costs.shopReturnRate ?? 0) * 100)}%. Частые причины: повреждения при упаковке, несоответствие размера или описания фото. Проверьте упаковку и карточку; каждый возврат стоит вам обратной логистики.`,
       tab: "logistics",
     });
   }
@@ -248,6 +285,9 @@ export function buildFulfillmentProposals(input: FulfillmentInput): FulfillmentP
       id: "cost_growth",
       kind: "cost_growth",
       level: "watch",
+      advice: "Выясните, почему подорожала доставка",
+      why: `Сверх прошлой цены доставки за 28 дней ушло ${Math.round(costs.overpay).toLocaleString("ru-RU")} ₽ у ${costs.grewCount} ${plural(costs.grewCount, "товара", "товаров", "товаров")}. Цена зависит от габаритов, склада отгрузки и района покупателя; детали во вкладках «Стоимость» и «Регионы».`,
+      evidence: { sub: "cost", anchor: "cost-table" },
       title: `Доставка подорожала у ${costs.grewCount} ${plural(costs.grewCount, "товара", "товаров", "товаров")}`,
       detail: `Сверх прошлой цены доставки за 28 дней ушло ${Math.round(costs.overpay).toLocaleString("ru-RU")} ₽. Цена зависит от габаритов, склада отгрузки и района покупателя: посмотрите вкладки «Стоимость» и «Регионы».`,
       tab: "logistics",

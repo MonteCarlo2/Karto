@@ -1,4 +1,4 @@
-import { telegramSetMyDescription, telegramSetMyName, telegramSetMyShortDescription } from "./bot-api";
+import { telegramSetMyCommands, telegramSetMyDescription, telegramSetMyName, telegramSetMyShortDescription } from "./bot-api";
 import { isTelegramConfigured } from "./config";
 
 declare global {
@@ -6,49 +6,55 @@ declare global {
   var __kartoTelegramProfileDone: boolean | undefined;
 }
 
-export const TELEGRAM_BOT_DISPLAY_NAME =
-  process.env.TELEGRAM_BOT_DISPLAY_NAME?.trim() || "KARTO · Отзывы";
+export const TELEGRAM_BOT_DISPLAY_NAME = process.env.TELEGRAM_BOT_DISPLAY_NAME?.trim() || "KARTO";
 
 export const TELEGRAM_BOT_SHORT_DESCRIPTION =
   process.env.TELEGRAM_BOT_SHORT_DESCRIPTION?.trim() ||
-  "Подтверждение ответов на отзывы WB, Ozon и Яндекс Маркет — синхронно с karto.pro";
+  "Помощник вашего магазина на WB: ответы на вопросы, уведомления, отзывы, цена и реклама с подтверждением. karto.pro";
 
 export const TELEGRAM_BOT_DESCRIPTION =
   process.env.TELEGRAM_BOT_DESCRIPTION?.trim() ||
-  `Официальный бот сервиса KARTO (karto.pro) для полуавтоматического режима автоответов.
+  `Официальный бот сервиса KARTO (karto.pro).
 
-Что умеет:
-• Присылает только отзывы, которые ждут вашего подтверждения
-• Кнопки: подтвердить, изменить текст, перегенерировать ИИ
-• Синхронизация с личным кабинетом — действия в боте и на сайте совпадают
+• Присылает важное: события, срочные задачи, итоги работы агента, срок токена WB
+• Отзывы: подтвердить, изменить, перегенерировать
+• Отвечает на вопросы о магазине и Wildberries, понимает голосовые
+• Меняет цену и рекламу после вашего подтверждения
 
-Как подключить:
-1. Войдите на karto.pro → Автоответы → Полуавтомат
-2. Нажмите «Подключить Telegram» и Start в этом чате
-Альтернатива: /link → email → код из письма
+Подключение: karto.pro, «Кабинет и API», «Уведомления».`;
 
-Если удалили чат — снова откройте ссылку из кабинета или напишите /start.`;
+export const TELEGRAM_COMMANDS = [
+  { command: "summary", description: "Сводка по магазину" },
+  { command: "tasks", description: "Задачи в работе" },
+  { command: "events", description: "Последние события" },
+  { command: "plans", description: "Планы агента" },
+  { command: "orders", description: "Поручения агента" },
+  { command: "reviews", description: "Отзывы и вопросы" },
+  { command: "help", description: "Что умеет бот" },
+];
 
 export const TELEGRAM_WELCOME_LINKED =
-  "✅ <b>KARTO · Отзывы подключён</b>\n\n" +
-  "Сюда приходят <b>только отзывы на подтверждение</b> (полуавтомат).\n\n" +
-  "В карточке отзыва:\n" +
-  "✅ Подтвердить — отправить черновик на маркетплейс\n" +
-  "✏️ Изменить — черновик в поле ввода, затем новая карточка на подтверждение\n" +
-  "🔄 Перегенерировать — новый черновик ИИ в этой же карточке\n\n" +
-  "Всё синхронизируется с karto.pro.";
+  "✅ <b>KARTO подключён</b>\n\n" +
+  "Сюда будут приходить:\n" +
+  "🔔 важные события магазина\n" +
+  "📌 срочные задачи\n" +
+  "🤖 результаты работы агента\n" +
+  "🔑 напоминания о сроке токена Wildberries\n" +
+  "💬 отзывы на подтверждение (полуавтомат)\n\n" +
+  "А ещё можно спросить, как дела: нажмите кнопку внизу или напишите «сводка».\n" +
+  "Что именно присылать и в какие часы, настраивается в KARTO: «Кабинет и API» → «Уведомления».";
 
-export const TELEGRAM_WELCOME_RELINKED =
-  "🔗 <b>Чат восстановлен</b>\n\nВы снова на связи с KARTO. Уведомления о отзывах на подтверждение приходят сюда.";
+export const TELEGRAM_WELCOME_LINKED_BASIC = "✅ <b>KARTO подключён</b>\n\nСюда будут приходить карточки отзывов на подтверждение: можно подтвердить, изменить или перегенерировать ответ.";
 
-export const TELEGRAM_WELCOME_ALREADY =
-  "Вы уже подключены к <b>KARTO · Отзывы</b>. Ожидайте уведомления о отзывах на подтверждение.";
+export const TELEGRAM_WELCOME_RELINKED = "🔗 <b>Чат восстановлен</b>\n\nВы снова на связи с KARTO. Уведомления приходят сюда.";
+
+export const TELEGRAM_WELCOME_ALREADY = "Вы уже подключены к <b>KARTO</b>. Карточки отзывов приходят сюда.";
 
 export const TELEGRAM_WELCOME_GUEST =
-  "👋 <b>KARTO · Отзывы</b>\n\n" +
-  "Бот личного кабинета <b>karto.pro</b> для подтверждения ответов на отзывы.\n\n" +
+  "👋 <b>KARTO</b>\n\n" +
+  "Бот личного кабинета <b>karto.pro</b>: уведомления о магазине, подтверждение ответов на отзывы и ответы на вопросы о делах.\n\n" +
   "Подключение:\n" +
-  "• ссылка из кабинета (Полуавтомат → Подключить Telegram)\n" +
+  "• ссылка из кабинета («Кабинет и API» → «Уведомления» → «Подключить Telegram»)\n" +
   "• или /link → email → код из письма";
 
 /** Обновляет имя и описание бота в Telegram (BotFather preview). */
@@ -57,9 +63,11 @@ export async function ensureTelegramBotProfile() {
   if (!isTelegramConfigured()) return;
 
   try {
-    await telegramSetMyName(TELEGRAM_BOT_DISPLAY_NAME);
+    // Имя Telegram разрешает менять редко: отказ (лимит) не должен мешать описанию и командам.
+    await telegramSetMyName(TELEGRAM_BOT_DISPLAY_NAME).catch(() => undefined);
     await telegramSetMyShortDescription(TELEGRAM_BOT_SHORT_DESCRIPTION);
     await telegramSetMyDescription(TELEGRAM_BOT_DESCRIPTION);
+    await telegramSetMyCommands(TELEGRAM_COMMANDS);
     globalThis.__kartoTelegramProfileDone = true;
     console.info("[telegram] bot profile updated:", TELEGRAM_BOT_DISPLAY_NAME);
   } catch (e) {

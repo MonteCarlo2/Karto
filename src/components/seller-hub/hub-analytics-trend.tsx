@@ -1,108 +1,133 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { loadSellerHubRegionOrders } from "@/lib/seller-hub/client-api";
-import { buildDailyTrend } from "@/lib/seller-hub/daily-trend";
-import { moscowDateKey } from "@/lib/seller-hub/complete-days";
-import type { SellerRegionOrders } from "@/lib/seller-hub/types";
+import { useMemo } from "react";
+import { PolarCurve } from "./hub-analytics-viz";
 import { formatInt, formatRub, hub, hubSans } from "./hub-ui";
-import { HubWeekdayProfile } from "./hub-weekday-profile";
 import { HubAnalyticsHistory } from "./hub-analytics-history";
-import { dayLabel, Card, DeltaChip, fmtPct, Kpi, SourceNote } from "./hub-analytics-ui";
+import { CompareChart } from "./hub-analytics-charts";
+import { dayLabel, Card, chartColors, DeltaChip, EmptyNote, fmtPct, IncompleteNotice, LoadingBlock, StatBlock } from "./hub-analytics-ui";
+import { pctChange } from "@/lib/seller-hub/analytics-core";
+import { useDailyOrdersCompare } from "./use-daily-orders";
 
+const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"] as const;
+const WEEKDAYS_FULL = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"] as const;
 
-/** Заказы по дням за 30/60/90 дней: итоги, динамика половин периода, лучший день, заказы по дням недели. Отчёт «Заказы» WB. */
-export function HubAnalyticsTrend({ connected, days }: { connected?: boolean; days: number }) {
-  const [loaded, setLoaded] = useState<{ key: string; data: SellerRegionOrders | null; error?: string } | null>(null);
-  const key = `${days}`;
+type Day = { date: string; net: number; cancelled: number; sum: number; partial: boolean };
 
-  useEffect(() => {
-    if (!connected) return;
-    let cancelled = false;
-    void loadSellerHubRegionOrders({ days })
-      .then((res) => {
-        if (cancelled) return;
-        setLoaded({ key, data: res.ok && res.regions ? res.regions : null, error: res.ok ? undefined : res.error });
-      })
-      .catch((e: unknown) => {
-        // Таймаут или сеть: без этого вкладка зависала бы на «Загружаю…».
-        if (!cancelled) setLoaded({ key, data: null, error: e instanceof Error ? e.message : "Не удалось загрузить заказы" });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [connected, days, key]);
+const totalsOf = (days: Day[]) => {
+  const done = days.filter((d) => !d.partial);
+  const net = done.reduce((s, d) => s + d.net, 0);
+  const cancelled = done.reduce((s, d) => s + d.cancelled, 0);
+  const sum = done.reduce((s, d) => s + d.sum, 0);
+  const all = net + cancelled;
+  return { net, cancelled, sum, avgCheck: net > 0 ? sum / net : null, cancelShare: all > 0 ? cancelled / all : null, perDay: done.length > 0 ? net / done.length : 0, all };
+};
 
-  const ready = loaded != null && loaded.key === key;
-  const data = ready ? loaded.data : null;
-  const todayKey = moscowDateKey(data ? Date.parse(data.loadedAt) : 0);
-  const trend = useMemo(() => buildDailyTrend(data?.daily, todayKey, data?.dateFrom), [data, todayKey]);
-  const max = Math.max(1, ...(trend?.days.map((d) => d.orders) ?? [1]));
+export const MONO_STYLE = { fontFamily: "var(--font-geist-mono), ui-monospace, monospace", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.05em" } as const;
+
+/** Динамика: заказы и сумма по дням с прошлым периодом, дни недели и история в базе. Отчёт «Заказы» WB; сегодняшний неоконченный день не считается. */
+export function HubAnalyticsTrend({ connected, days, only }: { connected?: boolean; days: number; /** Из чата: показать один график вместо всей страницы. */ only?: "orders" | "sum" | "weekdays" }) {
+  const { ready, current, previous, data, error } = useDailyOrdersCompare(connected, days);
+
+  const cur = useMemo(() => (current ? totalsOf(current as Day[]) : null), [current]);
+  const prev = useMemo(() => (previous ? totalsOf(previous as Day[]) : null), [previous]);
+
+  const orderPoints = useMemo(
+    () =>
+      (current ?? []).map((d, i) => {
+        const pd = previous?.[i];
+        return { date: d.date, value: d.net, partial: d.partial, prevDate: pd?.date, prev: pd ? pd.net : null, note: d.cancelled > 0 ? `Отменено: ${formatInt(d.cancelled)}` : undefined };
+      }),
+    [current, previous],
+  );
+  const sumPoints = useMemo(
+    () =>
+      (current ?? []).map((d, i) => {
+        const pd = previous?.[i];
+        return { date: d.date, value: d.sum, partial: d.partial, prevDate: pd?.date, prev: pd ? pd.sum : null, note: `Заказов без отмен: ${formatInt(d.net)}` };
+      }),
+    [current, previous],
+  );
+
+  /** Среднее число заказов в каждый день недели по законченным дням периода. */
+  const weekdays = useMemo(() => {
+    const done = (current ?? []).filter((d) => !d.partial);
+    if (done.length < 14) return null;
+    const sums = Array<number>(7).fill(0);
+    const counts = Array<number>(7).fill(0);
+    for (const d of done) {
+      const idx = (new Date(`${d.date}T00:00:00Z`).getUTCDay() + 6) % 7;
+      sums[idx] = (sums[idx] ?? 0) + d.net;
+      counts[idx] = (counts[idx] ?? 0) + 1;
+    }
+    const avgs = sums.map((v, i) => (counts[i]! > 0 ? v / counts[i]! : 0));
+    const top = avgs.indexOf(Math.max(...avgs));
+    const low = avgs.indexOf(Math.min(...avgs));
+    return { avgs, top, low, counts };
+  }, [current]);
+
+  const best = useMemo(() => (current ?? []).filter((d) => !d.partial).reduce<Day | null>((a, d) => (a == null || d.sum > a.sum ? (d as Day) : a), null), [current]);
+  const worst = useMemo(() => (current ?? []).filter((d) => !d.partial).reduce<Day | null>((a, d) => (a == null || d.sum < a.sum ? (d as Day) : a), null), [current]);
+
+  const was = (n: number | null | undefined, f: (v: number) => string) => (n == null ? undefined : `прошлый период: ${f(n)}`);
+
+  if (!connected || !ready || !current || !cur) {
+    return (
+      <div className="space-y-3">
+        <Card title="Заказы по дням" hint={`Последние ${days} дн. из отчёта WB «Заказы»`}>
+          {!connected ? (
+            <EmptyNote title="Нужно подключение кабинета">Подключите кабинет WB, чтобы увидеть динамику заказов по дням.</EmptyNote>
+          ) : !ready ? (
+            <LoadingBlock title="Загружаю заказы" height={300} />
+          ) : (
+            <EmptyNote title="Данных за период нет" tone="danger">
+              {error ?? "В отчёте WB нет заказов за выбранный период."} Попробуйте позже: WB ограничивает частоту запросов.
+            </EmptyNote>
+          )}
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <p className="text-[12.5px]" style={{ ...hubSans, color: hub.textMuted }}>
-        Заказы по дням за последние {days} дн. из отчёта WB «Заказы». Сумма — по цене продавца, без отменённых.
-      </p>
+    <div className="space-y-3">
+      {data?.truncated ? <IncompleteNotice what="Отчёт «Заказы»" /> : null}
 
-      {!connected ? (
-        <Card title="Нужно подключение кабинета">
-          <p className="text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
-            Подключите кабинет WB, чтобы увидеть динамику заказов по дням.
-          </p>
-        </Card>
-      ) : !ready ? (
-        <Card title="Загружаю заказы…">
-          <p className="text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
-            WB отдаёт этот отчёт не чаще раза в минуту, первая загрузка может занять до двух минут. Дальше данные берутся из кэша.
-          </p>
-        </Card>
-      ) : !trend || !data ? (
-        <Card title="Данных за период нет">
-          <p className="text-[13px]" style={{ ...hubSans, color: hub.danger }}>
-            {loaded?.error ?? "В отчёте WB нет заказов за выбранный период."} Попробуйте позже: WB ограничивает частоту запросов.
-          </p>
-        </Card>
-      ) : (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi label="Заказов без отмен" value={formatInt(trend.totals.net)} sub={`${trend.totals.avgPerDay.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} в день`} change={trend.halves?.netChange} />
-            <Kpi label="Сумма заказов" value={formatRub(trend.totals.sum)} sub={trend.halves ? "вторая половина против первой" : undefined} change={trend.halves?.sumChange} />
-            <Kpi label="Средний чек" value={trend.totals.avgCheck != null ? formatRub(trend.totals.avgCheck) : "—"} good="neutral" />
-            <Kpi label="Доля отмен" value={fmtPct(trend.totals.cancelShare)} good="down" sub={`${formatInt(trend.totals.cancelled)} из ${formatInt(trend.totals.orders)}`} />
-          </div>
+      <div className={only ? "hidden" : "grid grid-cols-2 gap-3 xl:grid-cols-4"}>
+        <StatBlock label="Заказы без отмен" color={chartColors.teal} value={formatInt(cur.net)} delta={prev ? <DeltaChip change={pctChange(cur.net, prev.net)} /> : undefined} sub={prev ? was(prev.net, formatInt) : `${cur.perDay.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} в день`} />
+        <StatBlock label="Сумма заказов" color={chartColors.blue} value={formatRub(cur.sum)} delta={prev ? <DeltaChip change={pctChange(cur.sum, prev.sum)} /> : undefined} sub={prev ? was(prev.sum, formatRub) : undefined} />
+        <StatBlock label="Средний чек" color={chartColors.amber} value={cur.avgCheck != null ? formatRub(cur.avgCheck) : "—"} delta={prev ? <DeltaChip change={pctChange(cur.avgCheck, prev.avgCheck)} good="neutral" /> : undefined} sub={prev ? was(prev.avgCheck, formatRub) : undefined} />
+        <StatBlock label="Доля отмен" color={chartColors.danger} value={fmtPct(cur.cancelShare)} sub={`${formatInt(cur.cancelled)} из ${formatInt(cur.all)} заказов`} hint="Отменённые заказы от всех оформленных за период" />
+      </div>
 
-          <Card title="Заказы по дням" hint={`${dayLabel(trend.days[0]!.date)} — ${dayLabel(trend.days.at(-1)!.date)}. Синий — заказы без отмен, красный — отменённые. Сегодняшний неполный день бледнее.`}>
-            <div className="flex h-28 items-end gap-[2px]">
-              {trend.days.map((d) => (
-                <div key={d.date} className="flex h-full min-w-0 flex-1 flex-col justify-end" title={`${dayLabel(d.date)}: ${d.net} заказов, отменено ${d.cancelled}, ${formatRub(d.sum)}${d.partial ? " (день не закончен)" : ""}`}>
-                  <div className="w-full" style={{ height: `${(d.cancelled / max) * 100}%`, backgroundColor: hub.danger, opacity: d.partial ? 0.5 : 1 }} />
-                  <div className="w-full rounded-t-[2px]" style={{ height: `${Math.max(2, (d.net / max) * 100)}%`, backgroundColor: hub.blue, opacity: d.partial ? 0.45 : 1 }} />
-                </div>
-              ))}
-            </div>
-            <div className="mt-1 flex justify-between text-[11px]" style={{ ...hubSans, color: hub.textSubtle }}>
-              <span>{dayLabel(trend.days[0]!.date)}</span>
-              <span>{dayLabel(trend.days.at(-1)!.date)}</span>
-            </div>
-            {trend.best && trend.worst ? (
-              <p className="mt-3 text-[12.5px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
-                Лучший день по сумме — {dayLabel(trend.best.date)} ({formatRub(trend.best.sum)}, {trend.best.net} заказов). Самый слабый из законченных — {dayLabel(trend.worst.date)} ({formatRub(trend.worst.sum)}, {trend.worst.net} заказов).
-                {trend.halves ? (
-                  <>
-                    {" "}
-                    Вторая половина периода против первой: заказы <DeltaChip change={trend.halves.netChange} />, сумма <DeltaChip change={trend.halves.sumChange} />.
-                  </>
-                ) : null}
-              </p>
-            ) : null}
-            <SourceNote>Если в выгрузке заказов больше лимита WB, цифры занижены{data.truncated ? ": такое случилось сейчас, выберите период короче" : " (сейчас такого нет)"}.</SourceNote>
-          </Card>
+      <Card className={only && only !== "orders" ? "hidden" : undefined} title="Заказы по дням" hint={previous ? "Сплошная линия — этот период, пунктир — предыдущий такой же" : "Последние дни периода"}>
+        <CompareChart points={orderPoints} height={300} color={chartColors.teal} label="Заказы без отмен" fmt={(n) => `${formatInt(n)} шт.`} />
+      </Card>
 
-          <HubWeekdayProfile orders={data} days={days} />
-          <HubAnalyticsHistory connected={connected} />
-        </>
-      )}
+      <Card className={only && only !== "sum" ? "hidden" : undefined} title="Сумма заказов по дням" hint="По цене продавца, без отменённых">
+        <CompareChart points={sumPoints} height={300} color={chartColors.blue} label="Сумма без отмен" fmt={formatRub} yFormat={(n) => (n >= 1000 ? `${Math.round(n / 1000)} тыс` : `${n}`)} />
+        {best && worst ? (
+          <p className="mt-6 max-w-[90ch] text-[16px] leading-[1.65]" style={{ ...hubSans, color: hub.textMuted }}>
+            Лучший день по сумме — <span className="font-semibold" style={{ color: hub.text }}>{dayLabel(best.date)}</span> ({formatRub(best.sum)}, {best.net} заказов). Самый слабый из законченных — <span className="font-semibold" style={{ color: hub.text }}>{dayLabel(worst.date)}</span> ({formatRub(worst.sum)}, {worst.net} заказов).
+          </p>
+        ) : null}
+      </Card>
+
+      <div className={only && only !== "weekdays" ? "hidden" : only ? "grid gap-3" : "grid gap-3 xl:grid-cols-2"}>
+        <Card title="Заказы по дням недели" hint="В среднем за день, без отмен. Наведите на круг, чтобы увидеть день">
+          {weekdays ? (
+            <PolarCurve
+              size={760}
+              color={chartColors.teal}
+              format={(n) => n.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}
+              items={weekdays.avgs.map((v, i) => ({ id: String(i), label: WEEKDAYS[i]!, value: Math.round(v * 10) / 10, hint: `${WEEKDAYS_FULL[i]}, заказов в день` }))}
+            />
+          ) : (
+            <EmptyNote title="Дней пока мало">Выберите период 28 дней или больше.</EmptyNote>
+          )}
+        </Card>
+        {only ? null : <HubAnalyticsHistory connected={connected} />}
+      </div>
     </div>
   );
 }

@@ -21,6 +21,7 @@ import { shouldChargeAutoReplyCreditForSend } from "@/lib/auto-replies/empty-rev
 import {
   AUTO_REPLY_INSUFFICIENT_BALANCE_MSG,
   consumeAutoReplyCredits,
+  hasAutoReplyCredit,
 } from "@/lib/auto-replies-balance";
 import { reviewScopeRemainingQuota } from "@/lib/auto-replies/inbox-review-scope";
 import { usageModeLabel } from "@/lib/auto-replies/reply-history-store";
@@ -312,11 +313,9 @@ export async function confirmSemiReviewReply(
   }
   if (text.length < 2) return { ok: false, error: "Текст ответа слишком короткий" };
 
-  if (shouldChargeAutoReplyCreditForSend(item.reviewText, ctx.shop)) {
-    const charge = await consumeAutoReplyCredits(supabase, input.userId, 1);
-    if (!charge.ok) {
-      return { ok: false, error: charge.error ?? AUTO_REPLY_INSUFFICIENT_BALANCE_MSG };
-    }
+  const chargeForSend = shouldChargeAutoReplyCreditForSend(item.reviewText, ctx.shop);
+  if (chargeForSend && !(await hasAutoReplyCredit(supabase, input.userId, 1))) {
+    return { ok: false, error: AUTO_REPLY_INSUFFICIENT_BALANCE_MSG };
   }
 
   let telegramClaimed = false;
@@ -370,6 +369,12 @@ export async function confirmSemiReviewReply(
       });
     }
     return { ok: false, error: e instanceof Error ? e.message : "Не удалось отправить ответ" };
+  }
+
+  // Ответ ушёл: теперь списываем. Если остаток закончился в этот же момент, ответ всё равно считается отправленным.
+  if (chargeForSend) {
+    const charge = await consumeAutoReplyCredits(supabase, input.userId, 1);
+    if (!charge.ok) console.warn("[semi-confirm] ответ отправлен, но списание не прошло:", charge.error);
   }
 
   const updated = await updateInboxSnapshotAfterSemiSend(supabase, {

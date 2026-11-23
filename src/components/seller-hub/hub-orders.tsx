@@ -1,8 +1,10 @@
 "use client";
 
+import { usePagedLimit } from "./use-paged-limit";
 import { useCallback, useMemo, useState } from "react";
 import { Check, Copy, Download, Package, QrCode, ShoppingCart } from "lucide-react";
 import { manageSellerHubSupply } from "@/lib/seller-hub/client-api";
+import { FBS_ORDERS_WINDOW_DAYS } from "@/lib/seller-hub/orders-window";
 import { SUPPLY_WRITE_ENABLED } from "@/lib/seller-hub/feature-flags";
 import { canCancelFbsOrder, openFbsSupplies, waitingHours } from "@/lib/seller-hub/fbs-actions";
 import { snapshotTimeMs } from "@/lib/seller-hub/complete-days";
@@ -16,17 +18,23 @@ import {
   HubButton,
   HubEmptyState,
   HubInput,
-  HubPanel,
-  HubPanelHeader,
-  HubSegmented,
   hubNumeric,
   hubSans,
-  MetricTile,
 } from "./hub-ui";
+import { HubPanel, HubPanelHeader, StatusDot, StatusStrip, Thumb } from "./hub-fulfillment-ui";
+import { Segmented } from "./hub-analytics-ui";
 import { HubToast, useHubToast, type HubToastState } from "./hub-toast";
 import { HubOrdersInsights } from "./hub-orders-insights";
 import { downloadBase64File, downloadCsv } from "./download-file";
 import { HubOrdersProducts } from "./hub-orders-products";
+
+const STATUS_COLOR: Record<string, string> = {
+  Новый: "#4F5BEA",
+  "На сборке": "#F59E0B",
+  "В доставке": "#7C8A82",
+  Выкуплено: "#3B4248",
+  Отменён: "#C2413A",
+};
 
 const SUPPLIER_LABEL: Record<string, string> = {
   new: "Новый",
@@ -84,6 +92,9 @@ function isNewOrder(row: SellerOrderRow): boolean {
   return supplier === "" || supplier === "new";
 }
 
+/** Один форматтер на все заказы: создавать его на каждый заказ медленно при тысячах строк. */
+const DAY_KEY_FMT = new Intl.DateTimeFormat("sv-SE");
+
 export function HubOrders({
   snapshot,
   connected,
@@ -107,7 +118,8 @@ export function HubOrders({
   const [toast, setToast] = useState<HubToastState | null>(null);
   /** "new" — создать новую поставку, иначе ID открытой поставки, в которую добавляем. */
   const [targetSupply, setTargetSupply] = useState<string>("new");
-  const [view, setView] = useState<"orders" | "products">("orders");
+  const [view, setView] = useState<"orders" | "overview">("orders");
+  const paged = usePagedLimit(`${filter}|${search}`);
   const [confirmCancelId, setConfirmCancelId] = useState<number | null>(null);
   const [cancelingId, setCancelingId] = useState<number | null>(null);
   const [canceledIds, setCanceledIds] = useState<Set<number>>(new Set());
@@ -140,6 +152,52 @@ export function HubOrders({
   }, [rows, search, filter]);
 
   const eligibleVisible = useMemo(() => visible.filter(canAddToSupply), [visible]);
+
+  const productMeta = useMemo(() => new Map((snapshot?.items ?? []).map((i) => [i.externalId, { title: i.title || i.vendorCode || undefined, photo: i.imageUrl ?? undefined }])), [snapshot?.items]);
+
+  /** Заказы по дням: «Сегодня», «Вчера», дальше дата; в заголовке число заказов и сумма. */
+  const dayGroups = useMemo(() => {
+    const keyOf = (iso?: string) => (iso ? DAY_KEY_FMT.format(new Date(iso)) : "none");
+    const todayKey = DAY_KEY_FMT.format(new Date(nowMs > 0 ? nowMs : Date.now()));
+    const yesterdayKey = DAY_KEY_FMT.format(new Date((nowMs > 0 ? nowMs : Date.now()) - 86_400_000));
+    const groups = new Map<string, { key: string; label: string; rows: SellerOrderRow[]; sum: number }>();
+    for (const row of visible) {
+      const key = keyOf(row.createdAt);
+      const g = groups.get(key) ?? { key, label: key === todayKey ? "Сегодня" : key === yesterdayKey ? "Вчера" : key === "none" ? "Без даты" : new Date(`${key}T12:00:00`).toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" }), rows: [], sum: 0 };
+      g.rows.push(row);
+      g.sum += row.price ?? 0;
+      groups.set(key, g);
+    }
+    return [...groups.values()];
+  }, [visible, nowMs]);
+
+  /** Строки, которые реально рисуем: заголовок дня показывает честные итоги по всем заказам дня, а строк пока первые. */
+  const pagedGroups = useMemo(() => {
+    let left = paged.limit;
+    const out: Array<(typeof dayGroups)[number] & { shown: SellerOrderRow[] }> = [];
+    for (const g of dayGroups) {
+      if (left <= 0) break;
+      const shown = g.rows.slice(0, left);
+      left -= shown.length;
+      out.push({ ...g, shown });
+    }
+    return out;
+  }, [dayGroups, paged.limit]);
+  const hiddenOrders = Math.max(0, visible.length - paged.limit);
+
+  const counts = useMemo(() => {
+    const c = { all: rows.length, new: 0, assembly: 0, delivery: 0, done: 0, cancel: 0 };
+    for (const row of rows) {
+      const supplier = row.supplierStatus ?? "";
+      const wb = row.wbStatus ?? "";
+      if (isNewOrder(row)) c.new += 1;
+      if (supplier === "confirm") c.assembly += 1;
+      if (supplier === "complete" || wb === "sorted" || wb === "ready_for_pickup") c.delivery += 1;
+      if (wb === "sold") c.done += 1;
+      if (isOrderCanceled(row)) c.cancel += 1;
+    }
+    return c;
+  }, [rows]);
 
   const toggleOrder = useCallback((orderId: number) => {
     setSelectedOrderIds((prev) => {
@@ -377,17 +435,7 @@ export function HubOrders({
     eligibleVisible.length > 0 && eligibleVisible.every((r) => selectedOrderIds.has(r.externalId));
 
   return (
-    <div className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricTile label="Новые" value={formatInt(orders.newCount)} sub="ждут подтверждения" />
-        <MetricTile label="На сборке" value={formatInt(orders.inAssembly)} sub="продавец собирает" tone="warn" />
-        <MetricTile label="В доставке" value={formatInt(orders.inDelivery)} sub="едут к покупателю" />
-        <MetricTile label="Выкуплены" value={formatInt(orders.delivered)} sub="покупатель забрал" tone="good" />
-        <MetricTile label="Отменены" value={formatInt(orders.canceled)} sub="за 7 дней" tone="danger" />
-      </div>
-
-      <HubOrdersInsights snapshot={snapshot} />
-
+    <div className="space-y-4">
       {lastSupplyId ? (
         <HubPanel>
           <HubPanelHeader
@@ -404,7 +452,7 @@ export function HubOrders({
               style={{ borderColor: hub.borderSoft, backgroundColor: hub.surfaceMuted }}
             >
               <Package className="h-3.5 w-3.5" style={{ color: hub.textMuted }} />
-              <span className="font-mono text-[12.5px]" style={{ color: hub.text }}>
+              <span className="font-mono text-[14px]" style={{ color: hub.text }}>
                 {lastSupplyId}
               </span>
               <button
@@ -456,23 +504,30 @@ export function HubOrders({
         </HubPanel>
       ) : null}
 
-      <HubSegmented<"orders" | "products">
-        layoutId="orders-view"
-        value={view}
-        onChange={setView}
-        options={[
-          { id: "orders", label: "Все заказы" },
-          { id: "products", label: "По товарам" },
-        ]}
-      />
+      <div>
+        <Segmented<"orders" | "overview">
+          size="sm"
+          label="Вид заказов"
+          layoutId="orders-view"
+          value={view}
+          onChange={setView}
+          options={[
+            { id: "orders", label: `Список заказов · ${orders.total}` },
+            { id: "overview", label: "Обзор и товары" },
+          ]}
+        />
+      </div>
 
-      {view === "products" ? (
-        <HubOrdersProducts snapshot={snapshot} />
+      {view === "overview" ? (
+        <>
+          <HubOrdersInsights snapshot={snapshot} />
+          <HubOrdersProducts snapshot={snapshot} />
+        </>
       ) : (
       <HubPanel>
         <HubPanelHeader
           title="Сборочные задания FBS"
-          hint={`Всего ${formatInt(orders.total)} за 7 дней · ${formatSyncTime(snapshot?.syncedAt)}`}
+          hint={`Всего ${formatInt(orders.total)} за последние ${FBS_ORDERS_WINDOW_DAYS} дн. · ${formatSyncTime(snapshot?.syncedAt)}`}
           action={
             writable && selectedOrderIds.size > 0 ? (
               <div className="flex flex-wrap items-center gap-2">
@@ -499,6 +554,19 @@ export function HubOrders({
           }
         />
 
+        <StatusStrip<typeof filter>
+          label="Этап заказа"
+          value={filter}
+          onChange={setFilter}
+          items={[
+            { id: "all", label: "Все", count: counts.all },
+            { id: "new", label: "Новые", count: counts.new, color: "#4F5BEA" },
+            { id: "assembly", label: "На сборке", count: counts.assembly, color: "#F59E0B" },
+            { id: "delivery", label: "В доставке", count: counts.delivery, color: "#7C8A82" },
+            { id: "done", label: "Выкуплены", count: counts.done, color: "#3B4248" },
+            { id: "cancel", label: "Отменены", count: counts.cancel, color: "#C2413A" },
+          ]}
+        />
         <div
           className="flex flex-wrap items-center gap-3 border-b px-5 py-3 sm:px-6"
           style={{ borderColor: hub.borderSoft }}
@@ -523,139 +591,122 @@ export function HubOrders({
           >
             Скачать CSV
           </HubButton>
-          <div className="flex flex-wrap gap-1 rounded-[11px] p-1" style={{ backgroundColor: hub.surfaceMuted }}>
-            {(
-              [
-                ["all", "Все"],
-                ["new", "Новые"],
-                ["assembly", "Сборка"],
-                ["delivery", "Доставка"],
-                ["done", "Выкуп"],
-                ["cancel", "Отмена"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setFilter(id)}
-                className={`rounded-[8px] px-3 py-1.5 text-[12.5px] font-semibold ${
-                  filter === id ? "bg-[#B9FF4B]/45" : ""
-                }`}
-                style={{ ...hubSans, color: filter === id ? hub.text : hub.textMuted }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-left">
-            <thead style={{ backgroundColor: hub.surfaceMuted }}>
-              <tr>
-                {writable ? (
-                  <th className="border-b px-4 py-3 sm:px-5" style={{ borderColor: hub.borderSoft }}>
-                    {eligibleVisible.length > 0 ? (
-                      <input
-                        type="checkbox"
-                        checked={allEligibleSelected}
-                        onChange={toggleAll}
-                        className="h-4 w-4 rounded"
-                        style={{ accentColor: hub.green }}
-                        aria-label="Выбрать все новые"
-                      />
-                    ) : null}
-                  </th>
-                ) : null}
-                {["ID", "Артикул", "nmID", "Создан", "Ждёт, ч", "Цена", "Статус продавца", "Статус WB", writable ? "Действие" : ""].filter(Boolean).map((label) => (
-                  <th
-                    key={label}
-                    className="border-b px-5 py-3 text-[11.5px] font-bold uppercase tracking-[0.06em] sm:px-6"
-                    style={{ ...hubSans, color: hub.textSubtle, borderColor: hub.borderSoft }}
-                  >
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visible.slice(0, 200).map((row) => {
-                const wasCanceledHere = canceledIds.has(row.externalId);
-                const badge = wasCanceledHere ? { tone: "danger" as const, label: "Отменён" } : statusBadge(row);
-                const selectable = canAddToSupply(row) && !wasCanceledHere;
-                const cancellable = canCancelFbsOrder(row) && !wasCanceledHere;
-                const waited = wasCanceledHere || nowMs <= 0 ? null : waitingHours(row, nowMs);
-                const isSelected = selectedOrderIds.has(row.externalId);
-                return (
-                  <tr
-                    key={row.id}
-                    className={`border-b transition-colors duration-150 hover:bg-[#1C1915]/[0.04] ${isSelected ? "bg-[#B9FF4B]/20" : ""}`}
-                    style={{ borderColor: hub.borderSoft }}
-                  >
-                    {writable ? (
-                      <td className="px-4 py-3 sm:px-5">
-                        {selectable ? (
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleOrder(row.externalId)}
-                            className="h-4 w-4 rounded"
-                            style={{ accentColor: hub.green }}
-                          />
-                        ) : null}
-                      </td>
-                    ) : null}
-                    <td className="whitespace-nowrap px-5 py-3 font-mono text-[12.5px] sm:px-6">{row.externalId}</td>
-                    <td className="px-5 py-3 text-[13px] sm:px-6">
-                      {row.article ?? "—"}
-                    </td>
-                    <td className="px-5 py-3 font-mono text-[12.5px] sm:px-6">{row.nmId ?? "—"}</td>
-                    <td className="whitespace-nowrap px-5 py-3 text-[13px] sm:px-6">
-                      {row.createdAt ? new Date(row.createdAt).toLocaleString("ru-RU") : "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-3 text-[13px] tabular-nums sm:px-6" style={{ ...hubSans, color: hub.textMuted }}>
-                      {waited != null ? waited.toLocaleString("ru-RU") : "—"}
-                    </td>
-                    <td
-                      className="px-5 py-3 text-[13.5px] font-semibold sm:px-6"
-                      style={{ ...hubSans, ...hubNumeric, color: hub.text }}
+        <div className="pb-2">
+          {writable && eligibleVisible.length > 0 ? (
+            <label className="flex cursor-pointer items-center gap-2.5 border-b px-5 py-2.5 text-[14.5px]" style={{ ...hubSans, color: hub.textMuted, borderColor: "rgba(1, 20, 8, 0.08)" }}>
+              <input type="checkbox" checked={allEligibleSelected} onChange={toggleAll} className="h-4 w-4 rounded" style={{ accentColor: hub.green }} aria-label="Выбрать все новые" />
+              Выбрать все, которые можно добавить в поставку ({eligibleVisible.length})
+            </label>
+          ) : null}
+          <div className="hidden items-center gap-x-4 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.07em] lg:flex" style={{ ...hubSans, color: hub.textSubtle, backgroundColor: "rgba(1, 20, 8, 0.045)" }}>
+            {writable ? <span className="w-5 shrink-0" /> : null}
+            <span className="w-[60px] shrink-0" />
+            <span className="min-w-[180px] flex-1">Товар и заказ</span>
+            <span className="w-[96px] shrink-0">Создан</span>
+            <span className="w-[170px] shrink-0">Статус</span>
+            <span className="w-[104px] shrink-0 text-right">Цена</span>
+          </div>
+          {pagedGroups.map((group) => (
+            <section key={group.key}>
+              <div className="flex items-baseline justify-between gap-3 border-b px-5 py-2.5" style={{ backgroundColor: "rgba(1, 20, 8, 0.045)", borderColor: "rgba(1, 20, 8, 0.1)", borderLeft: "3px solid #B9FF4B" }}>
+                <h4 className="text-[14px] font-semibold capitalize" style={{ ...hubSans, color: hub.text }}>
+                  {group.label}
+                  <span className="ml-2 font-medium normal-case" style={{ color: hub.textSubtle }}>
+                    {group.rows.length}
+                  </span>
+                </h4>
+                <span className="text-[14px]" style={{ ...hubSans, ...hubNumeric, color: hub.textMuted }}>
+                  {formatRub(group.sum)}
+                </span>
+              </div>
+              <ul>
+                {group.shown.map((row) => {
+                  const wasCanceledHere = canceledIds.has(row.externalId);
+                  const badge = wasCanceledHere ? { tone: "danger" as const, label: "Отменён" } : statusBadge(row);
+                  const color = STATUS_COLOR[badge.label] ?? "#7C8A82";
+                  const selectable = canAddToSupply(row) && !wasCanceledHere;
+                  const cancellable = canCancelFbsOrder(row) && !wasCanceledHere;
+                  const waited = wasCanceledHere || nowMs <= 0 ? null : waitingHours(row, nowMs);
+                  const isSelected = selectedOrderIds.has(row.externalId);
+                  const info = row.nmId != null ? productMeta.get(String(row.nmId)) : undefined;
+                  const supplierText = row.supplierStatus ? (SUPPLIER_LABEL[row.supplierStatus] ?? "статус уточняется") : null;
+                  return (
+                    <li
+                      key={row.id}
+                      className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-5 py-3.5 transition-colors duration-150 hover:bg-black/[0.025]"
+                      style={{ borderColor: "rgba(1, 20, 8, 0.07)", backgroundColor: isSelected ? "rgba(40, 52, 62, 0.07)" : undefined }}
                     >
-                      {row.price != null ? formatRub(row.price) : "—"}
-                    </td>
-                    <td className="px-5 py-3 sm:px-6">
-                      <HubBadge tone={badge.tone}>{badge.label}</HubBadge>
-                      {row.supplierStatus ? (
-                        <p className="mt-1 text-[11px]" style={{ color: hub.textSubtle }}>
-                          {SUPPLIER_LABEL[row.supplierStatus] ?? "статус уточняется"}
-                        </p>
+                      {writable ? (
+                        <span className="flex w-5 shrink-0 justify-center">
+                          {selectable ? <input type="checkbox" checked={isSelected} onChange={() => toggleOrder(row.externalId)} className="h-4 w-4 rounded" style={{ accentColor: hub.green }} aria-label="Выбрать заказ" /> : null}
+                        </span>
                       ) : null}
-                    </td>
-                    <td className="px-5 py-3 text-[13px] sm:px-6" style={{ color: hub.textMuted }}>
-                      {row.wbStatus ? (WB_LABEL[row.wbStatus] ?? "статус уточняется") : "—"}
-                    </td>
-                    {writable ? (
-                      <td className="whitespace-nowrap px-5 py-3 sm:px-6">
-                        {!cancellable ? null : confirmCancelId === row.externalId ? (
-                          <span className="flex items-center gap-1.5">
-                            <HubButton size="sm" variant="secondary" loading={cancelingId === row.externalId} onClick={() => void handleCancelOrder(row.externalId)}>
-                              Да, отменить
+                      <Thumb src={info?.photo} />
+                      <div className="min-w-[180px] flex-1">
+                        <p className="line-clamp-2 text-[16px] font-semibold leading-[1.3] [overflow-wrap:anywhere]" style={{ ...hubSans, color: hub.text }}>
+                          {info?.title ?? row.article ?? `Артикул ${row.nmId ?? "—"}`}
+                        </p>
+                        <p className="mt-0.5 text-[13.5px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                          <span className="font-mono">№ {row.externalId}</span>
+                          {row.article ? ` · ${row.article}` : ""}
+                          {row.nmId ? ` · ${row.nmId}` : ""}
+                        </p>
+                      </div>
+                      <div className="w-[96px] shrink-0 text-[14.5px]" style={{ ...hubSans, ...hubNumeric, color: hub.textMuted }}>
+                        <p>{row.createdAt ? new Date(row.createdAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "—"}</p>
+                        {waited != null ? (
+                          <p className="text-[13px] font-medium" style={{ color: waited >= 24 ? hub.danger : waited >= 6 ? hub.warn : hub.textSubtle }}>
+                            ждёт {waited.toLocaleString("ru-RU")} ч
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="w-[170px] shrink-0">
+                        <StatusDot color={color}>{badge.label}</StatusDot>
+                        <p className="mt-1 pl-1 text-[13px] leading-tight" style={{ ...hubSans, color: hub.textSubtle }}>
+                          {row.wbStatus ? (WB_LABEL[row.wbStatus] ?? "статус уточняется") : supplierText && supplierText !== badge.label ? supplierText : ""}
+                        </p>
+                      </div>
+                      <p className="w-[104px] shrink-0 text-right text-[16.5px] font-medium" style={{ fontFamily: "var(--font-geist-mono), ui-monospace, monospace", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.04em", color: hub.text }}>
+                        {row.price != null ? formatRub(row.price) : "—"}
+                      </p>
+                      {writable && cancellable ? (
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {confirmCancelId === row.externalId ? (
+                            <>
+                              <HubButton size="sm" variant="secondary" loading={cancelingId === row.externalId} onClick={() => void handleCancelOrder(row.externalId)}>
+                                Да, отменить
+                              </HubButton>
+                              <HubButton size="sm" variant="ghost" onClick={() => setConfirmCancelId(null)}>
+                                Нет
+                              </HubButton>
+                            </>
+                          ) : (
+                            <HubButton size="sm" variant="ghost" onClick={() => setConfirmCancelId(row.externalId)}>
+                              Отменить
                             </HubButton>
-                            <HubButton size="sm" variant="ghost" onClick={() => setConfirmCancelId(null)}>
-                              Нет
-                            </HubButton>
-                          </span>
-                        ) : (
-                          <HubButton size="sm" variant="ghost" onClick={() => setConfirmCancelId(row.externalId)}>
-                            Отменить
-                          </HubButton>
-                        )}
-                      </td>
-                    ) : null}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                          )}
+                        </span>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+          {hiddenOrders > 0 ? (
+            <div className="flex justify-center px-5 py-5">
+              <HubButton size="sm" variant="secondary" onClick={paged.more}>
+                Показать ещё {Math.min(paged.step, hiddenOrders)} из {formatInt(hiddenOrders)}
+              </HubButton>
+            </div>
+          ) : null}
+          {visible.length === 0 ? (
+            <p className="px-5 py-10 text-center text-[15.5px]" style={{ ...hubSans, color: hub.textMuted }}>
+              По таким условиям заказов нет.
+            </p>
+          ) : null}
         </div>
       </HubPanel>
       )}

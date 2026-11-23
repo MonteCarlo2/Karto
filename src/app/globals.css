@@ -247,6 +247,65 @@ html, body {
   --color-5: 90 100% 63%;
 }
 
+/* Seller Hub: дизайн-система «Чернила и лайм».
+   Нейтральная тёплая основа (около 85% площади), чернильный зелёный для текста и главных элементов,
+   лайм только для главного действия, активного пункта и выделения на графике (всегда с тёмным текстом).
+   Статусы приглушённые: цвет только там, где у него есть смысл. Значения посчитаны в OKLCH. */
+:root {
+  --hub-canvas: #FDFDFB;
+  --hub-surface: #FFFFFF;
+  --hub-surface-muted: #F0EEE8;
+  --hub-rail: #FAFAF7;
+  --hub-border: #E7E6DF;
+  --hub-border-strong: #BDBFB7;
+  --hub-border-card: #CCCABF;
+  --hub-lime-wash: #F3FBE4;
+  --hub-border-soft: rgba(1, 20, 8, 0.08);
+  --hub-text: #011408;
+  --hub-text-muted: #3E4C3F;
+  --hub-text-subtle: #636C61;
+  --hub-forest: #1D3425;
+  --hub-forest-dark: #115531;
+  --hub-forest-soft: #DAF7E3;
+  --hub-lime: #B9FF4B;
+  --hub-lime-edge: #A5E83A;
+  --hub-lime-ring: #579400;
+  --hub-lime-soft: #E5FBD0;
+  --hub-on-lime: #011408;
+  --hub-info: #234E82;
+  --hub-info-soft: #E4F0FF;
+  --hub-warn: #6F4606;
+  --hub-warn-soft: #FFF0CC;
+  --hub-danger: #972527;
+  --hub-danger-soft: #FFE7E4;
+}
+
+/* Браузерные мелочи Seller Hub: выделение текста, курсор, полосы прокрутки. */
+[data-hub-root] {
+  caret-color: var(--hub-text);
+  scrollbar-color: #BDBFB7 transparent;
+  scrollbar-width: thin;
+}
+[data-hub-root] ::selection {
+  background: var(--hub-lime-soft);
+  color: var(--hub-text);
+}
+[data-hub-root] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+[data-hub-root] ::-webkit-scrollbar-thumb {
+  background: #D3D3CB;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+[data-hub-root] ::-webkit-scrollbar-thumb:hover {
+  background: #BDBFB7;
+  background-clip: content-box;
+  border: 3px solid transparent;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -1477,3 +1536,255 @@ svg.driver-overlay {
   }
 }
 
+
+/* Боковая панель Seller Hub: один спокойный выезд, без пружин. */
+@keyframes hub-drawer-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.hub-drawer-in {
+  animation: hub-drawer-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hub-drawer-in { animation: none; }
+}
+
+/* Появление карточек: один спокойный подъём, с задержкой по порядку. */
+@keyframes hub-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.hub-rise {
+  animation: hub-rise 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+/* Плавное раскрытие блока без скачка высоты. */
+.hub-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.hub-expand[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+.hub-expand > div {
+  overflow: hidden;
+  min-height: 0;
+}
+@keyframes hub-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.hub-grow {
+  transform-origin: left center;
+  animation: hub-grow 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hub-rise, .hub-grow { animation: none; }
+  .hub-expand { transition: none; }
+}
+
+@keyframes hub-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.hub-fade-in { animation: hub-fade-in 320ms ease-out both; }
+/* Окно подтверждения: мягкое появление с лёгким подъёмом, без отскока. */
+@keyframes hub-pop { from { opacity: 0; transform: translateY(12px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.hub-pop { animation: hub-pop 380ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) { .hub-fade-in, .hub-pop { animation: none; } }
+
+/* Правая колонка «Событий» на узком экране выезжает панелью, на широком просто лежит рядом со списком. */
+@media (max-width: 1279px) {
+  .hub-pane-drawer { animation: hub-drawer-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hub-pane-drawer { animation: none; }
+}
+
+/* ПРОБА «жидкое стекло» (Liquid Glass): прозрачные объёмные блоки с преломлением фона, бликом по кромке и подсветкой у курсора.
+   Работает внутри .hub-glass-scope (компонент HubGlassScope: Аналитика, Заказы и логистика).
+   Цвет блока задаётся переменной --glass-tint (плитки показателей, задачи). Откат: убрать этот блок и обёртки HubGlassScope. */
+.hub-glass-scope { position: relative; isolation: isolate; overflow-x: clip; }
+.hub-glass-scope::before {
+  content: ""; position: absolute; inset: -40px 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(560px 420px at 78% 8%, rgba(120, 170, 255, 0.26), transparent 70%),
+    radial-gradient(620px 460px at 96% 52%, rgba(186, 160, 255, 0.22), transparent 70%),
+    radial-gradient(600px 440px at 22% 46%, rgba(120, 225, 190, 0.22), transparent 70%),
+    radial-gradient(560px 420px at 66% 92%, rgba(185, 255, 75, 0.1), transparent 70%);
+}
+.hub-glass-scope [data-glass] {
+  position: relative;
+  background:
+    radial-gradient(240px circle at var(--mx, -400px) var(--my, -400px), rgba(185, 255, 75, 0.16), transparent 65%),
+    linear-gradient(160deg, color-mix(in srgb, var(--glass-tint, transparent) 22%, transparent), transparent 68%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.2)) !important;
+  -webkit-backdrop-filter: blur(6px) url(#hub-liquid) saturate(1.7) brightness(1.04);
+  backdrop-filter: blur(6px) url(#hub-liquid) saturate(1.7) brightness(1.04);
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  border-radius: 26px !important;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--glass-tint, transparent) 38%, transparent),
+    inset 3px 3px 2px -2px rgba(255, 255, 255, 1),
+    inset -3px -3px 3px -2px rgba(1, 20, 8, 0.1),
+    inset 0 -10px 18px -12px rgba(1, 20, 8, 0.14),
+    inset 0 0 28px rgba(255, 255, 255, 0.3),
+    0 2px 3px rgba(1, 20, 8, 0.07),
+    0 12px 24px -10px rgba(1, 20, 8, 0.22),
+    0 34px 56px -26px rgba(1, 20, 8, 0.38) !important;
+}
+.hub-glass-scope [data-glass]::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none;
+  background:
+    radial-gradient(170px circle at var(--mx, -400px) var(--my, -400px), rgba(150, 235, 40, 0.6), transparent 70%),
+    linear-gradient(135deg, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.1) 32%, rgba(255, 255, 255, 0.05) 62%, rgba(255, 255, 255, 0.9));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+.hub-glass-scope section[data-glass], .hub-glass-scope div[data-glass].grid { padding: 28px !important; }
+.hub-glass-scope [data-glass] [data-glass] {
+  -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 20px !important;
+  background:
+    radial-gradient(180px circle at var(--mx, -400px) var(--my, -400px), rgba(185, 255, 75, 0.14), transparent 65%),
+    linear-gradient(160deg, color-mix(in srgb, var(--glass-tint, transparent) 22%, transparent), transparent 70%),
+    rgba(255, 255, 255, 0.58) !important;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--glass-tint, transparent) 34%, transparent),
+    inset 2px 2px 2px -1px rgba(255, 255, 255, 1),
+    inset 0 -6px 12px -8px rgba(1, 20, 8, 0.12),
+    0 1px 2px rgba(1, 20, 8, 0.08),
+    0 12px 22px -12px rgba(1, 20, 8, 0.3) !important;
+}
+@media (prefers-reduced-motion: reduce) { .hub-glass-scope [data-glass] { -webkit-backdrop-filter: blur(10px) saturate(1.5); backdrop-filter: blur(10px) saturate(1.5); } }
+
+/* «Обзор магазина»: мягкое матовое стекло. Отличается от «жидкого» в аналитике: без преломления, спокойнее, с лёгким цветом плитки и подсветкой у курсора. */
+.hub-glass-scope.hub-glass-overview::before {
+  background:
+    radial-gradient(560px 380px at 10% -4%, rgba(185, 255, 75, 0.2), transparent 70%),
+    radial-gradient(640px 420px at 100% 18%, rgba(110, 200, 170, 0.22), transparent 70%),
+    radial-gradient(560px 420px at 48% 104%, rgba(150, 190, 255, 0.2), transparent 70%);
+}
+.hub-glass-scope.hub-glass-overview [data-glass] {
+  background:
+    radial-gradient(220px circle at var(--mx, -400px) var(--my, -400px), rgba(185, 255, 75, 0.18), transparent 65%),
+    linear-gradient(160deg, color-mix(in srgb, var(--glass-tint, transparent) 18%, transparent), transparent 70%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.4)) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.8) !important;
+  border-radius: 20px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 0 0 1px color-mix(in srgb, var(--glass-tint, transparent) 26%, transparent),
+    0 1px 2px rgba(1, 20, 8, 0.06),
+    0 16px 28px -20px rgba(1, 20, 8, 0.3) !important;
+}
+.hub-glass-scope.hub-glass-overview [data-glass]::after { display: none; }
+.hub-glass-scope.hub-glass-overview [data-glass] [data-glass] { border-radius: 14px !important; }
+
+/* Подсветка задачи, к которой перешли из другого раздела. */
+@keyframes hub-task-flash { 0% { box-shadow: 0 0 0 0 rgba(120, 210, 40, 0); } 30% { box-shadow: 0 0 0 7px rgba(120, 210, 40, 0.5); } 100% { box-shadow: 0 0 0 0 rgba(120, 210, 40, 0); } }
+.hub-task-flash { animation: hub-task-flash 1.7s ease-out 1; }
+@media (prefers-reduced-motion: reduce) { .hub-task-flash { animation: none; outline: 3px solid rgba(120, 210, 40, 0.6); } }
+
+/* База знаний: расходящиеся кольца и плавающие значки на фоне. */
+@keyframes kb-ring { 0% { transform: translate(-50%, -50%) scale(0.35); opacity: 0.4; } 100% { transform: translate(-50%, -50%) scale(1.7); opacity: 0; } }
+@keyframes kb-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-16px) rotate(3deg); } }
+.kb-ring { animation: kb-ring 11s linear infinite; }
+.kb-float { animation: kb-float 9s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .kb-ring, .kb-float { animation: none; } }
+
+/* Экран «Агенты»: диалог и панель функций занимают высоту окна, страница не прокручивается. */
+@media (min-width: 80rem) {
+  .hub-agents-frame {
+    height: 100dvh;
+    min-height: 540px;
+  }
+}
+
+/* Знак агента (по образцу «AI Orb Avatar» с 21st.dev, цвета KARTO): шар с тёмным ядром и светлым ободом, белые глаза моргают, глаза следят за курсором; пока агент думает, глаза осматриваются, шар пульсирует. */
+.hub-av { position: relative; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 9999px; flex-shrink: 0; cursor: pointer; }
+.hub-av__eyes { position: relative; z-index: 2; display: flex; align-items: center; transform: translate(var(--lx, 0px), calc(var(--ly, 0px) - var(--s) * 0.04)); transition: transform 0.22s ease-out; }
+.hub-av__eye { display: block; width: calc(var(--s) * 0.125); height: calc(var(--s) * 0.21); min-width: 3px; min-height: 5px; border-radius: 9999px; background: linear-gradient(135deg, #ffffff 0%, #ecffd9 100%); animation: hub-av-blink 3.6s ease-in-out infinite; }
+.hub-av--active { animation: hub-av-pulse 1.6s ease-in-out infinite; }
+.hub-av--active .hub-av__eyes { animation: hub-av-look 1.8s ease-in-out infinite; }
+@keyframes hub-av-blink { 0%, 88%, 100% { transform: scaleY(1); } 93%, 97% { transform: scaleY(0.07); } }
+@keyframes hub-av-pulse { 0%, 100% { transform: scale(0.96); } 50% { transform: scale(1.04); } }
+@keyframes hub-av-look { 0%, 100% { transform: translate(calc(var(--s) * -0.05), calc(var(--s) * -0.04)); } 50% { transform: translate(calc(var(--s) * 0.05), calc(var(--s) * -0.04)); } }
+.hub-shimmer { background: linear-gradient(100deg, #6b756a 30%, #011408 50%, #6b756a 70%); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: hub-shimmer 1.8s linear infinite; }
+@keyframes hub-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .hub-shimmer, .hub-av, .hub-av__eyes, .hub-av__eye { animation: none; }
+  .hub-shimmer { color: #3b453a; background: none; }
+}
+
+/* Анимации «агент думает» по виду запроса (hub-chat-thinking.tsx). */
+.hub-w-line { display: block; height: 7px; border-radius: 9999px; background: linear-gradient(90deg, rgba(1, 20, 8, 0.07), rgba(1, 20, 8, 0.17), rgba(1, 20, 8, 0.07)); background-size: 200% 100%; animation: hub-w-sheen 1.6s linear infinite; }
+.hub-w-fill { position: relative; display: block; height: 7px; overflow: hidden; border-radius: 9999px; background: rgba(1, 20, 8, 0.08); }
+.hub-w-fill::after { content: ""; position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); background: linear-gradient(90deg, #46ad66, #b9ff4b); animation: hub-w-grow 2.8s ease-in-out infinite; animation-delay: inherit; }
+.hub-w-tick { display: flex; width: 14px; height: 14px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 9999px; background: rgba(1, 20, 8, 0.1); color: transparent; animation: hub-w-pop 2.8s ease-in-out infinite; }
+.hub-w-lens { position: absolute; top: -3px; left: 0; width: 18px; height: 18px; border: 2px solid #2e5a43; border-radius: 9999px; background: rgba(185, 255, 75, 0.35); animation: hub-w-scan 2.6s ease-in-out infinite; }
+.hub-w-chip { display: block; width: 18px; height: 18px; flex-shrink: 0; border-radius: 5px; background: rgba(1, 20, 8, 0.1); animation: hub-w-chip 1.8s ease-in-out infinite; }
+.hub-w-bar { display: block; width: 12px; height: 100%; border-radius: 4px; background: #46ad66; transform-origin: bottom; animation: hub-w-bar 1.1s ease-in-out infinite; }
+.hub-w-star { font-size: 20px; line-height: 1; color: rgba(1, 20, 8, 0.15); animation: hub-w-star 1.6s ease-in-out infinite; }
+.hub-w-dot { display: block; width: 8px; height: 8px; border-radius: 9999px; background: #46ad66; animation: hub-w-dot 1s ease-in-out infinite; }
+@keyframes hub-w-sheen { to { background-position: -200% 0; } }
+@keyframes hub-w-grow { 0% { transform: scaleX(0); opacity: 1; } 35%, 88% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
+@keyframes hub-w-pop { 0%, 30% { background: rgba(1, 20, 8, 0.1); color: transparent; transform: scale(1); } 40% { background: #8fd92b; color: #0e3322; transform: scale(1.25); } 50%, 88% { background: #8fd92b; color: #0e3322; transform: scale(1); } 100% { background: rgba(1, 20, 8, 0.1); color: transparent; } }
+@keyframes hub-w-scan { 0% { transform: translate(0, 0); } 25% { transform: translate(120px, 12px); } 50% { transform: translate(40px, 26px); } 75% { transform: translate(150px, 38px); } 100% { transform: translate(0, 0); } }
+@keyframes hub-w-chip { 0%, 100% { background: rgba(1, 20, 8, 0.1); } 40% { background: #b9ff4b; } }
+@keyframes hub-w-bar { 0%, 100% { transform: scaleY(0.25); } 50% { transform: scaleY(1); } }
+@keyframes hub-w-star { 0%, 100% { color: rgba(1, 20, 8, 0.15); transform: scale(1); } 40% { color: #f5b50a; transform: scale(1.25); } }
+@keyframes hub-w-dot { 0%, 100% { transform: translateY(0); opacity: 0.5; } 50% { transform: translateY(-6px); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .hub-w-line, .hub-w-fill::after, .hub-w-tick, .hub-w-lens, .hub-w-chip, .hub-w-bar, .hub-w-star, .hub-w-dot { animation: none; }
+  .hub-w-fill::after { transform: scaleX(0.6); }
+}
+
+/* rev */
+
+/* Слова ответа проявляются из пустоты одно за другим. */
+.hub-word { opacity: 0; animation: hub-word-in 0.55s ease-out forwards; }
+@keyframes hub-word-in { from { opacity: 0; filter: blur(5px); } to { opacity: 1; filter: blur(0); } }
+@media (prefers-reduced-motion: reduce) { .hub-word { opacity: 1; animation: none; } }
+
+/* rev2 */
+
+/* rev3: спокойные анимации «агент работает» под вид задачи */
+.hub-w-draw { stroke-dasharray: 260; stroke-dashoffset: 260; animation: hub-w-drawline 2.6s ease-in-out infinite; }
+.hub-w-draw-dot { opacity: 0; animation: hub-w-dotin 2.6s ease-in-out infinite; }
+@keyframes hub-w-drawline { 0% { stroke-dashoffset: 260; } 60%, 100% { stroke-dashoffset: 0; } }
+@keyframes hub-w-dotin { 0%, 55% { opacity: 0; } 70%, 100% { opacity: 1; } }
+.hub-w-spend { display: block; width: 10px; border-radius: 3px; background: #2E5A43; opacity: 0.18; transform-origin: bottom; animation: hub-w-spendup 1.8s ease-in-out infinite; }
+@keyframes hub-w-spendup { 0%, 100% { transform: scaleY(0.35); opacity: 0.18; } 50% { transform: scaleY(1); opacity: 0.85; } }
+.hub-w-radar { position: relative; width: 52px; height: 52px; }
+.hub-w-radar i { position: absolute; inset: 0; border-radius: 9999px; border: 1.5px solid #2E5A43; opacity: 0; animation: hub-w-ring 2.4s ease-out infinite; }
+.hub-w-radar i:nth-child(2) { animation-delay: 0.8s; }
+.hub-w-radar i:nth-child(3) { animation-delay: 1.6s; }
+.hub-w-radar b { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 9999px; background: #2E5A43; }
+.hub-w-orbit { position: absolute; inset: 0; animation: hub-w-spin 3.2s linear infinite; }
+.hub-w-orbit em { position: absolute; left: 50%; top: -3px; width: 6px; height: 6px; margin-left: -3px; border-radius: 9999px; background: #8FD92B; }
+@keyframes hub-w-ring { 0% { transform: scale(0.2); opacity: 0.7; } 100% { transform: scale(1); opacity: 0; } }
+@keyframes hub-w-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .hub-w-draw, .hub-w-draw-dot, .hub-w-spend, .hub-w-radar i, .hub-w-orbit { animation: none; } .hub-w-draw { stroke-dashoffset: 0; } .hub-w-draw-dot { opacity: 1; } .hub-w-spend { opacity: 0.6; transform: none; } .hub-w-radar i:first-child { opacity: 0.4; transform: scale(0.8); } }
+
+/* rev4: поиск в интернете (этапы с глобусом) и график «цифр» */
+.hub-ws__query { margin: 0 0 10px; font-size: 13.5px; line-height: 1.45; color: #011408; max-width: 440px; overflow-wrap: anywhere; }
+.hub-ws__list { position: relative; display: flex; flex-direction: column; gap: 9px; padding-left: 0; margin: 0; list-style: none; }
+.hub-ws__rail { position: absolute; left: 7.5px; top: 14px; bottom: 14px; width: 1px; background: rgba(1, 20, 8, 0.12); }
+.hub-ws__li { position: relative; display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 20px; transition: color 0.3s ease; }
+.hub-ws__bullet { position: relative; z-index: 1; display: inline-flex; width: 16px; height: 16px; flex-shrink: 0; align-items: center; justify-content: center; background: var(--hub-canvas, #fdfdfb); }
+.hub-ws__bullet > * { position: absolute; inset: 0; opacity: 0; transition: opacity 0.3s ease; }
+.hub-ws__li[data-state="pending"] { color: rgba(1, 20, 8, 0.38); }
+.hub-ws__li[data-state="pending"] .hub-ws__dots { opacity: 1; }
+.hub-ws__li[data-state="loading"] { color: #011408; font-weight: 500; }
+.hub-ws__li[data-state="loading"] .hub-ws__globe { opacity: 1; color: #2E5A43; }
+.hub-ws__li[data-state="done"] { color: rgba(1, 20, 8, 0.62); }
+.hub-ws__li[data-state="done"] .hub-ws__check { opacity: 1; color: #2E5A43; }
+.hub-ws__globe { display: inline-flex; align-items: center; justify-content: center; }
+.hub-ws__li[data-state="loading"] .hub-ws__title { background: linear-gradient(90deg, #011408 0%, #2E5A43 40%, #011408 80%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: hub-w-sheen 2.2s linear infinite; }
+.hub-w-area { opacity: 0; animation: hub-w-areain 2.6s ease-in-out infinite; }
+.hub-w-ring { transform-box: fill-box; transform-origin: center; opacity: 0; animation: hub-w-pulse 2.6s ease-out infinite; }
+@keyframes hub-w-areain { 0%, 25% { opacity: 0; } 65%, 100% { opacity: 1; } }
+@keyframes hub-w-pulse { 0%, 62% { opacity: 0; transform: scale(0.6); } 70% { opacity: 0.7; transform: scale(1); } 100% { opacity: 0; transform: scale(2.6); } }
+@media (prefers-reduced-motion: reduce) { .hub-w-area, .hub-w-ring, .hub-ws__li[data-state="loading"] .hub-ws__title { animation: none; } .hub-w-area { opacity: 1; } .hub-ws__li[data-state="loading"] .hub-ws__title { color: #011408; background: none; } }
+/* rev5: слова при «печати» ответа появляются плавно: только прозрачность и лёгкий подъём, без размытия */
+.hub-word-soft { display: inline-block; opacity: 0; animation: hub-word-soft-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+@keyframes hub-word-soft-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .hub-word-soft { opacity: 1; animation: none; } }

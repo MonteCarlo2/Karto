@@ -8,7 +8,8 @@ import { appendHubJournal } from "@/lib/seller-hub/journal";
 import { recordVerifiedPromoEntry } from "@/lib/seller-hub/promo-observations";
 import { funnelNeedsReload } from "@/lib/services/wildberries/funnel-parse";
 import type { SellerCatalogItem, SellerCatalogSnapshot, SellerFunnelSnapshot, SellerRealizationSnapshot } from "@/lib/seller-hub/types";
-import { hub, HubEmptyState, HubPanel, hubSans } from "./hub-ui";
+import { hub, HubEmptyState, hubSans } from "./hub-ui";
+import { HubPanel } from "./hub-fulfillment-ui";
 import { HubToast, useHubToast, type HubToastState } from "./hub-toast";
 
 const PROMO_TERMS_STORAGE_PREFIX = "karto-wb-promo-terms";

@@ -12,6 +12,7 @@ import { loadScenarioProducts } from "@/lib/seller-hub/agent/scenario-inputs";
 import { taskFactsFromSnapshot } from "@/lib/seller-hub/task-engine/facts";
 import { parseTaskReconcileBody } from "@/lib/seller-hub/task-engine/parse";
 import { reconcileSellerHubTasks } from "@/lib/seller-hub/task-engine/repository";
+import { notifyAfterDerive } from "@/lib/seller-hub/notify/sources";
 import type {
   SellerAdsStats,
   SellerBoxTariffs,
@@ -81,6 +82,9 @@ export async function deriveForCabinet(store: SyncStore, db: SupabaseClient, key
   const eventInput = parseEventReconcileInput(JSON.parse(JSON.stringify({ marketplaceId: snapshot.marketplaceId, products: readings.products, store: readings.store })));
   if (!eventInput) throw new Error("Пакет для событий не прошёл разбор");
   const events = await reconcileSellerHubEventHistory(key.userId, eventInput);
+
+  // Уведомления в Telegram о новом: события, срочные задачи, срок токена. Сбой доставки не должен ронять пересчёт.
+  await notifyAfterDerive(db, key.userId, { events, tasks, nowMs: Date.now() });
 
   // Предложения агента: отдельный шаг, его сбой не должен ронять задачи и события.
   let proposals: number | null = null;

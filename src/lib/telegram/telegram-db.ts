@@ -33,7 +33,8 @@ export type TelegramSessionState =
   | "awaiting_email"
   | "awaiting_code"
   | "awaiting_edit_text"
-  | "awaiting_regen_hint";
+  | "awaiting_regen_hint"
+  | "awaiting_deposit_sum";
 
 export type ConsumedLinkToken = {
   userId: string;

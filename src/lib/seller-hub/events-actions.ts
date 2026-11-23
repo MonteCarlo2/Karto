@@ -67,10 +67,11 @@ export function eventTarget(event: SellerProductEvent): EventTarget | null {
       return { kind: "area", area: "analytics", label: "Открыть деньги", analyticsTab: "money" };
     case "finance_document":
     case "finance_withdraw_up":
-      return { kind: "area", area: "finance", label: "Открыть финансы" };
+      return { kind: "area", area: "analytics", label: "Открыть деньги", analyticsTab: "money" };
     case "agent_action":
       return { kind: "area", area: "agents", label: "Открыть агентов" };
     case "access_lost":
+    case "token_expiring":
     case "access_restored":
       return { kind: "area", area: "integration", label: "Открыть подключение" };
     case "buyout_changed":

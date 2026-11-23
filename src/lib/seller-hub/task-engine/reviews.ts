@@ -4,6 +4,7 @@
  */
 import { previewText } from "@/lib/seller-hub/feedbacks/map";
 import type { SellerFeedbackRow, SellerQuestionRow } from "@/lib/seller-hub/feedbacks/types";
+import { ruPlural } from "./ru-plural";
 import { benjaminiHochberg, fisherExactOneSidedGreater } from "./stats";
 import type { StoreTaskFacts, TaskDraft, TaskFact, TaskSeverity } from "./types";
 
@@ -40,10 +41,19 @@ function formatNegList(
     .join("; ");
 }
 
+const MONTHS_SHORT = ["янв.", "февр.", "марта", "апр.", "мая", "июня", "июля", "авг.", "сент.", "окт.", "нояб.", "дек."];
+
+/** «2026-10-16T…» в «16 окт.». */
+function formatDay(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!match) return iso.slice(0, 10);
+  return `${Number(match[3])} ${MONTHS_SHORT[Number(match[2]) - 1] ?? ""}`.trim();
+}
+
 function formatQList(rows: NonNullable<TaskFact["staleQuestions"]>): string {
   return rows
     .slice(0, 12)
-    .map((r) => `${r.createdAt.slice(0, 10)}: ${r.preview}`)
+    .map((r) => `${formatDay(r.createdAt)}: ${r.preview}`)
     .join("; ");
 }
 
@@ -62,7 +72,7 @@ export function ruleFeedbacksAccess(store: StoreTaskFacts): TaskDraft | null {
     reason: "feedbacks-api вернул 401/403.",
     evidence: { feedbacks_status: "forbidden" },
     recommendation:
-      "В кабинете WB добавьте категорию «Вопросы и отзывы» к токену Seller Hub. После этого откройте «Автоотзывы»: /studio/auto-replies/workspace.",
+      "В кабинете WB добавьте категорию «Вопросы и отзывы» к токену Seller Hub. После этого вернитесь в раздел «Автоответы» KARTO.",
     actionType: "OPEN_REVIEW_RESPONSES",
     businessImpactType: "OPERATIONAL",
     eventKind: null,
@@ -89,7 +99,7 @@ export function ruleUnansweredNegativeReview(fact: TaskFact): TaskDraft | null {
     severityFloor: severity,
     severityCeiling: severity,
     title: "Негативный отзыв без ответа",
-    description: `${fact.title}: ${rows.length.toLocaleString("ru-RU")} негативных отзывов без ответа дольше 24 часов.${why} ${list}`,
+    description: `${fact.title}: ${rows.length.toLocaleString("ru-RU")} ${ruPlural(rows.length, "негативный отзыв", "негативных отзыва", "негативных отзывов")} без ответа дольше 24 часов.${why} ${list}`,
     reason: visibleOnCard
       ? "Оценка 1–3★, без ответа > 24 ч."
       : "Оценка 1–3★, без ответа > 24 ч.; на карточке nmId не показывается.",
@@ -99,9 +109,7 @@ export function ruleUnansweredNegativeReview(fact: TaskFact): TaskDraft | null {
       review_ids: rows.map((r) => r.id).join(","),
       visible_on_card: visibleOnCard,
     },
-    recommendation: `Ответьте в «Автоотзывах» (/studio/auto-replies/workspace) или в кабинете WB: https://seller.wildberries.ru/feedback-question/feedbacks${
-      fact.nmId ? ` (артикул ${fact.nmId})` : ""
-    }.`,
+    recommendation: "Ответьте в разделе «Автоответы» KARTO.",
     actionType: "OPEN_REVIEW_RESPONSES",
     businessImpactType: "OPERATIONAL",
     eventKind: "reviews_unanswered",
@@ -120,7 +128,7 @@ export function ruleUnansweredQuestion(fact: TaskFact): TaskDraft | null {
     severityFloor: severity,
     severityCeiling: severity,
     title: "Вопрос без ответа",
-    description: `${fact.title}: ${rows.length.toLocaleString("ru-RU")} вопросов без ответа дольше 24 часов.${
+    description: `${fact.title}: ${rows.length.toLocaleString("ru-RU")} ${ruPlural(rows.length, "вопрос", "вопроса", "вопросов")} без ответа дольше 24 часов.${
       important ? " У товара есть заказы за 28 дней — вопрос задают до покупки." : ""
     } ${formatQList(rows)}`,
     reason: "Вопрос без ответа > 24 ч.",
@@ -129,9 +137,7 @@ export function ruleUnansweredQuestion(fact: TaskFact): TaskDraft | null {
       orders_28d: fact.orders ?? fact.salesQty,
       question_ids: rows.map((r) => r.id).join(","),
     },
-    recommendation: `Ответьте в «Автоотзывах» (/studio/auto-replies/workspace) или в кабинете WB: https://seller.wildberries.ru/feedback-question/questions${
-      fact.nmId ? ` (артикул ${fact.nmId})` : ""
-    }.`,
+    recommendation: "Ответьте в разделе «Автоответы» KARTO.",
     actionType: "OPEN_QUESTIONS",
     businessImpactType: "OPERATIONAL",
     eventKind: "questions_unanswered",
@@ -152,8 +158,7 @@ export function ruleUnansweredPositiveReviews(store: StoreTaskFacts): TaskDraft 
     description: `${n.toLocaleString("ru-RU")} отзывов без ответа по ${m.toLocaleString("ru-RU")} товарам (оценка 4–5★).`,
     reason: "Позитивные отзывы без ответа — возможность поблагодарить покупателя.",
     evidence: { unanswered_positive: n, products: m },
-    recommendation:
-      "Ответьте в «Автоотзывах» (/studio/auto-replies/workspace) или в кабинете WB: https://seller.wildberries.ru/feedback-question/feedbacks.",
+    recommendation: "Ответьте в разделе «Автоответы» KARTO.",
     actionType: "OPEN_REVIEW_RESPONSES",
     businessImpactType: "OPERATIONAL",
     eventKind: null,
@@ -222,9 +227,7 @@ export function finalizeNegativeShareDrafts(
           base_n: c.baseN,
           p_value: Math.round(c.pValue * 1e6) / 1e6,
         },
-        recommendation: `Разберите негативные отзывы окна в «Автоотзывах» (/studio/auto-replies/workspace) или в кабинете WB: https://seller.wildberries.ru/feedback-question/feedbacks${
-          c.fact.nmId ? ` (артикул ${c.fact.nmId})` : ""
-        }.`,
+        recommendation: "Разберите негативные отзывы в разделе «Автоответы» KARTO.",
         actionType: "OPEN_REVIEW_RESPONSES",
         businessImpactType: "OPERATIONAL",
         eventKind: null,

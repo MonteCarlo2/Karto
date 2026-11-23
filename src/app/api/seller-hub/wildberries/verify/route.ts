@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSellerHubWbToken, wbRouteError } from "@/lib/seller-hub/wb-token-http";
+import { wbTokenExpiresAt } from "@/lib/seller-hub/wb-token";
 import { verifyWildberriesContentAccess } from "@/lib/services/wildberries/content-client";
 import { WildberriesApiError } from "@/lib/services/wildberries/client";
 
@@ -16,6 +17,7 @@ export async function POST(request: NextRequest) {
       totalCards: result.totalCards,
       scopes: result.scopes,
       verifiedAt: new Date().toISOString(),
+      expiresAt: wbTokenExpiresAt(access.token),
     });
   } catch (error) {
     if (error instanceof WildberriesApiError) {

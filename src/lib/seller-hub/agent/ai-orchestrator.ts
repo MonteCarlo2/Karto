@@ -29,7 +29,7 @@ import { KNOWLEDGE_VERSION } from "./knowledge";
  * Любой сбой нейросети не мешает предложению: оно остаётся решением по правилам и ограничителям, с пометкой «ИИ-проверка не выполнена».
  */
 
-export type AiAsk = (input: { system: string; user: string; maxTokens: number; role: "analyst" | "reviewer" }) => Promise<{ text: string; costUsd: number }>;
+export type AiAsk = (input: { system: string; user: string; maxTokens: number; role: "analyst" | "reviewer" | "chat"; /** Разрешить поиск в интернете (только чат). */ web?: boolean }) => Promise<{ text: string; costUsd: number; sources?: Array<{ title: string; url: string }> }>;
 /** Читает запрошенные данные из нашей базы. null — данных нет. Ответ обрезается до MAX_DATA_CHARS. */
 export type DataFetcher = (request: DataRequest) => Promise<string | null>;
 

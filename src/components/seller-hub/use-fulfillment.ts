@@ -8,9 +8,14 @@ import { buildLogisticsCost } from "@/lib/seller-hub/logistics-cost";
 import { buildShipSpeed, type SupplyOrdersInput } from "@/lib/seller-hub/ship-speed";
 import type { SellerCatalogSnapshot } from "@/lib/seller-hub/types";
 import { useUserSetting } from "./use-user-setting";
+import { registerHubCache } from "./hub-cache-registry";
 
 /** Сколько последних закрытых поставок читаем для скорости отгрузки. Закрытые WB не меняет, поэтому на сервере они кэшируются на сутки. */
 const SPEED_SUPPLIES = 15;
+
+/** Уже прочитанный состав поставок: при возврате на вкладку скорость показывается сразу. */
+const SPEED_CACHE = registerHubCache(new Map<string, { rows: SellerHubSupplyOrders; at: number }>());
+const SPEED_FRESH_MS = 30 * 60 * 1000;
 
 /**
  * Общие данные логистики для «Заказов и логистики» и раздела «Агенты»: скорость отгрузки по реальным датам поставок
@@ -56,8 +61,18 @@ export function useFulfillment(snapshot: SellerCatalogSnapshot | undefined, conn
   useEffect(() => {
     if (!connected || !closedKey) return;
     let cancelled = false;
+    const cached = SPEED_CACHE.get(closedKey);
+    if (cached && Date.now() - cached.at < SPEED_FRESH_MS) {
+      void Promise.resolve().then(() => {
+        if (!cancelled) setLoaded({ key: closedKey, rows: cached.rows });
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
     void loadSellerHubSupplyOrders({ supplies: closed.map((s) => ({ id: s.id, done: true })) }).then((res) => {
       if (cancelled) return;
+      if (res.ok && res.supplyOrders) SPEED_CACHE.set(closedKey, { rows: res.supplyOrders, at: Date.now() });
       setLoaded({ key: closedKey, rows: res.ok && res.supplyOrders ? res.supplyOrders : [], error: res.ok ? undefined : res.error });
     });
     return () => {
@@ -107,6 +122,7 @@ export function useFulfillment(snapshot: SellerCatalogSnapshot | undefined, conn
 
   return {
     proposals,
+    nowMs,
     shipSpeed,
     speedLoading: Boolean(connected && closedKey && !ready),
     speedError: ready ? loaded.error : undefined,

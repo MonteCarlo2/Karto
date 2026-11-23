@@ -1,5 +1,26 @@
 import { handleTelegramWebhookUpdate } from "./webhook-handler";
 
+/**
+ * Защита боевого бота: локальный опрос снимает webhook, а если бот тот же, что на боевом сайте, сайт перестанет получать сообщения.
+ * Поэтому, если у бота уже стоит webhook на чужой адрес, опрос не включаем (кроме явного TELEGRAM_POLLING_FORCE=1).
+ * Возвращает адрес webhook, который мешает, или null, если опрос безопасен.
+ */
+export async function webhookBlockingPolling(): Promise<string | null> {
+  if (process.env.TELEGRAM_POLLING_FORCE === "1") return null;
+  // Боевого бота (имя без «test») локальный опрос никогда не трогает: он снял бы webhook с сайта и оставил живых клиентов без бота.
+  const username = (process.env.TELEGRAM_BOT_USERNAME ?? "").replace(/^@/, "");
+  if (username && !/test/i.test(username)) return `боевой бот @${username}`;
+  try {
+    const { telegramGetWebhookInfo } = await import("./bot-api");
+    const info = await telegramGetWebhookInfo();
+    const url = info.url?.trim();
+    return url && !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(url) ? url : null;
+  } catch {
+    // Не удалось узнать, есть ли webhook: безопаснее не снимать его.
+    return "состояние webhook неизвестно";
+  }
+}
+
 let offset = 0;
 let burstActive = false;
 
@@ -55,6 +76,12 @@ export function kickTelegramAfterLink() {
   burstActive = true;
 
   void (async () => {
+    const blocking = await webhookBlockingPolling();
+    if (blocking) {
+      console.warn(`[telegram] локальный опрос не включён: у бота стоит webhook ${blocking}. Это боевой бот, снятие webhook остановило бы сайт. Используйте отдельного тестового бота (TELEGRAM_BOT_TOKEN в .env.local).`);
+      burstActive = false;
+      return;
+    }
     try {
       const { telegramDeleteWebhook } = await import("./bot-api");
       await telegramDeleteWebhook();

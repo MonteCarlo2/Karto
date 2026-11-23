@@ -319,7 +319,7 @@ export function HubProductDrawer({
                   onChange={(event) => setTitle(event.target.value)}
                   aria-label="Название товара"
                   rows={2}
-                  className="w-full resize-none rounded-[4px] border bg-white px-3 py-2 text-[22px] font-semibold leading-[1.3] outline-none focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+                  className="w-full resize-none rounded-[4px] border bg-white px-3 py-2 text-[22px] font-semibold leading-[1.3] outline-none focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
                   style={{ ...hubSans, color: hub.text, borderColor: hub.ink }}
                 />
               ) : (
@@ -384,10 +384,10 @@ export function HubProductDrawer({
                         className="absolute right-0 z-20 mt-1 min-w-[148px] rounded-[4px] border bg-white py-1"
                         style={{ borderColor: hub.ink, boxShadow: "0 8px 24px rgba(14,17,22,0.12)" }}
                       >
-                        <button type="button" className="block w-full px-3 py-2 text-left text-[13px] font-medium hover:bg-[#F4F6F8]" style={{ color: hub.text }} onClick={() => replaceRef.current?.click()}>
+                        <button type="button" className="block w-full px-3 py-2 text-left text-[13px] font-medium hover:bg-[var(--hub-canvas)]" style={{ color: hub.text }} onClick={() => replaceRef.current?.click()}>
                           Заменить
                         </button>
-                        <button type="button" className="block w-full px-3 py-2 text-left text-[13px] font-medium hover:bg-[#F4F6F8]" style={{ color: hub.danger }} onClick={() => void removePhoto()}>
+                        <button type="button" className="block w-full px-3 py-2 text-left text-[13px] font-medium hover:bg-[var(--hub-canvas)]" style={{ color: hub.danger }} onClick={() => void removePhoto()}>
                           Удалить
                         </button>
                       </div>
@@ -403,7 +403,7 @@ export function HubProductDrawer({
                       aria-label="Видеообложка"
                       onClick={() => setVideoOpen(true)}
                       className={`flex h-20 w-[60px] items-center justify-center overflow-hidden bg-black ring-2 ${
-                        videoOpen ? "ring-[#B9FF4B]" : "ring-transparent"
+                        videoOpen ? "ring-[var(--hub-lime)]" : "ring-transparent"
                       }`}
                     >
                       <CardVideo src={videoUrl} mode="thumb" />
@@ -424,8 +424,8 @@ export function HubProductDrawer({
                         void movePhoto(from, i);
                       }}
                       onClick={() => { setVideoOpen(false); setPhotoIndex(i); }}
-                      className={`flex h-20 w-[60px] items-center justify-center overflow-hidden bg-[#F4F6F8] ring-2 ${
-                        !videoOpen && photoIndex === i ? "ring-[#B9FF4B]" : "ring-transparent"
+                      className={`flex h-20 w-[60px] items-center justify-center overflow-hidden bg-[var(--hub-canvas)] ring-2 ${
+                        !videoOpen && photoIndex === i ? "ring-[var(--hub-lime)]" : "ring-transparent"
                       }`}
                     >
                       <img src={url} alt="" className="max-h-full max-w-full object-contain" />
@@ -516,7 +516,7 @@ export function HubProductDrawer({
                       <li key={subject.id}>
                         <button
                           type="button"
-                          className="block w-full px-3 py-2 text-left hover:bg-[#F4F6F8]"
+                          className="block w-full px-3 py-2 text-left hover:bg-[var(--hub-canvas)]"
                           onMouseDown={(event) => {
                             event.preventDefault();
                             setCategory(subject.name);
@@ -576,7 +576,7 @@ export function HubProductDrawer({
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                   rows={8}
-                  className="mt-2 w-full resize-y rounded-[4px] border bg-white px-3 py-3 text-[16px] leading-[1.6] outline-none focus-visible:ring-2 focus-visible:ring-[#1F4E3D]"
+                  className="mt-2 w-full resize-y rounded-[4px] border bg-white px-3 py-3 text-[16px] leading-[1.6] outline-none focus-visible:ring-2 focus-visible:ring-[var(--hub-forest)]"
                   style={{ ...hubSans, color: hub.text, borderColor: hub.ink }}
                 />
                 <p className="mt-2 text-[12px] leading-[1.45]" style={{ color: hub.textMuted }}>

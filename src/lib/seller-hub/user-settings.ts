@@ -17,6 +17,8 @@ const intRange = (min: number, max: number): Validator => (value) =>
 const bool: Validator = (value) => typeof value === "boolean";
 
 export const USER_SETTING_VALIDATORS = {
+  /** Тестовый режим агента: пока включён (по умолчанию), его действия в Wildberries не уходят. */
+  "agent.sandbox": bool,
   "ads.days": oneOf(["7", "14", "30"]),
   "ads.compare": bool,
   "ads.keepQueries": isValidKeepQueries,
@@ -50,6 +52,12 @@ export const USER_SETTING_VALIDATORS = {
   /** Чувствительность умных уведомлений: low, normal или high. */
   /** Показывать в ленте и общие новости WB (по умолчанию только персональные, по вашим категориям и важные). */
   "events.newsGeneral": bool,
+  /** Показывать только новости, которые WB адресовал именно кабинету продавца. */
+  "events.newsPersonalOnly": bool,
+  /** Объединять серии однотипных событий в одно уведомление со списком. */
+  "events.groupBursts": bool,
+  /** Отмечать уведомление прочитанным, когда его открыли. */
+  "events.autoRead": bool,
   /** Рубрики новостей WB, которые пользователь скрыл (через |). */
   "events.newsMutedRubrics": isValidRubricListString,
   "events.sensitivity": oneOf(["low", "normal", "high"]),
@@ -59,6 +67,19 @@ export const USER_SETTING_VALIDATORS = {
   "finance.taxRate": intRange(0, 40),
   /** База налога: выручка, сумма к перечислению или прибыль до налога. */
   "finance.taxBase": oneOf(["revenue", "pay", "profit"]),
+  /** Уведомления в Telegram: общий выключатель, уровень событий, срочные задачи, результаты агента, срок токена. */
+  "notify.tg": bool,
+  "notify.tg.events": oneOf(["off", "critical", "important", "all"]),
+  "notify.tg.tasks": bool,
+  "notify.tg.agent": bool,
+  "notify.tg.token": bool,
+  /** Тихие часы по Москве: в них приходит только срочное, остальное придёт после окончания. */
+  "notify.quiet": bool,
+  "notify.quietFrom": intRange(0, 23),
+  "notify.quietTo": intRange(0, 23),
+  /** Уведомления браузера, когда страница открыта, но вы на другой вкладке, и звук. */
+  "notify.browser": bool,
+  "notify.sound": bool,
   "logistics.days": oneOf(["30", "60", "90"]),
   "logistics.coverDays": intRange(1, 365),
   "logistics.multiple": intRange(1, 1000),

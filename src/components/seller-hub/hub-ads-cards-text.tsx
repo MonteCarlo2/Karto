@@ -6,6 +6,7 @@ import { evaluateSellerHubCardText, loadSavedCardText } from "@/lib/seller-hub/c
 import { SELLABILITY_LABEL } from "@/lib/seller-hub/card-vision-score";
 import { TEXT_BAND_LABEL, TEXT_CRITERIA, TEXT_PROTOCOL_VERSION, textContentHash, type TextBand, type TextResult } from "@/lib/seller-hub/card-text-score";
 import { ruPlural } from "@/lib/seller-hub/task-engine/ru-plural";
+import { AnalysisPanel } from "./hub-ads-analysis";
 import { hub, HubButton, hubSans } from "./hub-ui";
 
 export type TextTarget = {
@@ -31,7 +32,7 @@ export function isTextCurrent(result: TextResult | undefined, target: TextTarget
 
 const WORKERS = 4;
 /** Замер по 44 карточкам: около $0,0033 за оценку текста (длинный протокол и подробный ответ). */
-const COST_PER_CARD_USD = 0.0033;
+
 
 export function useCardText(targets: TextTarget[]) {
   const [results, setResults] = useState<Record<string, TextResult>>({});
@@ -93,68 +94,33 @@ export function useCardText(targets: TextTarget[]) {
 }
 
 export function TextControls({ targets, text }: { targets: TextTarget[]; text: ReturnType<typeof useCardText> }) {
-  const [confirming, setConfirming] = useState(false);
   const pending = targets.filter((t) => !isTextCurrent(text.results[String(t.nmId)], t));
-  const changed = pending.filter((t) => text.results[String(t.nmId)]).length;
   const evaluated = targets.length - pending.length;
-  const spent = Object.values(text.results).reduce((s, r) => s + (r.costUsd ?? 0), 0);
-  const cost = Math.round(pending.length * COST_PER_CARD_USD * 1000) / 1000;
   const noun = ruPlural(pending.length, "карточку", "карточки", "карточек");
 
   return (
-    <div className="rounded-2xl border p-4" style={{ borderColor: hub.border, backgroundColor: hub.surface }}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[14px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-            Оценка названия и описания нейросетью
-          </p>
-          <p className="mt-0.5 text-[12.5px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
-            Нейросеть проверяет, насколько текст помогает находиться в поиске и убеждает покупателя: ключевые слова, длина по нормам площадки, структура, запрещённое. Оценено {evaluated} из {targets.length}
-            {spent > 0 ? `, потрачено $${spent.toLocaleString("ru-RU", { maximumFractionDigits: 3 })}` : ""}. Оценка делается один раз и обновляется, только если вы изменили текст
-            {changed > 0 ? `: изменено ${changed} ${ruPlural(changed, "карточка", "карточки", "карточек")}` : ""}.
-          </p>
-        </div>
-        {text.running ? (
-          <div className="flex items-center gap-3">
-            <span className="text-[13px] tabular-nums" style={{ ...hubSans, color: hub.textMuted }}>
-              {text.progress.done} из {text.progress.total}
-            </span>
-            <HubButton type="button" variant="secondary" onClick={text.stop}>
-              Остановить
-            </HubButton>
-          </div>
-        ) : pending.length > 0 && !confirming ? (
-          <HubButton type="button" onClick={() => setConfirming(true)}>
-            {changed > 0 && changed === pending.length ? "Обновить оценки текста: " : "Оценить текст: "}
-            {pending.length} {noun}
+    <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 py-3">
+      <p className="text-[16px]" style={{ ...hubSans, color: hub.text }}>
+        <strong className="font-semibold">Название и описание</strong>
+        <span style={{ color: hub.textMuted }}> · оценено {evaluated} из {targets.length}</span>
+      </p>
+      {text.running ? (
+        <div className="flex items-center gap-3">
+          <span className="text-[15px] tabular-nums" style={{ ...hubSans, color: hub.textMuted }}>
+            {text.progress.done} из {text.progress.total}
+          </span>
+          <HubButton type="button" size="sm" variant="secondary" onClick={text.stop}>
+            Остановить
           </HubButton>
-        ) : null}
-      </div>
-      {confirming && !text.running ? (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: hub.warnSoft }}>
-          <p className="text-[13px] leading-5" style={{ ...hubSans, color: hub.warn }}>
-            Платный вызов вашего ключа OpenRouter: {pending.length} {ruPlural(pending.length, "карточка", "карточки", "карточек")}, примерно ${cost.toLocaleString("ru-RU")}. Готовые оценки хранятся и повторно не оплачиваются.
-          </p>
-          <div className="flex gap-2">
-            <HubButton
-              type="button"
-              onClick={() => {
-                setConfirming(false);
-                void text.start(pending);
-              }}
-            >
-              Запустить
-            </HubButton>
-            <HubButton type="button" variant="secondary" onClick={() => setConfirming(false)}>
-              Отмена
-            </HubButton>
-          </div>
         </div>
+      ) : pending.length > 0 ? (
+        <HubButton type="button" size="sm" variant="secondary" onClick={() => void text.start(pending)}>
+          Оценить {pending.length} {noun}
+        </HubButton>
       ) : null}
       {text.progress.failed > 0 || text.lastError ? (
-        <p className="mt-2 text-[12.5px]" style={{ ...hubSans, color: hub.danger }}>
-          {text.progress.failed > 0 ? `Не удалось оценить: ${text.progress.failed}. ` : ""}
-          {text.lastError}
+        <p className="w-full text-[14.5px]" style={{ ...hubSans, color: hub.textMuted }}>
+          Часть карточек оценить не удалось, это повторится само при следующем обновлении.
         </p>
       ) : null}
     </div>
@@ -164,7 +130,7 @@ export function TextControls({ targets, text }: { targets: TextTarget[]; text: R
 export function TextBadge({ result, outdated }: { result: TextResult; outdated: boolean }) {
   const tone = BAND_TONE[result.band];
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[12px] font-semibold" style={{ ...hubSans, backgroundColor: tone.bg, color: tone.fg }}>
+    <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[14px] font-semibold" style={{ ...hubSans, backgroundColor: tone.bg, color: tone.fg }}>
       Текст: {result.score} · {TEXT_BAND_LABEL[result.band]}
       {result.sellability ? ` · продаваемость: ${SELLABILITY_LABEL[result.sellability.level].toLowerCase()}` : ""}
       {outdated ? " · текст изменён, оценка устарела" : ""}
@@ -172,7 +138,9 @@ export function TextBadge({ result, outdated }: { result: TextResult; outdated: 
   );
 }
 
-export function TextDetails({ result }: { result: TextResult }) {
+const TEXT_BAND_COLOR: Record<TextBand, string> = { strong: "#2E9E6B", good: "#4F7CC4", average: "#D9912B", weak: "#C8453F" };
+
+export function TextDetails({ result, outdated }: { result: TextResult; outdated?: boolean }) {
   const [copied, setCopied] = useState<string | null>(null);
   async function copy(value: string) {
     try {
@@ -185,104 +153,63 @@ export function TextDetails({ result }: { result: TextResult }) {
   }
   const m = result.metrics;
   return (
-    <details className="rounded-lg border px-3 py-2" style={{ borderColor: hub.border }}>
-      <summary className="cursor-pointer text-[13px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-        Что нейросеть увидела в тексте
-      </summary>
-      <div className="mt-3 space-y-3">
-        {result.sellability ? (
-          <p className="text-[13px] leading-5" style={{ ...hubSans, color: hub.text }}>
-            <strong>Ожидаемая продаваемость текста: {SELLABILITY_LABEL[result.sellability.level].toLowerCase()}.</strong>{" "}
-            <span style={{ color: hub.textMuted }}>{result.sellability.reason}</span>
-          </p>
-        ) : null}
-        <p className="text-[12.5px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
-          Замеры программы: название {m.titleLength} знаков, описание {m.descriptionLength} знаков (норма WB 1000–5000), абзацев {m.paragraphs}, пунктов списка {m.bullets}
-          {m.forbidden.length > 0 ? `, запрещённое: ${m.forbidden.join(", ")}` : ""}.
-        </p>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {TEXT_CRITERIA.map((c) => {
-            const v = result.criteria[c.id];
-            return (
-              <div key={c.id}>
-                <div className="flex items-baseline justify-between gap-2 text-[12.5px]" style={{ ...hubSans, color: hub.text }}>
-                  <span>{c.label}</span>
-                  <span className="tabular-nums font-semibold">{v.score.toLocaleString("ru-RU")}/10</span>
-                </div>
-                <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: hub.border }}>
-                  <div className="h-full rounded-full" style={{ width: `${v.score * 10}%`, backgroundColor: v.score >= 7 ? hub.green : v.score >= 5 ? hub.blue : hub.warn }} />
-                </div>
-                {v.evidence && v.score < 6 ? (
-                  <p className="mt-0.5 text-[12px] leading-4" style={{ ...hubSans, color: hub.textMuted }}>
-                    {v.evidence}
-                  </p>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-        {result.strengths.length > 0 ? (
-          <p className="text-[13px] leading-5" style={{ ...hubSans, color: hub.textMuted }}>
-            <strong style={{ color: hub.green }}>Хорошо:</strong> {result.strengths.join("; ")}.
-          </p>
-        ) : null}
-        {result.defects.length > 0 ? (
-          <ul className="space-y-1">
-            {result.defects.map((d) => (
-              <li key={d.what} className="text-[13px] leading-5" style={{ ...hubSans, color: hub.text }}>
-                <strong>{d.what}</strong>
-                {d.fix ? <span style={{ color: hub.textMuted }}>. Как исправить: {d.fix}</span> : null}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-[13px]" style={{ ...hubSans, color: hub.textMuted }}>
-            Существенных недостатков нейросеть не нашла.
-          </p>
-        )}
-        {result.titleSuggestion ? (
-          <div className="rounded-lg px-3 py-2" style={{ backgroundColor: hub.surfaceMuted }}>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.05em]" style={{ ...hubSans, color: hub.textSubtle }}>
-              Вариант названия
-            </p>
-            <div className="mt-1 flex items-center justify-between gap-2">
-              <span className="text-[13.5px]" style={{ ...hubSans, color: hub.text }}>
-                {result.titleSuggestion}
-              </span>
-              <button type="button" onClick={() => void copy(result.titleSuggestion!)} className="shrink-0 rounded-md p-1.5" style={{ color: hub.textMuted }} aria-label="Скопировать название">
-                <Copy className="h-4 w-4" />
-              </button>
-            </div>
-            {copied === result.titleSuggestion ? (
-              <p className="text-[12px]" style={{ ...hubSans, color: hub.green }}>
-                Скопировано. Название меняется в карточке WB.
+    <AnalysisPanel
+      title="Разбор названия и описания нейросетью"
+      score={result.score}
+      bandLabel={`${TEXT_BAND_LABEL[result.band]}${outdated ? " · текст изменён, оценка устарела" : ""}`}
+      bandColor={TEXT_BAND_COLOR[result.band]}
+      sellability={result.sellability ? { label: SELLABILITY_LABEL[result.sellability.level].toLowerCase(), reason: result.sellability.reason } : null}
+      notes={[
+        {
+          label: "Замеры программы",
+          text: `Название ${m.titleLength} знаков, описание ${m.descriptionLength} знаков (норма WB 1000–5000), абзацев ${m.paragraphs}, пунктов списка ${m.bullets}${m.forbidden.length > 0 ? `, запрещённое: ${m.forbidden.join(", ")}` : ""}.`,
+        },
+      ]}
+      criteria={TEXT_CRITERIA.map((c) => ({ label: c.label, score: result.criteria[c.id].score, evidence: result.criteria[c.id].evidence }))}
+      strengths={result.strengths}
+      defects={result.defects}
+      lowConfidence={result.confidence === "low" ? "Уверенность оценки низкая: текста слишком мало для уверенного вывода." : null}
+      extra={
+        <>
+          {result.titleSuggestion ? (
+            <div className="rounded-[16px] px-4 py-3.5" style={{ backgroundColor: "rgba(1, 20, 8, 0.045)" }}>
+              <p className="text-[14px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                Вариант названия
               </p>
-            ) : null}
-          </div>
-        ) : null}
-        {result.missingKeywords.length > 0 ? (
-          <div>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.05em]" style={{ ...hubSans, color: hub.textSubtle }}>
-              Каких слов не хватает
-            </p>
-            <ul className="mt-1 flex flex-wrap gap-1.5">
-              {result.missingKeywords.map((k) => (
-                <li key={k.word} title={k.why} className="rounded-full border px-2.5 py-1 text-[12.5px]" style={{ ...hubSans, borderColor: hub.border, color: hub.text }}>
-                  {k.word}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-1 text-[11.5px] leading-4" style={{ ...hubSans, color: hub.textMuted }}>
-              Это предложения нейросети по смыслу товара, не частотность запросов WB. Точные поисковые запросы покупателей показывает вкладка «Поиск и SEO» (нужна подписка Джем).
-            </p>
-          </div>
-        ) : null}
-        {result.confidence === "low" ? (
-          <p className="text-[12px]" style={{ ...hubSans, color: hub.warn }}>
-            Уверенность оценки низкая: текста слишком мало для уверенного вывода.
-          </p>
-        ) : null}
-      </div>
-    </details>
+              <div className="mt-1 flex items-start justify-between gap-3">
+                <span className="text-[16.5px] font-medium leading-[1.4]" style={{ ...hubSans, color: hub.text }}>
+                  {result.titleSuggestion}
+                </span>
+                <button type="button" onClick={() => void copy(result.titleSuggestion!)} className="shrink-0 rounded-full p-2 outline-none transition-colors hover:bg-black/[0.06]" style={{ color: hub.textMuted }} aria-label="Скопировать название">
+                  <Copy className="h-[18px] w-[18px]" />
+                </button>
+              </div>
+              {copied === result.titleSuggestion ? (
+                <p className="mt-1 text-[14px]" style={{ ...hubSans, color: "#067A55" }}>
+                  Скопировано. Название меняется в карточке WB.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          {result.missingKeywords.length > 0 ? (
+            <div>
+              <p className="text-[16px] font-semibold" style={{ ...hubSans, color: hub.text }}>
+                Каких слов не хватает
+              </p>
+              <ul className="mt-2.5 flex flex-wrap gap-2">
+                {result.missingKeywords.map((k) => (
+                  <li key={k.word} title={k.why} className="rounded-full px-3.5 py-2 text-[14.5px] font-medium" style={{ ...hubSans, color: hub.text, backgroundColor: "rgba(1, 20, 8, 0.06)" }}>
+                    {k.word}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[14px] leading-[1.45]" style={{ ...hubSans, color: hub.textSubtle }}>
+                Это предложения нейросети по смыслу товара. Точные запросы покупателей смотрите во вкладке «Поиск и SEO».
+              </p>
+            </div>
+          ) : null}
+        </>
+      }
+    />
   );
 }

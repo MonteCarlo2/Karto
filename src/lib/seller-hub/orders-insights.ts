@@ -46,6 +46,8 @@ export type OrdersInsights = {
 /** Меньше стольких заказов: часы пиков не показываем, это шум. */
 const MIN_FOR_HOURS = 20;
 
+const MSK_HOUR_FMT = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Moscow", hour: "2-digit", hour12: false });
+
 export function buildOrdersInsights(rows: SellerOrderRow[], nowMs: number): OrdersInsights | null {
   if (rows.length === 0) return null;
   const today = moscowDateKey(nowMs);
@@ -70,7 +72,7 @@ export function buildOrdersInsights(rows: SellerOrderRow[], nowMs: number): Orde
       day.count += 1;
       day.sum += row.price ?? 0;
       dayMap.set(date, day);
-      const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Moscow", hour: "2-digit", hour12: false }).format(created)) % 24;
+      const hour = Number(MSK_HOUR_FMT.format(created)) % 24;
       hourMap.set(hour, (hourMap.get(hour) ?? 0) + 1);
     }
     if (row.nmId != null) {

@@ -249,7 +249,7 @@ export function reviewActionKeyboard(messageId: string): { inline_keyboard: Inli
     inline_keyboard: [
       [{ text: "✅  ПОДТВЕРДИТЬ И ОТПРАВИТЬ", callback_data: `cfm:${sid}` }],
       [
-        { text: "✏️ Изменить", callback_data: `edt:${sid}` },
+        { text: "✏️ Редактировать", callback_data: `edt:${sid}` },
         { text: "🔄 Перегенерировать", callback_data: `rgn:${sid}` },
       ],
     ],

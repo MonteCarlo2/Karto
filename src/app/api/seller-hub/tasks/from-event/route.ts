@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   const auth = await requireSellerHubUser(request);
   if (!auth.user) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
-  let body: { eventId?: unknown; marketplaceId?: unknown };
+  let body: { eventId?: unknown; marketplaceId?: unknown; title?: unknown; description?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -50,7 +50,9 @@ export async function POST(request: NextRequest) {
     if (existing && existing.length > 0) return NextResponse.json({ ok: true, taskId: existing[0]!.id, existed: true });
 
     const now = new Date().toISOString();
-    const task = taskFromEvent(event as EventRowForTask, marketplaceId, now, crypto.randomUUID());
+    // Заголовок и описание задачи человек мог поправить в окне; это его собственный текст, длина ограничена.
+    const overrides = { title: typeof body.title === "string" ? body.title : undefined, description: typeof body.description === "string" ? body.description : undefined };
+    const task = taskFromEvent(event as EventRowForTask, marketplaceId, now, crypto.randomUUID(), overrides);
     const { error: insertError } = await db.from("seller_hub_tasks").insert({
       id: task.id,
       user_id: auth.user.id,

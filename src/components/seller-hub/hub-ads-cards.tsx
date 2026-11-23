@@ -4,50 +4,53 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { VISION_PROTOCOL_VERSION } from "@/lib/seller-hub/card-vision-score";
 import { useAutoAi } from "./use-auto-ai";
 import { useRouter } from "next/navigation";
-import { LayoutGrid } from "lucide-react";
+import { LayoutGrid, Lightbulb } from "lucide-react";
 import { buildCardVerdicts, VERDICT_LABEL, type CardVerdictId, type Pillar, type PillarStatus } from "@/lib/seller-hub/card-verdict";
 import { diagnoseProducts } from "@/lib/seller-hub/product-diagnosis";
 import { taskFactsFromSnapshot } from "@/lib/seller-hub/task-engine/facts";
 import type { SellerAdCampaignRow, SellerCatalogSnapshot } from "@/lib/seller-hub/types";
 import { buildProductFacts } from "@/lib/seller-hub/product-advice";
 import { snapshotTimeMs } from "@/lib/seller-hub/complete-days";
-import { HubAdsCardsPlan } from "./hub-ads-cards-plan";
+import { useCardsPlan } from "./hub-ads-cards-plan";
 import { spearman } from "@/lib/seller-hub/card-vision-score";
-import { hub, HubEmptyState, HubPanel, HubPanelHeader, hubSans } from "./hub-ui";
-import { useCardVision, VisionBadge, VisionControls, VisionDetails, type VisionTarget } from "./hub-ads-cards-vision";
-import { isTextCurrent, TextBadge, TextControls, TextDetails, useCardText, type TextTarget } from "./hub-ads-cards-text";
+import { hub, HubButton, HubEmptyState, hubSans } from "./hub-ui";
+import { Card } from "./hub-analytics-ui";
+import { FilterTabs, HubPanel, Thumb } from "./hub-fulfillment-ui";
+import { HelpTip } from "./hub-help-tip";
+import { usePagedLimit } from "./use-paged-limit";
+import { useCardVision, VisionControls, VisionDetails, type VisionTarget } from "./hub-ads-cards-vision";
+import { isTextCurrent, TextControls, TextDetails, useCardText, type TextTarget } from "./hub-ads-cards-text";
 import { writeHubCardSeed } from "@/lib/seller-hub/card-seed";
 
-const VERDICT_TONE: Record<CardVerdictId, { bg: string; fg: string }> = {
-  works: { bg: hub.greenSoft, fg: hub.green },
-  great_hidden: { bg: hub.blueSoft, fg: hub.blue },
-  hidden: { bg: hub.warnSoft, fg: hub.warn },
-  leaky: { bg: hub.dangerSoft, fg: hub.danger },
-  returns: { bg: hub.dangerSoft, fg: hub.danger },
-  polish: { bg: hub.warnSoft, fg: hub.warn },
-  no_data: { bg: hub.surfaceMuted, fg: hub.textMuted },
+const VERDICT_COLOR: Record<CardVerdictId, string> = {
+  works: "#2E9E6B",
+  great_hidden: "#2E9E6B",
+  hidden: "#D9912B",
+  leaky: "#C8453F",
+  returns: "#C8453F",
+  polish: "#D9912B",
+  no_data: "#9AA0A6",
 };
 
 const STATUS_COLOR: Record<PillarStatus, string> = {
-  good: hub.green,
-  ok: hub.green,
-  warn: hub.warn,
-  bad: hub.danger,
-  na: hub.textSubtle,
+  good: "#2E9E6B",
+  ok: "#2E9E6B",
+  warn: "#D9912B",
+  bad: "#C8453F",
+  na: "#9AA0A6",
 };
 
 const FILTER_ORDER: CardVerdictId[] = ["leaky", "returns", "hidden", "great_hidden", "polish", "works", "no_data"];
 
 function PillarCell({ label, pillar }: { label: string; pillar: Pillar }) {
+  const color = STATUS_COLOR[pillar.status];
   return (
-    <div className="min-w-0">
-      <div className="flex items-center gap-1.5">
-        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: STATUS_COLOR[pillar.status] }} />
-        <span className="text-[11.5px] font-semibold uppercase tracking-[0.05em]" style={{ ...hubSans, color: hub.textSubtle }}>
-          {label}
-        </span>
-      </div>
-      <p className="mt-0.5 text-[12.5px] leading-4" style={{ ...hubSans, color: pillar.status === "bad" ? hub.danger : hub.textMuted }}>
+    <div className="min-w-0 px-5 py-4" style={{ backgroundColor: "color-mix(in srgb, var(--hub-canvas) 82%, white)" }}>
+      <p className="flex items-center gap-2 text-[14px] font-medium" style={{ ...hubSans, color: hub.textSubtle }}>
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden />
+        {label}
+      </p>
+      <p className="mt-2 text-[16.5px] font-medium leading-[1.4] tracking-[-0.005em]" style={{ ...hubSans, color: hub.text }}>
         {pillar.note}
       </p>
     </div>
@@ -57,6 +60,7 @@ function PillarCell({ label, pillar }: { label: string; pillar: Pillar }) {
 export function HubAdsCards({ snapshot, adsByNm, campaigns, onCampaignsUpdate, onGoTab }: { snapshot?: SellerCatalogSnapshot; adsByNm?: Map<string, { spend: number; orders: number; orderSum: number }>; campaigns?: SellerAdCampaignRow[]; onCampaignsUpdate?: (rows: SellerAdCampaignRow[]) => void; onGoTab?: (tab: "promotions") => void }) {
   const router = useRouter();
   const [filter, setFilter] = useState<CardVerdictId | "all">("all");
+  const paged = usePagedLimit(filter, 10, 10);
   const verdicts = useMemo(() => {
     if (!snapshot || snapshot.items.length === 0) return [];
     const facts = taskFactsFromSnapshot(snapshot).products;
@@ -125,6 +129,7 @@ export function HubAdsCards({ snapshot, adsByNm, campaigns, onCampaignsUpdate, o
     return () => clearTimeout(timer);
   }, [auto.enabled, auto.ready, text.loaded, text.running, text.results, textTargets, textStart]);
   const itemByNm = useMemo(() => new Map((snapshot?.items ?? []).map((i) => [i.externalId, i])), [snapshot?.items]);
+  const photoByNm = useMemo(() => new Map((snapshot?.items ?? []).map((i) => [i.externalId, i.imageUrl ?? i.imageUrls?.[0]] as const)), [snapshot?.items]);
 
   const planFacts = useMemo(() => {
     if (!snapshot || verdicts.length === 0) return [];
@@ -168,6 +173,16 @@ export function HubAdsCards({ snapshot, adsByNm, campaigns, onCampaignsUpdate, o
     return map;
   }, [verdicts]);
 
+  const plan = useCardsPlan({
+    aiSettled: vision.loaded && text.loaded && !vision.running && !text.running,
+    facts: planFacts,
+    verdicts,
+    campaigns: campaigns ?? [],
+    onCampaignsUpdate: (rows) => onCampaignsUpdate?.(rows),
+    onGoTab: (tab) => onGoTab?.(tab),
+    onOpenFlow: openFlow,
+  });
+
   if (verdicts.length === 0) {
     return (
       <HubPanel>
@@ -184,133 +199,155 @@ export function HubAdsCards({ snapshot, adsByNm, campaigns, onCampaignsUpdate, o
     );
   }
 
-  const shown = filter === "all" ? verdicts : verdicts.filter((v) => v.verdict === filter);
+  const filtered = filter === "all" ? verdicts : verdicts.filter((v) => v.verdict === filter);
+  const shown = filtered.slice(0, paged.limit);
+  const hiddenCount = filtered.length - shown.length;
+  const visionDone = targets.filter((t) => vision.results[String(t.nmId)]?.protocol === VISION_PROTOCOL_VERSION).length;
+  const textDone = textTargets.filter((t) => isTextCurrent(text.results[String(t.nmId)], t)).length;
 
   return (
-    <div className="space-y-4">
-      <p className="rounded-xl px-4 py-2.5 text-[13px] leading-5" style={{ ...hubSans, backgroundColor: hub.surfaceMuted, color: hub.textMuted }}>
-        Фото и текст карточки — один из факторов продаж, но не единственный: на покупку влияют ещё цена, отзывы, срок доставки и позиции в поиске. Хорошая подача помогает, плохая мешает,
-        поэтому её стоит улучшать, если вы хотите больше продаж.
-      </p>
-      <VisionControls targets={targets} vision={vision} />
-      <TextControls targets={textTargets} text={text} />
-      <HubAdsCardsPlan aiSettled={vision.loaded && text.loaded && !vision.running && !text.running} facts={planFacts} verdicts={verdicts} campaigns={campaigns ?? []} onCampaignsUpdate={(rows) => onCampaignsUpdate?.(rows)} onGoTab={(tab) => onGoTab?.(tab)} onOpenFlow={openFlow} />
-      {agreement ? (
-        <p className="rounded-xl px-4 py-2.5 text-[13px] leading-5" style={{ ...hubSans, backgroundColor: hub.blueSoft, color: hub.text }}>
-          Согласованность оценки нейросети с вашими продажами: {agreement.rho.toLocaleString("ru-RU")} по {agreement.n} карточкам.{" "}
-          {Math.abs(agreement.rho) < 2 / Math.sqrt(agreement.n - 1) ? "Статистически связи не видно: у ваших карточек конверсию определяет не качество фото (цена, фасовка, срок доставки), поэтому оценку фото смотрите как отдельный показатель." : agreement.rho > 0 ? "Оценка совпадает с тем, как карточки конвертируют в вашем магазине." : "Оценка расходится с продажами: доверяйте продажам, а причину ищите вне фото."}
-        </p>
-      ) : null}
-      <div className="flex flex-wrap gap-2">
-        {([["all", "Все", verdicts.length], ...FILTER_ORDER.filter((id) => counts.has(id)).map((id) => [id, VERDICT_LABEL[id], counts.get(id) ?? 0] as const)] as Array<readonly [CardVerdictId | "all", string, number]>).map(
-          ([id, label, count]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setFilter(id)}
-              className="rounded-full border px-3 py-1.5 text-[13px] font-semibold"
-              style={{
-                ...hubSans,
-                borderColor: filter === id ? hub.ink : hub.border,
-                backgroundColor: filter === id ? hub.ink : hub.surface,
-                color: filter === id ? "#fff" : hub.text,
-              }}
-            >
-              {label} · {count}
-            </button>
-          ),
-        )}
-      </div>
+    <div className="space-y-6">
+      <Card
+        title="Покупают ли ваши карточки"
+        hint="Трафик, конверсия, выкуп, контент и рейтинг каждой карточки в сравнении с остальным магазином. Сверху те, где разобраться важнее. Для проблемных нейросеть сама предлагает, что сделать."
+        action={
+          <HelpTip title="Как читать" align="right">
+            <p>Фото и текст — один из факторов продаж. Ещё влияют цена, отзывы, срок доставки и позиции в поиске.</p>
+            {agreement ? (
+              <p className="mt-2">
+                Согласованность оценки с вашими продажами: {agreement.rho.toLocaleString("ru-RU")} по {agreement.n} карточкам.{" "}
+                {Math.abs(agreement.rho) < 2 / Math.sqrt(agreement.n - 1) ? "Связи со статистической точки зрения не видно: конверсию определяет не только фото." : agreement.rho > 0 ? "Оценка совпадает с конверсией ваших карточек." : "Оценка расходится с продажами: доверяйте продажам."}
+              </p>
+            ) : null}
+          </HelpTip>
+        }
+      >
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-[18px] px-5 py-4" style={{ backgroundColor: "rgba(1, 20, 8, 0.045)" }}>
+          <p className="text-[16px] leading-[1.5]" style={{ ...hubSans, color: hub.textMuted }}>
+            Нейросеть оценила фото <strong style={{ color: hub.text }}>{visionDone} из {targets.length}</strong>, текст <strong style={{ color: hub.text }}>{textDone} из {textTargets.length}</strong>
+            {plan.asking ? ". Составляю план действий…" : plan.problemCount > 0 ? `. Проблемных карточек: ${plan.problemCount}.` : "."}
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex cursor-pointer items-center gap-2 text-[15px]" style={{ ...hubSans, color: hub.textMuted }} title="Оценка и план строятся сами, когда меняются цифры.">
+              <input type="checkbox" className="h-4 w-4" checked={plan.auto.enabled} disabled={!plan.auto.ready} onChange={(e) => plan.auto.setEnabled(e.target.checked)} />
+              Автоматически
+            </label>
+            {plan.problemCount > 0 ? (
+              <HubButton size="sm" variant="secondary" loading={plan.asking} onClick={() => void plan.ask()}>
+                {plan.advice ? "Составить план заново" : "Составить план"}
+              </HubButton>
+            ) : null}
+          </div>
+          {plan.error ? (
+            <p className="w-full text-[14.5px]" style={{ ...hubSans, color: hub.textMuted }}>
+              План пока не получился, попробуйте ещё раз чуть позже.
+            </p>
+          ) : null}
+        </div>
+        <details className="group mt-3">
+          <summary className="cursor-pointer list-none text-[14.5px] font-semibold outline-none [&::-webkit-details-marker]:hidden" style={{ ...hubSans, color: hub.textMuted }}>
+            Управление оценкой <span className="font-normal group-open:hidden">· показать</span>
+          </summary>
+          <div className="mt-1 divide-y" style={{ borderColor: "rgba(1, 20, 8, 0.1)" }}>
+            <VisionControls targets={targets} vision={vision} />
+            <TextControls targets={textTargets} text={text} />
+          </div>
+        </details>
 
-      <HubPanel>
-        <HubPanelHeader
-          title="Покупают ли ваши карточки"
-          hint="Пять опор: трафик, конверсия, выкуп, контент, рейтинг. Всё сравнивается с остальными карточками вашего магазина, а не с придуманной нормой. Сверху те, где разобраться важнее."
-        />
-        <ul className="divide-y" style={{ borderColor: hub.borderSoft }}>
-          {shown.slice(0, 60).map((v) => {
-            const tone = VERDICT_TONE[v.verdict];
+        <div className="mt-6">
+          <FilterTabs<CardVerdictId | "all">
+            label="Фильтр карточек"
+            value={filter}
+            onChange={setFilter}
+            options={[{ id: "all", label: "Все", count: verdicts.length }, ...FILTER_ORDER.filter((id) => counts.has(id)).map((id) => ({ id, label: VERDICT_LABEL[id], count: counts.get(id) ?? 0 }))]}
+          />
+        </div>
+
+        <ul className="mt-5 space-y-5">
+          {shown.map((v, idx) => {
+            const color = VERDICT_COLOR[v.verdict];
+            const vr = vision.results[v.nmId];
+            const tr = text.results[v.nmId];
+            const tt = textTargets.find((t) => String(t.nmId) === v.nmId);
+            const advice = plan.adviceFor(v.nmId);
+            const options = plan.renderOptions(v.nmId);
+            const headline = advice?.headline || (v.headline.trim() !== VERDICT_LABEL[v.verdict].trim() ? v.headline : "");
             return (
-              <li key={v.nmId} className="space-y-3 px-5 py-4 sm:px-6">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-[14px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-                      {v.title}
-                    </div>
-                    <div className="text-[12px]" style={{ ...hubSans, color: hub.textMuted }}>
-                      {v.nmId}
+              <li key={v.nmId} className="hub-rise rounded-[24px] border p-5 sm:p-6" style={{ animationDelay: `${Math.min(idx, 8) * 45}ms`, borderColor: `color-mix(in srgb, ${color} 30%, white)`, background: `linear-gradient(160deg, color-mix(in srgb, ${color} 8%, white), ${hub.canvas} 65%)` }}>
+                <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-3">
+                  <div className="flex min-w-0 items-center gap-4">
+                    <Thumb src={photoByNm.get(v.nmId)} className="h-[96px] w-[72px]" />
+                    <div className="min-w-0">
+                      <p className="line-clamp-2 text-[20px] font-semibold leading-[1.3]" style={{ ...hubSans, color: hub.text }}>
+                        {v.title}
+                      </p>
+                      <p className="mt-1 text-[14px]" style={{ ...hubSans, color: hub.textSubtle }}>
+                        № {v.nmId}
+                      </p>
                     </div>
                   </div>
-                  <span className="rounded-md px-2.5 py-1 text-[12px] font-semibold" style={{ ...hubSans, backgroundColor: tone.bg, color: tone.fg }}>
-                    {v.headline}
+                  <span className="inline-flex shrink-0 items-center gap-2 rounded-[12px] border px-3.5 py-2 text-[14.5px] font-semibold" style={{ ...hubSans, color, backgroundColor: `color-mix(in srgb, ${color} 13%, white)`, borderColor: `color-mix(in srgb, ${color} 32%, white)` }}>
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} aria-hidden />
+                    {VERDICT_LABEL[v.verdict]}
                   </span>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+
+                {headline ? (
+                  <p className="mt-5 text-[20px] font-semibold leading-[1.35] tracking-[-0.01em]" style={{ ...hubSans, color: hub.text }}>
+                    {headline}
+                  </p>
+                ) : null}
+                {advice?.summary ? (
+                  <p className="mt-2 max-w-[80ch] text-[16px] leading-[1.55]" style={{ ...hubSans, color: hub.textMuted }}>
+                    {advice.summary}
+                  </p>
+                ) : null}
+
+                <div className="mt-6 grid gap-px overflow-hidden rounded-[20px] sm:grid-cols-2 lg:grid-cols-5" style={{ backgroundColor: "rgba(1, 20, 8, 0.1)", boxShadow: "0 0 0 1px rgba(1, 20, 8, 0.1)" }}>
                   <PillarCell label="Трафик" pillar={v.traffic} />
                   <PillarCell label="Конверсия" pillar={v.conversion} />
                   <PillarCell label="Выкуп" pillar={v.buyout} />
                   <PillarCell label="Контент" pillar={v.content} />
                   <PillarCell label="Рейтинг" pillar={v.rating} />
                 </div>
-                {vision.results[v.nmId] ? (
-                  <div className="space-y-2">
-                    <VisionBadge result={vision.results[v.nmId]!} />
-                    <VisionDetails
-                      result={vision.results[v.nmId]!}
-                      onRecheck={(() => { const target = targets.find((t) => String(t.nmId) === v.nmId); return target ? (force: boolean) => vision.recheck(target, force) : undefined; })()}
-                      sales={{ convertsBetter: v.conversion.status === "good", convertsWorse: v.conversion.status === "bad", orders: v.orders }}
-                    />
+
+                {vr || (tr && tt) ? (
+                  <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                    {vr ? (
+                      <VisionDetails
+                        result={vr}
+                        onRecheck={(() => { const target = targets.find((t) => String(t.nmId) === v.nmId); return target ? (force: boolean) => vision.recheck(target, force) : undefined; })()}
+                        sales={{ convertsBetter: v.conversion.status === "good", convertsWorse: v.conversion.status === "bad", orders: v.orders }}
+                      />
+                    ) : null}
+                    {tr && tt ? <TextDetails result={tr} outdated={!isTextCurrent(tr, tt)} /> : null}
                   </div>
                 ) : null}
-                {(() => {
-                  const tr = text.results[v.nmId];
-                  const tt = textTargets.find((t) => String(t.nmId) === v.nmId);
-                  return tr && tt ? (
-                    <div className="space-y-2">
-                      <TextBadge result={tr} outdated={!isTextCurrent(tr, tt)} />
-                      <TextDetails result={tr} />
-                    </div>
-                  ) : null;
-                })()}
-                {(() => {
-                  const vr = vision.results[v.nmId];
-                  const tr = text.results[v.nmId];
-                  const photoWeak = vr != null && (vr.band === "weak" || vr.band === "average") && v.conversion.status !== "good";
-                  const textWeak = tr != null && (tr.band === "weak" || tr.band === "average");
-                  if (!photoWeak && !textWeak) return null;
-                  return (
-                    <div className="rounded-lg border px-3 py-2.5" style={{ borderColor: hub.border }}>
-                      <p className="text-[13px] leading-5" style={{ ...hubSans, color: hub.text }}>
-                        <strong>Подачу карточки стоит улучшить.</strong>{" "}
-                        <span style={{ color: hub.textMuted }}>
-                          {photoWeak && textWeak ? "И фото, и текст ниже уровня, который помогает продавать." : photoWeak ? "Фото ниже уровня, который помогает продавать." : "Текст ниже уровня, который помогает находиться в поиске и убеждать."} Это один из факторов продаж, а не гарантия роста.
-                        </span>
+
+                {options ?? (
+                  v.verdict !== "works" && v.verdict !== "no_data" ? (
+                    <div className="mt-6 flex items-start gap-3 border-t pt-5" style={{ borderColor: "rgba(1, 20, 8, 0.1)" }}>
+                      <span className="mt-[1px] flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(185, 255, 75, 0.55)" }} aria-hidden>
+                        <Lightbulb className="h-[18px] w-[18px]" style={{ color: hub.text }} />
+                      </span>
+                      <p className="text-[16.5px] leading-[1.5]" style={{ ...hubSans, color: hub.text }}>
+                        {v.action}
                       </p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {photoWeak ? (
-                          <button type="button" onClick={() => openFlow(v.nmId, "/studio/visual")} className="inline-flex min-h-[34px] items-center rounded-[4px] border bg-white px-3 text-[13px] font-semibold" style={{ borderColor: hub.ink, color: hub.ink }}>
-                            Создать новую карточку в Потоке
-                          </button>
-                        ) : null}
-                        {textWeak ? (
-                          <button type="button" onClick={() => openFlow(v.nmId, "/studio/descriptions", { missingKeywords: tr?.missingKeywords.map((k) => k.word), notes: tr?.defects.map((x) => x.what) })} className="inline-flex min-h-[34px] items-center rounded-[4px] border bg-white px-3 text-[13px] font-semibold" style={{ borderColor: hub.ink, color: hub.ink }}>
-                            Собрать SEO-описание
-                          </button>
-                        ) : null}
-                      </div>
                     </div>
-                  );
-                })()}
-                {v.verdict !== "works" && v.verdict !== "no_data" ? (
-                  <p className="rounded-lg px-3 py-2 text-[13px] leading-5" style={{ ...hubSans, backgroundColor: hub.surfaceMuted, color: hub.text }}>
-                    <strong>Что сделать:</strong> {v.action}
-                  </p>
-                ) : null}
+                  ) : null
+                )}
               </li>
             );
           })}
         </ul>
-      </HubPanel>
+        {hiddenCount > 0 ? (
+          <div className="mt-4 flex justify-center">
+            <HubButton size="sm" variant="secondary" onClick={paged.more}>
+              Показать ещё {Math.min(paged.step, hiddenCount)} из {hiddenCount}
+            </HubButton>
+          </div>
+        ) : null}
+      </Card>
     </div>
   );
 }

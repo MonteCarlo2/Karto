@@ -22,6 +22,7 @@ export function advisorProductsFromSnapshot(snapshot: SellerCatalogSnapshot): Ad
     marginPercent: fact.marginPercent,
     stock: fact.stockFbo != null || fact.stockFbs != null ? (fact.stockFbo ?? 0) + (fact.stockFbs ?? 0) : null,
     orders28: fact.orders,
+    coverDays: fact.coverDays ?? null,
   }));
 }
 

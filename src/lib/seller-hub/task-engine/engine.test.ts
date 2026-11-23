@@ -236,7 +236,7 @@ describe("task rules", () => {
     assert.equal(task?.type, "TASK_SALES_DROP");
     assert.ok((task?.evidence.change_percent as number) <= -40);
     assert.match(String(task?.evidence.probable_cause ?? ""), /цен/);
-    assert.match(task?.description ?? "", /Вероятная причина/);
+    assert.match(task?.description ?? "", /Возможная причина/);
     assert.doesNotMatch(task?.recommendation ?? "", /Причина падения — цена/);
   });
 

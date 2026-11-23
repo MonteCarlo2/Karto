@@ -4,10 +4,12 @@ import { Plug, RefreshCw } from "lucide-react";
 import type { SellerHubAreaId } from "@/lib/seller-hub/nav";
 import type { SellerCatalogSnapshot, SellerHubConnection } from "@/lib/seller-hub/types";
 import { HubButton, HubEmptyState, HubPanel } from "./hub-ui";
-import { HubHealthBoard } from "./hub-health";
+import type { SellerProductEvent } from "@/lib/seller-hub/event-engine/types";
+import { HubOverviewBoard } from "./hub-overview-board";
 
 export function HubOverview({
   snapshot,
+  events,
   connection,
   syncing,
   onSync,
@@ -15,6 +17,7 @@ export function HubOverview({
   onOpenReviews,
 }: {
   snapshot?: SellerCatalogSnapshot;
+  events?: SellerProductEvent[];
   connection: SellerHubConnection;
   syncing: boolean;
   onSync: () => void;
@@ -63,6 +66,6 @@ export function HubOverview({
   }
 
   return (
-    <HubHealthBoard snapshot={snapshot} onNavigate={onNavigate} onOpenReviews={onOpenReviews} />
+    <HubOverviewBoard snapshot={snapshot} events={events} onNavigate={onNavigate} onOpenReviews={onOpenReviews} />
   );
 }

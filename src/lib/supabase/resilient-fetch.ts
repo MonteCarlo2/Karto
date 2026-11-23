@@ -4,15 +4,25 @@
  */
 import { Agent, fetch as undiciFetch } from "undici";
 
-const CONNECT_TIMEOUT_MS = 30_000;
+/**
+ * Соединение с Supabase иногда «зависает» на рукопожатии (примерно каждое шестое, по замеру 06.11.2026): раньше мы ждали такую попытку 30 с.
+ * Теперь первые попытки короткие (4 и 6 с), а настойчивые и долгие остаются в конце: на медленном хостинге запрос всё равно дойдёт.
+ * Таймаут соединения срабатывает до отправки запроса, поэтому повтор безопасен даже для записи.
+ */
+const CONNECT_TIMEOUTS_MS = [4_000, 6_000, 12_000, 30_000];
 const REQUEST_TIMEOUT_MS = 45_000;
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = CONNECT_TIMEOUTS_MS.length;
+const RETRY_PAUSE_MS = 300;
 
-const agent = new Agent({
-  connect: {
-    timeout: CONNECT_TIMEOUT_MS,
-  },
-});
+/** Соединения живут долго: каждое новое рукопожатие с удалённой базой стоит около секунды. */
+const agents = CONNECT_TIMEOUTS_MS.map(
+  (timeout) =>
+    new Agent({
+      connect: { timeout },
+      keepAliveTimeout: 60_000,
+      keepAliveMaxTimeout: 120_000,
+    }),
+);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -48,11 +58,11 @@ export async function resilientFetch(
       const res = await undiciFetch(input as string, {
         ...init,
         signal: controller.signal,
-        dispatcher: agent,
+        dispatcher: agents[attempt] ?? agents[agents.length - 1]!,
       } as Parameters<typeof undiciFetch>[1]);
 
       if (res.status >= 502 && res.status <= 504 && attempt < MAX_ATTEMPTS - 1) {
-        await sleep(1200 * (attempt + 1));
+        await sleep(RETRY_PAUSE_MS * (attempt + 1));
         continue;
       }
 
@@ -64,7 +74,7 @@ export async function resilientFetch(
           `[resilient-fetch] retry ${attempt + 1}/${MAX_ATTEMPTS}:`,
           error instanceof Error ? error.message : error
         );
-        await sleep(1200 * (attempt + 1));
+        await sleep(RETRY_PAUSE_MS * (attempt + 1));
         continue;
       }
       throw error;

@@ -20,7 +20,7 @@ import { getNormalizedOpenRouterApiKey } from "@/lib/openrouter-headers";
 
 import { shouldAutoSendInboxItem } from "./inbox-star-rules";
 
-import { consumeAutoReplyCredits } from "@/lib/auto-replies-balance";
+import { consumeAutoReplyCredits, hasAutoReplyCredit } from "@/lib/auto-replies-balance";
 
 import {
 
@@ -277,9 +277,7 @@ export async function enrichPendingInboxDrafts(params: {
 
     if (params.userId && params.supabase && hasOpenRouter && !params.skipAutoStarItems && !usesTemplateOnly) {
 
-      const charge = await consumeAutoReplyCredits(params.supabase, params.userId, 1);
-
-      if (!charge.ok) break;
+      if (!(await hasAutoReplyCredit(params.supabase, params.userId, 1))) break;
 
     }
 
@@ -296,6 +294,14 @@ export async function enrichPendingInboxDrafts(params: {
       next[index] = { ...item, replyDraft: result.reply, draftGeneratedByAi: true };
 
       enriched += 1;
+
+      if (params.userId && params.supabase && hasOpenRouter && !params.skipAutoStarItems && !usesTemplateOnly) {
+
+        const charge = await consumeAutoReplyCredits(params.supabase, params.userId, 1);
+
+        if (!charge.ok) break;
+
+      }
 
     } catch (e) {
 

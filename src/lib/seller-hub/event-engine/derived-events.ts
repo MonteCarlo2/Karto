@@ -1,3 +1,5 @@
+import { ACTION_LABEL } from "@/lib/seller-hub/action-labels";
+import { friendlyWbError } from "@/lib/seller-hub/friendly-errors";
 import { EVENT_GROUP, type SellerEventKind, type SellerProductEvent } from "./types";
 
 /**
@@ -29,7 +31,9 @@ export function agentActionEvents(rows: AgentActionRow[]): SellerProductEvent[] 
     if (r.result === "skipped") continue;
     const who = r.initiator === "agent" ? `Агент (${AGENT_LABEL[r.agent] ?? r.agent})` : "Действие вручную";
     const verb = r.result === "error" ? "не выполнено" : r.result === "suggested" ? "предложение" : "выполнено";
-    const ev = make("agent_action", r.result === "error" ? "important" : "info", `${who}: ${verb}`, (r.message || r.action || "").slice(0, 300), r.created_at, r.id);
+    const label = ACTION_LABEL[r.action];
+    const detail = r.result === "error" ? friendlyWbError(r.message) : (r.message || label || r.action || "").slice(0, 300);
+    const ev = make("agent_action", r.result === "error" ? "important" : "info", label ? `${label}: ${verb}` : `${who}: ${verb}`, label ? `${detail}\n${who}` : detail, r.created_at, r.id);
     out.push({ ...ev, nmId: r.nm_id == null ? null : String(r.nm_id) });
   }
   return out;

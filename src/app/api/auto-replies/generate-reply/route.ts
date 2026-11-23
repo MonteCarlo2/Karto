@@ -4,7 +4,7 @@ import type { AutoRepliesMarketplaceSettings, AutoRepliesShopSettings, StarKey }
 import type { GenerateReplyRequest } from "@/lib/auto-replies/reply-generation";
 import { generateAutoReply } from "@/lib/auto-replies/generate-auto-reply";
 import { requireAutoRepliesUser } from "@/lib/auto-replies/api-auth";
-import { consumeAutoReplyCredits } from "@/lib/auto-replies-balance";
+import { consumeAutoReplyCredits, hasAutoReplyCredit, AUTO_REPLY_INSUFFICIENT_BALANCE_MSG } from "@/lib/auto-replies-balance";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -115,28 +115,23 @@ export async function POST(request: NextRequest) {
     }
 
     const isRegeneration = Boolean(input.previousReply?.trim());
-    if (!isRegeneration) {
-      const supabase = createServerClient();
-      const charge = await consumeAutoReplyCredits(supabase, auth.user.id, 1);
-      if (!charge.ok) {
-        return NextResponse.json(
-          {
-            error: charge.error,
-            code: charge.code ?? "insufficient_balance",
-          },
-          {
-            status:
-              charge.code === "insufficient_balance"
-                ? 402
-                : charge.code === "rpc_error"
-                  ? 503
-                  : 402,
-          }
-        );
-      }
+    const supabase = createServerClient();
+    // Остаток проверяем до генерации, а списываем только после успешного ответа: сбой ИИ не сжигает ответы.
+    if (!isRegeneration && !(await hasAutoReplyCredit(supabase, auth.user.id, 1))) {
+      return NextResponse.json({ error: AUTO_REPLY_INSUFFICIENT_BALANCE_MSG, code: "insufficient_balance" }, { status: 402 });
     }
 
     const result = await generateAutoReply(input);
+
+    if (!isRegeneration) {
+      const charge = await consumeAutoReplyCredits(supabase, auth.user.id, 1);
+      if (!charge.ok) {
+        return NextResponse.json(
+          { error: charge.error, code: charge.code ?? "insufficient_balance" },
+          { status: charge.code === "rpc_error" ? 503 : 402 }
+        );
+      }
+    }
 
     return NextResponse.json({
       reply: result.reply,
