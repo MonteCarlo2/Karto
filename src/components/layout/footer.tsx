@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import { Logo } from "@/components/ui/logo"
 import { ContactQuestionModal } from "@/components/ui/contact-question-modal"
 import { createBrowserClient } from "@/lib/supabase/client"
+import { isAgentShellPath } from "@/lib/agent-shell-paths"
 
 export function Footer() {
   const currentYear = 2026
@@ -16,7 +17,7 @@ export function Footer() {
     pathname === "/studio/free" ||
     pathname.startsWith("/studio/auto-replies") ||
     pathname.startsWith("/studio/unit-economics") ||
-    pathname.startsWith("/studio/seller-hub");
+    isAgentShellPath(pathname);
 
   useEffect(() => {
     let mounted = true

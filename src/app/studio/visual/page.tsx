@@ -36,7 +36,6 @@ import {
   ZoomIn,
   Hand,
   Lock,
-  Wrench,
   Film,
   Play,
   Video,
@@ -60,7 +59,6 @@ import {
   writeVisualPageStateToLs,
   type PersistedVisualFormSettings,
 } from "@/lib/flow/flow-persistence-keys";
-import { BugReportModal } from "@/components/ui/bug-report-modal";
 import { useToast } from "@/components/ui/toast";
 import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
 import {
@@ -993,7 +991,6 @@ export default function VisualPage() {
   
   // Пользователь для баг-репортов
   const [user, setUser] = useState<any>(null);
-  const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   
   // Данные из предыдущих этапов
   const [productName, setProductName] = useState("");
@@ -3057,20 +3054,6 @@ export default function VisualPage() {
           </AnimatePresence>
         </div>
         
-        {/* Кнопка "Сообщить о проблеме" - над кнопкой "Выбрать" */}
-        {!isGenerating && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
-            onClick={() => setIsBugReportOpen(true)}
-            className="fixed bottom-24 right-8 z-50 p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center justify-center group border border-gray-300"
-            title="Сообщить о проблеме"
-          >
-            <Wrench className="w-4 h-4 group-hover:rotate-12 transition-transform" />
-          </motion.button>
-        )}
-
         {/* Кнопка "Выбрать" - внизу справа, всегда видна на этапе ВИЗУАЛ */}
         {!isGenerating && (
           <motion.div
@@ -4296,13 +4279,6 @@ export default function VisualPage() {
           </>
         )}
       </AnimatePresence>
-
-      {/* Модальное окно отчета о неполадке */}
-      <BugReportModal
-        isOpen={isBugReportOpen}
-        onClose={() => setIsBugReportOpen(false)}
-        user={user}
-      />
     </div>
   );
 }

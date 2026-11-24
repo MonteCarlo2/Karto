@@ -43,10 +43,13 @@ function LoginContent() {
     if (!p.startsWith("/") || p.startsWith("//")) return "/";
     return p;
   }, [searchParams]);
+  // Обычный вход (и уже вошедший на странице входа) ведёт сразу в Seller Hub, а не на витрину.
+  // Регистрация и вход через Яндекс остаются прежними: им нужна главная для вводного тура.
+  const loginDestination = redirectAfterAuth === "/" ? "/studio/seller-hub" : redirectAfterAuth;
   const { showNotification, NotificationComponent } = useNotification();
   const [vantaEffect, setVantaEffect] = useState<any>(null);
   const vantaRef = useRef<HTMLDivElement>(null);
-  const [isLogin, setIsLogin] = useState(true);
+  const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "register");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -243,7 +246,7 @@ function LoginContent() {
       const supabase = createBrowserClient();
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
-          router.push(redirectAfterAuth);
+          router.push(loginDestination);
         }
       }).catch((error) => {
         console.warn("Ошибка проверки сессии:", error);
@@ -251,7 +254,7 @@ function LoginContent() {
     } catch (error) {
       console.warn("Supabase не настроен:", error);
     }
-  }, [router, redirectAfterAuth]);
+  }, [router, loginDestination]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -334,7 +337,7 @@ function LoginContent() {
         }
 
         if (data.user) {
-          router.push(redirectAfterAuth);
+          router.push(loginDestination);
         }
         return;
       }

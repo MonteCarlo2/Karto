@@ -69,3 +69,28 @@ dummy.ipynb
 public/temp
 public/Video_Vapor_Removal_HVNV8Pd.mp4
 public/fed43aba167d0c1b1398a0b84feb5295_1773418511_8b66ag6q.mp4
+
+# ---- Ускорение сборки (задача 0.2): всё ниже не читается ни сборкой, ни рантаймом ----
+# Картинки и видео в КОРНЕ репозитория (черновики, ~27 МБ). Шаблоны без "/" действуют только на корень контекста,
+# папка public/ их не затрагивается (проверено: код ссылается только на public/*, а logo-flow.png берётся из public/).
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.mp4
+# Корневые SQL-схемы (применяются вручную в Supabase) и одноразовые скрипты копирования картинок
+*.sql
+copy-*.js
+copy-*.ps1
+# Документы, материалы дизайна и SEO-черновики
+docs
+design
+seo-workspace
+# Файлы из public/, на которые нет ни одной ссылки в src/ (проверено поиском по имени файла)
+public/hero-background.jpg
+public/hero-background.png
+public/intro-symbol.jpg
+public/demo/free-gen-ui.png
+public/demo/free-gen-ui-v2.png
+public/demo/screen-etap-2.png
+public/output

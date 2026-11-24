@@ -1,5 +1,6 @@
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
+  PRODUCT_TOUR_ENABLED,
   PRODUCT_TOUR_COMPLETED_STORAGE_KEY,
   PRODUCT_TOUR_COMPLETED_USER_META_KEY,
   PRODUCT_TOUR_PENDING_COOKIE,
@@ -133,6 +134,7 @@ function captureProductTourPendingFromQuery(search: string): boolean {
 }
 
 export function shouldShowProductTour(search: string): boolean {
+  if (!PRODUCT_TOUR_ENABLED) return false;
   if (shouldForceProductTour(search)) return true;
   if (readCompleted()) {
     return shouldResumeProductTour(search) && isTourRunning();
@@ -146,6 +148,7 @@ export function shouldShowProductTour(search: string): boolean {
 }
 
 export function isProductTourLikelyToRun(): boolean {
+  if (!PRODUCT_TOUR_ENABLED) return false;
   if (typeof window === "undefined") return false;
   if (document.documentElement.classList.contains("karto-tour-active")) return true;
   const raw = window.location.search;

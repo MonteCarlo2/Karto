@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "Seller Hub — Мастерская KARTO",
+  title: "Агент — KARTO",
   description: "Единый каталог SKU и API-хаб для Wildberries, Ozon и Яндекс Маркета.",
 };
 

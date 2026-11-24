@@ -1771,7 +1771,7 @@ function buildReadout(args: {
                 ? `${args.reviewRatingAvg.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}★`
                 : "—"
             }, ${args.reviewCount180.toLocaleString("ru-RU")} шт.`
-          : "Отзывы Seller Hub ещё не прочитаны.",
+          : "Отзывы Агент ещё не прочитаны.",
         args.unansweredReviews != null
           ? `Без ответа: ${args.unansweredReviews.toLocaleString("ru-RU")} отзывов${
               args.unansweredNegativeReviews != null && args.unansweredNegativeReviews > 0

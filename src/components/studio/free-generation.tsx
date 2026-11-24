@@ -44,7 +44,6 @@ import {
   Upload,
   ChevronDown,
   Plus,
-  Wrench,
   Copy,
   Camera,
   Layers,
@@ -62,7 +61,6 @@ import {
 import { useProfileUpdateBadge } from "@/hooks/use-profile-update-badge";
 import { cn } from "@/lib/utils";
 import { ProfileAvatarNewTag, ProfileMenuUpdateCue } from "@/components/layout/profile-update-cue";
-import { BugReportModal } from "@/components/ui/bug-report-modal";
 import {
   VideoGenerationGuideModal,
   VideoGenerationGuideTrigger,
@@ -1063,7 +1061,6 @@ export default function FreeGeneration() {
   /** «Потолок» капсулы: сумма начисленных покупками кредитов; для высоты fill */
   const [creditCap, setCreditCap] = useState<number>(0);
   const [hasLoadedFeed, setHasLoadedFeed] = useState(false);
-  const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const [isVideoGuideOpen, setIsVideoGuideOpen] = useState(false);
   const [isPhotoGuideOpen, setIsPhotoGuideOpen] = useState(false);
   const [shouldHighlightVideoGuide, setShouldHighlightVideoGuide] = useState(false);
@@ -4644,25 +4641,6 @@ export default function FreeGeneration() {
         )}
       </AnimatePresence>
 
-
-      {/* Кнопка "Сообщить о проблеме" - фиксированная в правом нижнем углу, маленькая и неприметная */}
-      <motion.button
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
-        onClick={() => setIsBugReportOpen(true)}
-        className="fixed bottom-6 right-6 z-40 p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center justify-center group border border-gray-300"
-        title="Сообщить о проблеме"
-      >
-        <Wrench className="w-4 h-4 group-hover:rotate-12 transition-transform" />
-      </motion.button>
-
-      {/* Модальное окно отчета о неполадке */}
-      <BugReportModal
-        isOpen={isBugReportOpen}
-        onClose={() => setIsBugReportOpen(false)}
-        user={user}
-      />
 
       <VideoGenerationGuideModal
         isOpen={isVideoGuideOpen}

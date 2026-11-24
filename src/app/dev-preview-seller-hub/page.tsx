@@ -331,7 +331,7 @@ export default function DevPreviewSellerHub() {
   return (
     <div data-hub-root className="fixed inset-0 z-[100] flex overflow-hidden" style={{ backgroundColor: hub.canvas, color: hub.text, ...hubSans }}>
       <div className="hidden h-full shrink-0 lg:block" style={{ width: 88 }}>
-        <HubSidebar collapsed onToggleCollapsed={() => undefined} area="tasks" onAreaChange={() => undefined} />
+        <HubSidebar collapsed onToggleCollapsed={() => undefined} onContact={() => undefined} area="tasks" onAreaChange={() => undefined} />
       </div>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-4 sm:px-6 lg:px-5">

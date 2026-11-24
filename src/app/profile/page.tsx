@@ -36,6 +36,8 @@ import {
   Trash2,
 } from "lucide-react";
 import Image from "next/image";
+import { UserNotificationBell } from "@/components/layout/user-notification-bell";
+import { AgentShell } from "@/components/agent/agent-shell";
 import { GalleryProxiedImg } from "@/components/media/gallery-proxied-img";
 import { useNotification } from "@/components/ui/notification";
 import type { SubscriptionState } from "@/lib/subscription";
@@ -174,8 +176,6 @@ function ProfileContent() {
 
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectsLoading, setProjectsLoading] = useState(false);
   
   // Бренд
   const [brandData, setBrandData] = useState<any>(null);
@@ -415,18 +415,6 @@ function ProfileContent() {
     acknowledgeProfileUpdate();
   }, [user?.id]);
 
-  // Загружаем проекты только после того, как пользователь установлен
-  useEffect(() => {
-    // Проверяем, что мы на странице профиля и пользователь загружен
-    if (user && !loading && typeof window !== 'undefined' && window.location.pathname === '/profile' && !projectsLoading) {
-      // Добавляем небольшую задержку, чтобы дать время cookies установиться
-      const timer = setTimeout(() => {
-        loadProjects();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [user, loading]);
-
   // Автоматическое форматирование описания бренда
   useEffect(() => {
     if (!user?.id || !brandData || !brandData.draft_json || !brandData.wizard_completed_at) return;
@@ -473,66 +461,6 @@ function ProfileContent() {
       });
     }
   }, [brandData, isFormattingDescription, user]);
-
-  const loadProjects = async () => {
-    // Дополнительная проверка перед началом загрузки
-    if (!user || loading) {
-      return;
-    }
-
-    // Проверяем, что мы на странице профиля
-    if (typeof window !== 'undefined' && window.location.pathname !== '/profile') {
-      return;
-    }
-
-    setProjectsLoading(true);
-    try {
-      // Проверяем, что пользователь авторизован перед запросом
-      const supabase = createBrowserClient();
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !session?.user || !session.access_token) {
-        setProjectsLoading(false);
-        return;
-      }
-      
-      // Передаем access_token через заголовок - более надежный способ
-      const response = await fetch("/api/profile/get-projects", {
-        method: "GET",
-        credentials: "include", // Передаем cookies (на всякий случай)
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${session.access_token}`, // Передаем токен в заголовке
-        },
-      });
-      
-      if (!response.ok) {
-        // Тихая обработка ошибок - не показываем уведомления для 401
-        if (response.status === 401) {
-          setProjectsLoading(false);
-          return;
-        }
-        
-        // Только для других ошибок показываем уведомление
-        const errorData = await response.json().catch(() => ({ error: "Неизвестная ошибка" }));
-        showNotification(errorData.error || "Ошибка загрузки проектов", "error");
-        setProjectsLoading(false);
-        return;
-      }
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        // Показываем все проекты (и завершенные, и незавершенные)
-        setProjects(data.projects || []);
-      }
-    } catch (error: any) {
-      // Тихая обработка ошибок - не показываем уведомления для сетевых ошибок
-      // (возможно, Supabase недоступен из-за технических проблем)
-    } finally {
-      setProjectsLoading(false);
-    }
-  };
 
   const handleUpdateName = async () => {
     const trimmedName = newName.trim();
@@ -672,15 +600,6 @@ function ProfileContent() {
         setUpdating(false);
       }
     }
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("ru-RU", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
   };
 
   const brandDraft = brandData?.draft_json as Record<string, unknown> | undefined;
@@ -823,279 +742,16 @@ function ProfileContent() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f3ef] pb-20" suppressHydrationWarning>
+    <AgentShell>
       {NotificationComponent}
-      
-      {/* Кнопка "Назад" */}
-      <div className="container mx-auto px-6 pt-6" suppressHydrationWarning>
-        <button
-          onClick={() => router.push("/")}
-          className="flex items-center gap-2 text-gray-700 hover:text-gray-900 transition-colors mb-6"
-          suppressHydrationWarning
-        >
-          <ArrowLeft className="w-5 h-5" />
-          <span>Назад</span>
-        </button>
-      </div>
-
-      <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 max-w-[1800px] pt-8 md:pt-12" suppressHydrationWarning>
-        {/* Приветствие - по центру, большая надпись */}
-        <div className="text-center mb-8 mt-4" suppressHydrationWarning>
-          <h1
-            className="text-5xl md:text-6xl font-bold text-gray-900 mb-2"
-            style={{ 
-              fontFamily: "var(--font-great-vibes), cursive", 
-              textShadow: "0 2px 8px rgba(0,0,0,0.15), 0 0 2px rgba(0,0,0,0.1)" 
-            }}
-            suppressHydrationWarning
-          >
-            Добро пожаловать,
-          </h1>
-          <p 
-            className="text-6xl md:text-7xl font-semibold text-gray-900"
-            style={{ 
-              fontFamily: "var(--font-great-vibes), cursive",
-              textShadow: "0 2px 8px rgba(0,0,0,0.15), 0 0 2px rgba(0,0,0,0.1)"
-            }}
-            suppressHydrationWarning
-          >
-            {userName}
-          </p>
+      <div className="mx-auto w-full max-w-[1400px] px-4 pb-20 pt-8 sm:px-6 lg:px-8 lg:pt-10" suppressHydrationWarning>
+        <div className="mb-8" suppressHydrationWarning>
+          <h1 className="text-3xl font-semibold text-[#0B1F14]">Аккаунт</h1>
+          <p className="mt-1 text-[15px] text-[#52584F]">{userName}</p>
         </div>
 
         {/* Основной контент: три колонки */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start" suppressHydrationWarning>
-          {/* Левая колонка: Мои потоки (Проекты) */}
-          <div className="lg:col-span-1" suppressHydrationWarning>
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="bg-white/90 backdrop-blur-xl rounded-2xl p-6 shadow-xl h-fit ring-1 ring-black/[0.03]"
-              suppressHydrationWarning
-            >
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200">
-                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                  <Package className="w-5 h-5 text-[#1F4E3D]" />
-                  Мои потоки
-                </h3>
-                <span className="text-xs font-semibold text-[#1F4E3D] bg-green-50 px-2.5 py-1 rounded-full border border-green-200">
-                  {projects.length}
-                </span>
-              </div>
-
-              {projectsLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="w-6 h-6 border-3 border-[#1F4E3D] border-t-transparent rounded-full animate-spin" />
-                </div>
-              ) : projects.length === 0 ? (
-                <div className="text-center py-10 px-4">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-[#1F4E3D] to-[#2E5A43] flex items-center justify-center">
-                    <Package className="w-8 h-8 text-white" />
-                  </div>
-                  <p className="text-sm text-gray-600 mb-5 font-medium">У вас пока нет проектов</p>
-                  <button
-                    onClick={() => router.push("/studio")}
-                    className="px-6 py-3 bg-[#1F4E3D] text-white rounded-xl hover:bg-[#2E5A43] transition-all shadow-lg hover:shadow-xl text-sm font-semibold"
-                  >
-                    Создать первый проект
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1 custom-scrollbar">
-                  {(() => {
-                    // Сортируем проекты: незавершенные сверху, затем завершенные
-                    const sortedProjects = [...projects].sort((a, b) => {
-                      // Незавершенные идут первыми
-                      if (!a.isCompleted && b.isCompleted) return -1;
-                      if (a.isCompleted && !b.isCompleted) return 1;
-                      // Внутри каждой группы сортируем по дате обновления (новые сверху)
-                      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-                    });
-                    
-                    if (sortedProjects.length === 0) {
-                      return (
-                        <div className="text-center py-10 px-4">
-                          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-[#1F4E3D] to-[#2E5A43] flex items-center justify-center">
-                            <Package className="w-8 h-8 text-white" />
-                          </div>
-                          <p className="text-sm text-gray-600 mb-5 font-medium">У вас пока нет проектов</p>
-                          <button
-                            onClick={() => router.push("/studio")}
-                            className="px-6 py-3 bg-[#1F4E3D] text-white rounded-xl hover:bg-[#2E5A43] transition-all shadow-lg hover:shadow-xl text-sm font-semibold"
-                          >
-                            Создать первый проект
-                          </button>
-                        </div>
-                      );
-                    }
-                    
-                    return sortedProjects.map((project) => {
-                      // Определяем следующий этап для незавершенных потоков
-                      const getNextStageRoute = (nextStage: string | null): string => {
-                        switch (nextStage) {
-                          case "understanding":
-                            return "/studio/understanding";
-                          case "description":
-                            return "/studio/description";
-                          case "visual":
-                            return "/studio/visual";
-                          case "price":
-                            return "/studio/price";
-                          case "results":
-                            return "/studio/results";
-                          default:
-                            return "/studio/understanding";
-                        }
-                      };
-                      
-                      const handleProjectClick = () => {
-                        // Сохраняем session_id в localStorage
-                        localStorage.setItem("karto_session_id", project.id);
-                        
-                        if (project.isCompleted) {
-                          // Завершенный поток - переходим к результатам
-                          router.push("/studio/results");
-                        } else {
-                          // Незавершенный поток - продолжаем с нужного этапа
-                          const nextStage = project.progress?.nextStage || "understanding";
-                          router.push(getNextStageRoute(nextStage));
-                        }
-                      };
-                      
-                      // Определяем текст статуса для незавершенных потоков
-                      const getStatusText = (): string => {
-                        if (project.isCompleted) return "";
-                        const progress = project.progress;
-                        if (!progress) return "Начать";
-                        
-                        if (!progress.hasUnderstanding) return "Начать";
-                        if (!progress.hasDescription) return "Продолжить: Описание";
-                        if (!progress.hasVisual) return "Продолжить: Визуал";
-                        if (!progress.hasPrice) return "Продолжить: Цена";
-                        return "Продолжить";
-                      };
-                      
-                      return (
-                        <motion.div
-                          key={project.id}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="bg-white rounded-lg p-2.5 border border-gray-200 hover:border-[#1F4E3D] hover:shadow-md transition-all cursor-pointer group flex gap-2.5 items-start"
-                          onClick={handleProjectClick}
-                        >
-                          {/* Компактная квадратная миниатюра */}
-                          {project.photoUrl ? (
-                            <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 shadow-sm relative flex-shrink-0">
-                              <GalleryProxiedImg
-                                remoteUrl={project.photoUrl}
-                                alt={project.productName}
-                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
-                                previewMaxWidth={128}
-                              />
-                              {/* Индикатор завершенности - маленький */}
-                              {project.isCompleted && (
-                                <div className="absolute top-1 right-1 w-4 h-4 bg-[#1F4E3D] rounded-full flex items-center justify-center shadow-sm">
-                                  <Check className="w-2.5 h-2.5 text-white" />
-                                </div>
-                              )}
-                              {/* Индикатор незавершенности */}
-                              {!project.isCompleted && (
-                                <div className="absolute top-1 right-1 w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center shadow-sm">
-                                  <div className="w-2 h-2 bg-white rounded-full" />
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="w-16 h-16 rounded-lg bg-gray-100 shadow-sm relative flex-shrink-0 flex items-center justify-center">
-                              <Package className="w-6 h-6 text-gray-400" />
-                              {!project.isCompleted && (
-                                <div className="absolute top-1 right-1 w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center shadow-sm">
-                                  <div className="w-2 h-2 bg-white rounded-full" />
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          
-                          {/* Информация о проекте */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <h4 className="text-sm font-semibold text-gray-900 line-clamp-2 group-hover:text-[#1F4E3D] transition-colors leading-tight flex-1">
-                                {project.productName}
-                              </h4>
-                              {!project.isCompleted && (
-                                <span className="text-xs font-semibold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200 flex-shrink-0 whitespace-nowrap">
-                                  НЕ ЗАВЕРШЁН
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-2">
-                              <Calendar className="w-3 h-3 flex-shrink-0" />
-                              <span className="truncate">{formatDate(project.createdAt)}</span>
-                            </div>
-                            
-                            {/* Индикатор прогресса по этапам */}
-                            {!project.isCompleted && project.progress && (
-                              <div className="flex items-center gap-1.5 mb-1">
-                                {/* Этап 1: Понимание */}
-                                <div className="flex items-center gap-0.5" title="Понимание">
-                                  {project.progress.hasUnderstanding ? (
-                                    <Check className="w-3 h-3 text-green-600" />
-                                  ) : (
-                                    <Circle className="w-3 h-3 text-gray-300" />
-                                  )}
-                                </div>
-                                
-                                {/* Этап 2: Описание */}
-                                <div className="flex items-center gap-0.5" title="Описание">
-                                  {project.progress.hasDescription ? (
-                                    <Check className="w-3 h-3 text-green-600" />
-                                  ) : (
-                                    <Circle className="w-3 h-3 text-gray-300" />
-                                  )}
-                                </div>
-                                
-                                {/* Этап 3: Визуал */}
-                                <div className="flex items-center gap-0.5" title="Визуал">
-                                  {project.progress.hasVisual ? (
-                                    <Check className="w-3 h-3 text-green-600" />
-                                  ) : (
-                                    <Circle className="w-3 h-3 text-gray-300" />
-                                  )}
-                                </div>
-                                
-                                {/* Этап 4: Цена */}
-                                <div className="flex items-center gap-0.5" title="Цена">
-                                  {project.progress.hasPrice ? (
-                                    <Check className="w-3 h-3 text-green-600" />
-                                  ) : (
-                                    <Circle className="w-3 h-3 text-gray-300" />
-                                  )}
-                                </div>
-                                
-                                {/* Текст статуса */}
-                                <span className="text-xs text-orange-600 font-medium ml-1">
-                                  {getStatusText()}
-                                </span>
-                              </div>
-                            )}
-                            
-                            {/* Для завершенных проектов показываем только дату */}
-                            {project.isCompleted && (
-                              <div className="flex items-center gap-1 text-xs text-green-600 font-medium">
-                                <Check className="w-3 h-3" />
-                                <span>Завершён</span>
-                              </div>
-                            )}
-                          </div>
-                        </motion.div>
-                      );
-                    });
-                  })()}
-                </div>
-              )}
-            </motion.div>
-          </div>
-
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start" suppressHydrationWarning>
           {/* Центральная колонка: Информация об аккаунте */}
           <div className="lg:col-span-2" suppressHydrationWarning>
             <motion.div
@@ -1109,6 +765,15 @@ function ProfileContent() {
             >
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Мой аккаунт</h2>
               <p className="text-gray-600 mb-6 -mt-4">Управляйте информацией вашего аккаунта.</p>
+
+              {/* Уведомления от команды KARTO (раньше колокольчик в шапке сайта) */}
+              <div className="mb-6 flex items-center justify-between gap-3 border-b border-gray-200 pb-5">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">Уведомления</p>
+                  <p className="text-xs text-gray-500">Сообщения от команды KARTO: новости, ответы, важное.</p>
+                </div>
+                <UserNotificationBell />
+              </div>
 
               {/* После оплаты: сообщение об обновлении данных */}
               {paymentSuccessPolling && (
@@ -1593,50 +1258,6 @@ function ProfileContent() {
                     </div>
                   </div>
                 </div>
-              </motion.div>
-            ) : !brandLoading ? (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="relative flex h-full min-h-[330px] flex-col overflow-hidden rounded-2xl border-2 border-[#B9FF4B]/35 bg-gradient-to-b from-[#0d1f16] via-[#163527] to-[#1F4E3D] px-5 pb-7 pt-10 text-center shadow-[0_24px_56px_-28px_rgba(7,9,7,0.75)] ring-1 ring-white/10 sm:min-h-[340px] sm:px-6 sm:pb-8 sm:pt-11"
-              >
-                <div
-                  className="pointer-events-none absolute inset-0 opacity-[0.22]"
-                  style={{
-                    background:
-                      "linear-gradient(115deg, transparent 35%, rgba(185,255,75,0.35) 48%, rgba(56,189,248,0.2) 52%, transparent 65%)",
-                    backgroundSize: "220% 100%",
-                    animation: "rainbow 3.5s linear infinite",
-                  }}
-                  aria-hidden
-                />
-                <div className="pointer-events-none absolute -top-16 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-[#B9FF4B]/30 blur-3xl" aria-hidden />
-                <div className="pointer-events-none absolute bottom-0 right-0 h-36 w-36 rounded-full bg-teal-400/15 blur-3xl" aria-hidden />
-
-                <div
-                  className="relative mx-auto mb-7 h-[3px] w-16 max-w-[70%] rounded-full bg-gradient-to-r from-transparent via-[#B9FF4B] to-transparent shadow-[0_0_20px_rgba(185,255,75,0.45)]"
-                  aria-hidden
-                />
-
-                <h2 className="relative bg-gradient-to-b from-white via-white to-white/75 bg-clip-text text-[2rem] font-extrabold leading-[1.08] tracking-tight text-transparent [-webkit-background-clip:text] sm:text-[2.35rem]">
-                  {brandPromoContinueCreation ? "Продолжить создание" : "Создать бренд"}
-                </h2>
-                <p className="relative mx-auto mt-3.5 max-w-[18rem] text-[13px] leading-snug text-white/68">
-                  Новый бренд или уже свой — пройдите те же шаги мастера и заполните профиль.
-                </p>
-
-                <div className="relative mx-auto mt-9 w-full max-w-[320px]">
-                  <RainbowButton
-                    href="/brand"
-                    className="min-h-[56px] w-full rounded-2xl px-6 py-4 text-[17px] font-bold leading-tight"
-                  >
-                    {brandPromoContinueCreation ? "Продолжить создание" : "Создать бренд"}
-                  </RainbowButton>
-                </div>
-
-                <p className="relative mx-auto mt-7 max-w-[19rem] text-[11.5px] leading-relaxed text-white/[0.58] sm:text-[12px]">
-                  Данные помогают точнее настраивать генерации. Новые сценарии Karto развиваем вместе с продавцами на маркетплейсах.
-                </p>
               </motion.div>
             ) : null}
           </div>
@@ -2177,7 +1798,7 @@ function ProfileContent() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </AgentShell>
   );
 }
 

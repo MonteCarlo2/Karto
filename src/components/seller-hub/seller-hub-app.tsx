@@ -122,6 +122,7 @@ import {
   hubType,
 } from "./hub-ui";
 import { HUB_RAIL_COLLAPSED, HUB_RAIL_EXPANDED, HubSidebar } from "./hub-sidebar";
+import { ContactWidget } from "@/components/agent/contact-widget";
 
 function emptyConnection(marketplaceId: SellerHubMarketplaceId): SellerHubConnection {
   return { marketplaceId, apiKey: "", status: "idle" };
@@ -137,6 +138,7 @@ export function SellerHubApp() {
     return () => window.removeEventListener("unhandledrejection", onRejection);
   }, []);
   const [userId, setUserId] = useState<string | null>(null);
+  const [contactOpen, setContactOpen] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   /** Левая панель по умолчанию свёрнута: данным нужно место. Выбор владельца запоминается. */
   const [collapsed, setCollapsed] = useState(true);
@@ -588,7 +590,7 @@ export function SellerHubApp() {
         });
         setPhase("idle");
         setWbTokenDraft("");
-        setNotice("Площадка отключена. Каталог и закупка в Seller Hub сохранены. Данные в кабинете WB не менялись.");
+        setNotice("Площадка отключена. Каталог и закупка в Агенте сохранены. Данные в кабинете WB не менялись.");
         return;
       }
       const root = readSellerHubRoot(userId);
@@ -1223,7 +1225,7 @@ export function SellerHubApp() {
             className="mx-auto mt-2 max-w-md text-[14px] leading-[1.65]"
             style={{ ...hubSans, color: hub.textMuted }}
           >
-            Seller Hub работает с вашим личным кабинетом маркетплейса — токен и выгрузки
+            Агент работает с вашим личным кабинетом маркетплейса — токен и выгрузки
             сохраняются в вашем профиле.
           </p>
           <Link href="/login" className="mt-5 inline-block">
@@ -1237,7 +1239,7 @@ export function SellerHubApp() {
       return (
         <HubPanel padded className="text-center">
           <p className="text-[16px] font-semibold" style={{ ...hubSans, color: hub.text }}>
-            Seller Hub пока в разработке
+            Агент пока в разработке
           </p>
           <p className="mx-auto mt-2 max-w-md text-[14px] leading-[1.65]" style={{ ...hubSans, color: hub.textMuted }}>
             Раздел откроется, когда будет готов. Остальные инструменты KARTO работают как обычно.
@@ -1572,6 +1574,7 @@ export function SellerHubApp() {
         <HubSidebar
           collapsed={collapsed}
           onToggleCollapsed={toggleCollapsed}
+          onContact={() => setContactOpen(true)}
           area={canonicalArea(area)}
           onAreaChange={(id) => {
             changeArea(id);
@@ -1600,6 +1603,10 @@ export function SellerHubApp() {
             <HubSidebar
               collapsed={false}
               onToggleCollapsed={() => setMobileNavOpen(false)}
+              onContact={() => {
+                setMobileNavOpen(false);
+                setContactOpen(true);
+              }}
               area={canonicalArea(area)}
               onAreaChange={changeArea}
             />
@@ -1646,6 +1653,8 @@ export function SellerHubApp() {
         </div>
 
       </main>
+
+      <ContactWidget open={contactOpen} onClose={() => setContactOpen(false)} railWidth={railWidth} />
     </div>
   );
 }

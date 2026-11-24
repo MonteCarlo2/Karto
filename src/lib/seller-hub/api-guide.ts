@@ -36,7 +36,7 @@ export const SELLER_HUB_API_GUIDE: Record<SellerHubMarketplaceId, SellerHubApiGu
     cabinetName: "личный кабинет seller.wildberries.ru",
     cabinetUrl: "https://seller.wildberries.ru",
     scopesHint:
-      "Нужен персональный токен. Минимум — «Контент». Для полного Seller Hub отметьте все категории ниже.",
+      "Нужен персональный токен. Минимум — «Контент». Для полного Агента отметьте все категории ниже.",
     scopes: [
       {
         label: "Контент",
@@ -88,7 +88,7 @@ export const SELLER_HUB_API_GUIDE: Record<SellerHubMarketplaceId, SellerHubApiGu
       {
         title: "Отметьте категории доступа",
         description:
-          "Чем больше категорий отмечено, тем больше данных Seller Hub подтянет из кабинета. Минимум — «Контент», рекомендуем сразу отметить все из списка ниже.",
+          "Чем больше категорий отмечено, тем больше данных Агент подтянет из кабинета. Минимум — «Контент», рекомендуем сразу отметить все из списка ниже.",
         bullets: [
           "Контент — обязательно",
           "Цены и скидки",

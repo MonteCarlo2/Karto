@@ -68,7 +68,7 @@ function ModulesMock() {
     { icon: Bot, title: "Агенты", text: "Помощники по вашим правилам" },
   ];
   return (
-    <Frame title="Seller Hub · разделы">
+    <Frame title="Агент · разделы">
       <ul className="grid gap-3 sm:grid-cols-3">
         {items.map((m) => (
           <li key={m.title} className="rounded-[18px] p-4" style={{ backgroundColor: "rgba(185, 255, 75, 0.2)", boxShadow: "inset 0 0 0 1px rgba(122, 190, 40, 0.4)" }}>

@@ -4,7 +4,6 @@ import { useState, useEffect, Suspense } from "react"
 import dynamic from "next/dynamic"
 import { useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
-import { Wrench } from "lucide-react"
 import { HeroSection } from "@/components/landing/hero-section"
 import { createBrowserClient } from "@/lib/supabase/client"
 import { useToast } from "@/components/ui/toast"
@@ -13,11 +12,6 @@ import {
   WELCOME_PERKS_NOTICE_STORAGE_KEY,
   WELCOME_PERKS_NOTICE_TOAST_SHOWN_KEY,
 } from "@/lib/welcome-perks/constants"
-
-const BugReportModal = dynamic(
-  () => import("@/components/ui/bug-report-modal").then((m) => ({ default: m.BugReportModal })),
-  { ssr: false }
-)
 
 // Ниже первого экрана — подгружаем по мере прокрутки, чтобы не блокировать первый рендер и LCP
 const StickyScrollReveal = dynamic(
@@ -70,7 +64,6 @@ function urlHasPendingSupabaseAuth(): boolean {
 }
 
 function HomeContent() {
-  const [isBugReportOpen, setIsBugReportOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const searchParams = useSearchParams();
   const { showToast } = useToast();
@@ -172,24 +165,6 @@ function HomeContent() {
 
   return (
     <div suppressHydrationWarning>
-      {/* Кнопка "Сообщить о проблеме" - фиксированная в правом нижнем углу, маленькая и неприметная */}
-      <motion.button
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 1, type: "spring", stiffness: 200 }}
-        onClick={() => setIsBugReportOpen(true)}
-        className="fixed bottom-6 right-6 z-40 p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg shadow-md hover:shadow-lg transition-all flex items-center justify-center group border border-gray-300"
-        title="Сообщить о проблеме"
-      >
-        <Wrench className="w-4 h-4 group-hover:rotate-12 transition-transform" />
-      </motion.button>
-
-      {/* Модальное окно отчета о неполадке */}
-      <BugReportModal
-        isOpen={isBugReportOpen}
-        onClose={() => setIsBugReportOpen(false)}
-        user={user}
-      />
       {/* SECTION 1: HERO — видео + контент по ветру (~2 с) */}
       <HeroSection />
 

@@ -1,3 +1,9 @@
+/**
+ * Вводный тур ВЫКЛЮЧЕН (24.11.2026): он рассказывал про прежнюю структуру сайта.
+ * Код тура сохранён. Чтобы включить снова, поставьте true и перепишите шаги под «Агента».
+ */
+export const PRODUCT_TOUR_ENABLED = false;
+
 /** Показать product tour один раз после регистрации. */
 export const PRODUCT_TOUR_PENDING_STORAGE_KEY = "karto_product_tour_pending";
 export const PRODUCT_TOUR_PENDING_COOKIE = "karto_product_tour_pending";

@@ -68,11 +68,11 @@ export function ruleFeedbacksAccess(store: StoreTaskFacts): TaskDraft | null {
     severityCeiling: "important",
     title: "Дайте токену доступ к отзывам и вопросам",
     description:
-      "В токене WB нет категории «Вопросы и отзывы». Без неё Seller Hub не видит отзывы и вопросы по товарам.",
+      "В токене WB нет категории «Вопросы и отзывы». Без неё Агент не видит отзывы и вопросы по товарам.",
     reason: "feedbacks-api вернул 401/403.",
     evidence: { feedbacks_status: "forbidden" },
     recommendation:
-      "В кабинете WB добавьте категорию «Вопросы и отзывы» к токену Seller Hub. После этого вернитесь в раздел «Автоответы» KARTO.",
+      "В кабинете WB добавьте категорию «Вопросы и отзывы» к токену Агента. После этого вернитесь в раздел «Автоответы» KARTO.",
     actionType: "OPEN_REVIEW_RESPONSES",
     businessImpactType: "OPERATIONAL",
     eventKind: null,

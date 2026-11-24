@@ -15,9 +15,10 @@ export const KARTO_REVIEWS_MODE = {
   tagline: "Ответы на отзывы покупателей",
 } as const;
 
+/** Главный продукт. Прежнее рабочее название «Seller Hub» в интерфейсе заменено на «Агент». */
 export const KARTO_SELLER_HUB_MODE = {
-  title: "Seller Hub",
-  tagline: "Каталог SKU и API-хаб маркетплейса",
+  title: "Агент",
+  tagline: "ИИ-агент вашего магазина на Wildberries",
 } as const;
 
 export const KARTO_PRICING_MODES = [

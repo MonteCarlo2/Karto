@@ -5,12 +5,10 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Logo } from "@/components/ui/logo"
 import { Button } from "@/components/ui/button"
-import { Menu, X, User, LogOut } from "lucide-react"
-import { UserNotificationBell } from "@/components/layout/user-notification-bell"
+import { Menu, X, User, LogOut, LayoutGrid } from "lucide-react"
 import {
   KARTO_CREATIVE_MODE,
   KARTO_FLOW_MODE,
-  KARTO_SELLER_HUB_MODE,
 } from "@/lib/karto-modes"
 import {
   NAV_DROPDOWN_PANEL,
@@ -36,17 +34,19 @@ import {
 import { createBrowserClient } from "@/lib/supabase/client"
 import { useProfileUpdateBadge } from "@/hooks/use-profile-update-badge"
 import { cn } from "@/lib/utils"
+import { isAgentShellPath } from "@/lib/agent-shell-paths"
 import {
   ProfileAvatarNewTag,
   ProfileMenuUpdateCue,
 } from "@/components/layout/profile-update-cue"
 
-function StudioMenuGrid({ onNavigate }: { onNavigate?: () => void }) {
+function StudioMenuGrid({ onNavigate, showWorkshopLink = false }: { onNavigate?: () => void; showWorkshopLink?: boolean }) {
   const handleClick = () => {
     onNavigate?.()
   }
 
   return (
+    <div>
     <div className="flex gap-1.5">
       <div className={NAV_STUDIO_MENU_COLUMN}>
         <Link href="/studio?intro=true" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
@@ -121,23 +121,16 @@ function StudioMenuGrid({ onNavigate }: { onNavigate?: () => void }) {
             <div className={NAV_MENU_SUBTITLE}>Бесплатные тексты для карточки</div>
           </div>
         </Link>
-        <Link href="/studio/seller-hub" className={NAV_MENU_ROW_STUDIO} onClick={handleClick}>
-          <span className={NAV_MENU_ICON_STUDIO} aria-hidden>
-            <svg className="h-[22px] w-[22px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7zm4 0h8m-8 5h8m-8 5h5"
-              />
-            </svg>
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className={NAV_MENU_TITLE}>{KARTO_SELLER_HUB_MODE.title}</div>
-            <div className={NAV_MENU_SUBTITLE}>{KARTO_SELLER_HUB_MODE.tagline}</div>
-          </div>
-        </Link>
       </div>
+    </div>
+      {showWorkshopLink ? (<Link
+        href="/studio/workshop"
+        onClick={handleClick}
+        className="mt-1.5 flex w-full items-center justify-between rounded-xl border-t border-[#070907]/10 px-3 pt-2.5 pb-1.5 text-sm font-semibold text-[#2E5A43] outline-none transition-colors hover:text-[#1F4E3D] focus-visible:underline"
+      >
+        Вся Мастерская: потоки и бренд
+        <span aria-hidden>→</span>
+      </Link>) : null}
     </div>
   )
 }
@@ -158,7 +151,7 @@ export function Navbar() {
     pathname.startsWith("/studio/descriptions") ||
     pathname.startsWith("/studio/auto-replies") ||
     pathname.startsWith("/studio/unit-economics") ||
-    pathname.startsWith("/studio/seller-hub");
+    isAgentShellPath(pathname);
   const { showBadge: profileUpdateBadge, dismissProfileUpdateBadge } = useProfileUpdateBadge()
 
   // Предотвращаем гидратацию до монтирования на клиенте
@@ -402,33 +395,17 @@ export function Navbar() {
 
           {/* CTA Buttons */}
           <div className="hidden md:flex items-center gap-3" suppressHydrationWarning>
-            <div className="relative studio-menu-container" suppressHydrationWarning>
-              <Button 
-                variant="ghost" 
-                size="default" 
-                className="text-base font-medium text-foreground hover:text-[#2E5A43] hover:bg-transparent border border-[#2E5A43]"
-                onClick={() => setShowStudioMenu(!showStudioMenu)}
+            {/* Агент: главный продукт. Вошедшему человеку заметная кнопка в кабинет, гостю её нет (у гостя «Вход / Регистрация»). */}
+            {mounted && user ? (
+              <Link
+                href="/studio/seller-hub"
+                className="inline-flex h-10 items-center rounded-md bg-[#1F4E3D] px-4 text-base font-medium text-white transition-colors hover:bg-[#2E5A43]"
               >
-                Мастерская
-              </Button>
-              <AnimatePresence>
-                {showStudioMenu && (
-                  <motion.div
-                    data-tour="studio-menu"
-                    initial={{ opacity: 0, y: -8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: 0.15, ease: "easeOut" }}
-                    className={`absolute left-0 top-full z-50 mt-2 w-[min(calc(100vw-2rem),520px)] ${NAV_STUDIO_DROPDOWN_PANEL}`}
-                  >
-                    <StudioMenuGrid onNavigate={() => setShowStudioMenu(false)} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+                Открыть агента
+              </Link>
+            ) : null}
             {mounted && user ? (
               <div className="flex items-center gap-2" suppressHydrationWarning>
-                <UserNotificationBell />
                 <div className="flex items-center gap-2">
                   <div className="relative profile-menu-container">
                     <ProfileAvatarNewTag show={Boolean(mounted && user && profileUpdateBadge)}>
@@ -466,8 +443,20 @@ export function Navbar() {
                               <User className="h-6 w-6" strokeWidth={2} />
                             </span>
                             <div className="flex min-w-0 flex-1 flex-col items-start gap-0">
-                              <span className={NAV_PROFILE_LABEL}>Личный кабинет</span>
+                              <span className={NAV_PROFILE_LABEL}>Аккаунт</span>
                               {profileUpdateBadge ? <ProfileMenuUpdateCue /> : null}
+                            </div>
+                          </Link>
+                          <Link
+                            href="/studio/workshop"
+                            className={NAV_MENU_ROW_PROFILE}
+                            onClick={() => setShowProfileMenu(false)}
+                          >
+                            <span className={NAV_MENU_ICON_PROFILE} aria-hidden>
+                              <LayoutGrid className="h-6 w-6" strokeWidth={2} />
+                            </span>
+                            <div className="flex min-w-0 flex-1 flex-col items-start gap-0">
+                              <span className={NAV_PROFILE_LABEL}>Мастерская</span>
                             </div>
                           </Link>
                           <button type="button" onClick={handleLogout} className={NAV_MENU_ROW_LOGOUT}>
@@ -497,15 +486,17 @@ export function Navbar() {
                 </div>
               </div>
             ) : mounted ? (
-              <Button
-                asChild
-                variant="ghost"
-                size="default"
-                className="border border-[#84CC16]/45 bg-[#ECF7DB] text-base font-semibold tracking-tight text-neutral-900 antialiased shadow-none transition-colors hover:bg-[#dff3c4] hover:text-neutral-900"
-                suppressHydrationWarning
-              >
-                <Link href="/login">Вход / Регистрация</Link>
-              </Button>
+              <>
+                <Button asChild variant="ghost" size="default" className="text-base font-medium text-foreground hover:bg-black/[0.05]" suppressHydrationWarning>
+                  <Link href="/login">Войти</Link>
+                </Button>
+                <Link
+                  href="/login?mode=register"
+                  className="inline-flex h-10 items-center rounded-md bg-[#1F4E3D] px-4 text-base font-medium text-white transition-colors hover:bg-[#2E5A43]"
+                >
+                  Попробовать бесплатно
+                </Link>
+              </>
             ) : (
               <div className="w-24 h-10" suppressHydrationWarning />
             )}
@@ -513,7 +504,6 @@ export function Navbar() {
 
           {/* Mobile: колокольчик — слева от кнопки меню */}
           <div className="flex items-center gap-1.5 md:hidden">
-            {mounted && user ? <UserNotificationBell /> : null}
             <button
               className="p-2"
               onClick={() => setIsOpen(!isOpen)}
@@ -548,30 +538,15 @@ export function Navbar() {
                   {link.name}
                 </Link>
               ))}
-              <div className="w-full mt-2">
-                <Button 
-                  variant="ghost" 
-                  className="w-full"
-                  onClick={() => {
-                    setShowStudioMenu(!showStudioMenu);
-                  }}
+              {mounted && user ? (
+                <Link
+                  href="/studio/seller-hub"
+                  onClick={() => setIsOpen(false)}
+                  className="mt-2 flex h-11 w-full items-center justify-center rounded-lg bg-[#1F4E3D] text-base font-medium text-white transition-colors hover:bg-[#2E5A43]"
                 >
-                  Мастерская
-                </Button>
-                {showStudioMenu && (
-                  <div
-                    data-tour="studio-menu"
-                    className={`ml-4 mt-2 ${NAV_STUDIO_DROPDOWN_PANEL}`}
-                  >
-                    <StudioMenuGrid
-                      onNavigate={() => {
-                        setIsOpen(false)
-                        setShowStudioMenu(false)
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
+                  Открыть агента
+                </Link>
+              ) : null}
               {mounted && user ? (
                 <>
                   <Link
@@ -594,6 +569,18 @@ export function Navbar() {
                       {profileUpdateBadge ? <ProfileMenuUpdateCue /> : null}
                     </div>
                   </Link>
+                  <Link
+                    href="/studio/workshop"
+                    onClick={() => setIsOpen(false)}
+                    className={cn("mt-1", NAV_MENU_ROW_PROFILE)}
+                  >
+                    <span className={NAV_MENU_ICON_PROFILE} aria-hidden>
+                      <LayoutGrid className="h-6 w-6" strokeWidth={2} />
+                    </span>
+                    <div className="flex min-w-0 flex-1 flex-col items-start gap-0">
+                      <span className={NAV_PROFILE_LABEL}>Мастерская</span>
+                    </div>
+                  </Link>
                   <button
                     type="button"
                     onClick={() => {
@@ -610,16 +597,22 @@ export function Navbar() {
                   </button>
                 </>
               ) : mounted ? (
-                <Button
-                  asChild
-                  variant="ghost"
-                  className="mt-2 w-full border border-[#84CC16]/45 bg-[#ECF7DB] text-base font-semibold tracking-tight text-neutral-900 antialiased shadow-none transition-colors hover:bg-[#dff3c4] hover:text-neutral-900"
-                  suppressHydrationWarning
-                >
-                  <Link href="/login" onClick={() => setIsOpen(false)}>
-                    Вход / Регистрация
+                <div className="mt-2 flex flex-col gap-2">
+                  <Link
+                    href="/login?mode=register"
+                    onClick={() => setIsOpen(false)}
+                    className="flex h-11 w-full items-center justify-center rounded-lg bg-[#1F4E3D] text-base font-medium text-white transition-colors hover:bg-[#2E5A43]"
+                  >
+                    Попробовать бесплатно
                   </Link>
-                </Button>
+                  <Link
+                    href="/login"
+                    onClick={() => setIsOpen(false)}
+                    className="flex h-11 w-full items-center justify-center rounded-lg border border-black/15 text-base font-medium text-foreground transition-colors hover:bg-black/[0.04]"
+                  >
+                    Войти
+                  </Link>
+                </div>
               ) : null}
             </nav>
           </motion.div>

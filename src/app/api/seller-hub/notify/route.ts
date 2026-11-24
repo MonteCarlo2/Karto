@@ -30,11 +30,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Telegram не подключён. Подключите его в разделе «Кабинет и API» → «Уведомления»." }, { status: 409 });
   }
 
-  const title = clip(body.title || "Задача агента Seller Hub", 180);
+  const title = clip(body.title || "Задача Агента", 180);
   try {
     await sendHtmlSafe({
       chatId: link0.chat_id,
-      html: `${bold(title)}\n\n${escapeHtml("Подтверждение только на сайте. В кабинет WB ничего не уйдёт, пока вы не нажмёте «Применить».")}\n\n${link("Открыть Seller Hub", `${appBaseUrl()}/studio/seller-hub`)}`,
+      html: `${bold(title)}\n\n${escapeHtml("Подтверждение только на сайте. В кабинет WB ничего не уйдёт, пока вы не нажмёте «Применить».")}\n\n${link("Открыть Агента", `${appBaseUrl()}/studio/seller-hub`)}`,
     });
     return NextResponse.json({ ok: true });
   } catch (e) {

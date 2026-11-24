@@ -67,7 +67,6 @@ const SECTIONS: Array<{ id: SectionId; label: string; hint: string; icon: Lucide
   { id: "billing", label: "Тариф и оплата", hint: "Баланс, пакеты, автопродление", icon: CreditCard },
   { id: "notify", label: "Уведомления", hint: "Telegram и события", icon: Bell },
   { id: "data", label: "Расчёты", hint: "Маржа, налог, данные", icon: Calculator },
-  { id: "account", label: "Аккаунт", hint: "Профиль и выход", icon: UserRound },
 ];
 
 export function HubAccount(props: AccountProps) {
@@ -151,7 +150,6 @@ export function HubAccount(props: AccountProps) {
         {section === "billing" ? <HubAccountBilling ctx={ctx} /> : null}
         {section === "notify" ? <HubAccountNotify /> : null}
         {section === "data" ? <HubAccountData connection={props.connection} /> : null}
-        {section === "account" ? <AccountSection ctx={ctx} connection={props.connection} /> : null}
       </div>
     </div>
   );
