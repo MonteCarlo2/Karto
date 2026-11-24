@@ -116,10 +116,26 @@ function outputLogLabel(output: string): string {
   return `[base64 ${Math.round(output.length / 1024)} KB]`;
 }
 
+/** Начало декодированных байт похоже на PNG, JPEG или WebP. Без регулярных выражений по всей строке. */
+function looksLikeImageBase64(base64: string): boolean {
+  const head = Buffer.from(base64.slice(0, 64), "base64");
+  const png = head.length >= 4 && head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47;
+  const jpeg = head.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+  const webp = head.length >= 12 && head.toString("ascii", 0, 4) === "RIFF" && head.toString("ascii", 8, 12) === "WEBP";
+  return png || jpeg || webp;
+}
+
 async function materializeWaveSpeedOutput(output: string): Promise<string> {
   if (/^https?:\/\//i.test(output)) return output;
-  const base64 = output.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, "");
-  if (base64.length < 128 || !/^[A-Za-z0-9+/=\r\n]+$/.test(base64)) {
+  // Ответ WaveSpeed в base64 весит 15–30 МБ. Регулярные выражения на такой строке на сервере падали
+  // с «Maximum call stack size exceeded», поэтому префикс режем вручную, а корректность проверяем по самим байтам.
+  let base64 = output;
+  if (base64.startsWith("data:")) {
+    const marker = base64.indexOf("base64,");
+    if (marker === -1 || marker > 80) throw new Error("WaveSpeed вернул некорректное изображение");
+    base64 = base64.slice(marker + "base64,".length);
+  }
+  if (base64.length < 128 || !looksLikeImageBase64(base64)) {
     throw new Error("WaveSpeed вернул некорректное изображение");
   }
   const path = await saveBase64Image(`data:image/png;base64,${base64}`);
