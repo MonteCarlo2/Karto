@@ -261,7 +261,9 @@ export async function saveBase64Image(base64: string): Promise<string> {
   await ensureDirs();
   
   // Удаляем data:image/... префикс если есть
-  const base64Data = base64.replace(/^data:image\/\w+;base64,/, "");
+  // Без регулярок: строка бывает 15–30 МБ (4K от WaveSpeed), на ней регулярки падают с «Maximum call stack size exceeded».
+  const marker = base64.startsWith("data:image") ? base64.indexOf(";base64,") : -1;
+  const base64Data = marker !== -1 && marker < 40 ? base64.slice(marker + 8) : base64;
   const buffer = Buffer.from(base64Data, "base64");
   
   const filename = `${uuidv4()}.png`;
